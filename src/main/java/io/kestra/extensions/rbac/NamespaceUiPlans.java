@@ -26,8 +26,6 @@ final class NamespaceUiPlans {
         String simple = controller.substring(controller.lastIndexOf('.') + 1);
         String[] segments = request.path().substring(8).split("/", -1);
         boolean read = "GET".equals(request.method());
-        if (simple.equals("PluginController") && request.method().equals("POST") && handler.equals("getPluginUiManifest")
-            && request.path().equals("/api/v1/plugins/pluginUiManifest")) return metadata();
         if (simple.equals("MiscController") && read && Set.of("getConfiguration", "getExpressionFilters", "getExpressionFunctions").contains(handler)
             && Set.of("/api/v1/configs", "/api/v1/pebble/filters", "/api/v1/pebble/functions").contains(request.path())) return metadata();
         if (simple.equals("PluginController") && read && Set.of("getSchemasFromType", "getPropertiesFromType", "getAllInputTypes", "getSchemaFromInputType", "listTriggerPlugins", "getPluginIcons", "getPluginIcon", "getPluginIconSvg", "getPluginGroupIcons", "getPluginDocumentation", "getPluginDocumentationFromVersion", "getPluginVersions", "getPluginBySubgroups", "getPluginUi").contains(handler)
@@ -41,12 +39,9 @@ final class NamespaceUiPlans {
         if (simple.equals("DashboardController") && request.method().equals("POST") && handler.equals("previewChart")
             && request.path().equals("/api/v1/main/dashboards/charts/preview")) {
             Kind kind = dashboards.resource(request.body());
-            if (kind != null) return collection(local, kind);
-            Resource description = dashboards.description(request.body());
-            return description == null ? null : new Plan(List.of(new Requirement(description, Action.READ)), Coverage.SINGLE);
+            return kind == null ? null : collection(local, kind);
         }
         if (simple.equals("FlowController") && segments[1].equals("flows")) {
-            if (request.method().equals("POST") && handler.equals("generateFlowGraphFromSource") && request.path().equals("/api/v1/main/flows/graph")) return validateFlows(request);
             if (request.method().equals("POST") && handler.equals("validateFlows") && request.path().equals("/api/v1/main/flows/validate"))
                 return validateFlows(request);
             if (read && matchesCollection(request, Map.of("searchFlows", "/search", "searchFlowsBySourceCode", "/source", "listDistinctNamespaces", "/distinct-namespaces", "listDeprecated", "/deprecated"), "/api/v1/main/flows"))
@@ -83,8 +78,6 @@ final class NamespaceUiPlans {
             if (request.method().equals("DELETE") && handler.equals("deleteFileDirectory")) return single(Kind.NAMESPACE_FILE, segments[2], file, Action.DELETE);
         }
         if (simple.equals("ExecutionController") && segments[1].equals("executions")) {
-            if (read && handler.equals("getFlowFromExecution") && segments.length == 5 && segments[2].equals("flows"))
-                return new Plan(List.of(requirement(Kind.FLOW, segments[3], segments[4], Action.READ), requirement(Kind.EXECUTION, segments[3], null, Action.LIST)), Coverage.COMPLETE_QUERY);
             if (request.method().equals("POST") && handler.equals("getLatestExecutions") && request.path().equals("/api/v1/main/executions/latest"))
                 return latestExecutions(request);
             if (read && matchesCollection(request, Map.of("searchExecutions", "/search", "findDistinctFieldValues", "/distinct-field-values", "listExecutableDistinctNamespaces", "/namespaces"), "/api/v1/main/executions")) return collection(local, Kind.EXECUTION);
@@ -99,13 +92,6 @@ final class NamespaceUiPlans {
                 return execution(segments[2], Kind.EXECUTION, Action.UPDATE);
             if (segments.length >= 3 && request.method().equals("DELETE") && handler.equals("killExecution")) return execution(segments[2], Kind.EXECUTION, Action.UPDATE);
             if (segments.length == 3 && request.method().equals("DELETE") && handler.equals("deleteExecution")) return execution(segments[2], Kind.EXECUTION, Action.DELETE);
-        }
-        if (simple.equals("ConcurrencyLimitController") && read && handler.equals("getConcurrencyLimit") && segments.length == 4 && segments[1].equals("concurrency-limit"))
-            return single(Kind.FLOW, segments[2], segments[3], Action.READ);
-        if (simple.equals("OutputController") && read && segments[1].equals("outputs")) {
-            if (segments.length == 4 && segments[2].equals("executions") && handler.equals("getExecutionOutputs")) return execution(segments[3], Kind.EXECUTION, Action.READ, Action.ACCESS_OUTPUTS);
-            if (segments.length == 4 && segments[2].equals("tasks") && handler.equals("getTaskOutputsInformation")) return execution(segments[3], Kind.EXECUTION, Action.READ, Action.ACCESS_OUTPUTS);
-            if (segments.length == 5 && segments[2].equals("tasks") && handler.equals("getTaskRunOutputs")) return execution(segments[3], Kind.EXECUTION, Action.READ, Action.ACCESS_OUTPUTS);
         }
         if (simple.equals("LogController") && segments[1].equals("logs")) {
             if (read && handler.equals("searchLogs") && request.path().equals("/api/v1/main/logs/search")) return collection(local, Kind.LOG);
