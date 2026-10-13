@@ -46,34 +46,6 @@ Policy rules:
 
 ## Explicitly supported REST surface
 
-### Namespace UI implementation under acceptance
-
-The pinned host publishes `AccessScope.namespaces(subtree, exact)`. This plugin replaces
-`GlobalNamespaceAccessControl` and `GlobalLogDataStoreAccessControl`, using the authenticated
-request's `SecurityFilter.AUTHENTICATION` identity. All mapped local roles contribute their
-grants; resource kinds remain separate. Complete collection access requires READ, LIST and
-`all-ids: true`. Unfiltered Flow, Execution and Namespace queries receive a complete-query
-plan and rely on the corresponding repository ACL before pagination/counting. Detail requests
-still authorize the concrete namespace and resource. Execution ownership is resolved through
-the published repository interface before granting access.
-
-The request filter propagates an HTTP-origin element through Micronaut `PropagatedContext`.
-Missing request identity or missing authentication returns `DENY_ALL`, including a missing
-marker. No implicit background global exception is implemented. Actual engine/MCP behavior
-and repository query isolation require the monorepo owner's Compose acceptance. Independent
-HTTP tests cover the `blocking` and `io` ExecuteOn paths; they do not replace that acceptance.
-
-Non-sensitive configuration, plugin catalog/documentation and default dashboard definitions
-have explicit metadata plans. Arbitrary dashboard chart preview remains denied; scoped chart
-data and all target page actions are still under implementation/acceptance. This section does
-not claim complete ordinary-user UI delivery. The table below describes the earlier baseline;
-the new query/detail implementation is validated separately by namespace UI tests.
-
-The controlled OIDC fixture also creates `rbac-multi` / `MultiPass123!` with
-`[reader, other-reader]`, and `rbac-exact` / `ExactPass123!` with `[exact-reader]`.
-The integration example maps the first account to `rbac.allowed` plus `rbac.other`, and the
-second to exact `rbac.allowed`, excluding its children. These are local test credentials only.
-
 | Operation | Route/handler | Policy/limits |
 |---|---|---|
 | Flow create | POST `/api/v1/main/flows`, `createFlow` | YAML namespace/id required; FLOW CREATE; only `draft` query supported |

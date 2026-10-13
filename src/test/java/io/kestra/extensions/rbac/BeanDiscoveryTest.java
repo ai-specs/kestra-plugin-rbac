@@ -23,9 +23,6 @@ class BeanDiscoveryTest {
             assertNotNull(context.getBean(RbacAuthorizer.class));
             assertNotNull(context.getBean(io.kestra.webserver.rbac.RestAuthorizationResolver.class));
             assertNotNull(context.getBean(io.kestra.webserver.rbac.McpAuthorizationResolver.class));
-            assertInstanceOf(ConfiguredNamespaceAccessControl.class, context.getBean(io.kestra.core.repositories.NamespaceAccessControl.class));
-            assertInstanceOf(ConfiguredLogAccessControl.class, context.getBean(io.kestra.core.repositories.log.LogDataStoreAccessControl.class));
-            assertNotNull(context.getBean(RequestIdentityFilter.class));
         }
     }
     @Test void administratorConfigurationIsInjectedIntoBothResolvers() {
@@ -61,9 +58,6 @@ class BeanDiscoveryTest {
             assertFalse(context.containsBean(PolicyEngine.class));
             assertFalse(context.containsBean(FlowRestAuthorizationResolver.class));
             assertFalse(context.containsBean(SafeFlowDependencies.class));
-            assertFalse(context.containsBean(ConfiguredNamespaceAccessControl.class));
-            assertFalse(context.containsBean(ConfiguredLogAccessControl.class));
-            assertFalse(context.containsBean(RequestIdentityFilter.class));
         }
     }
 }

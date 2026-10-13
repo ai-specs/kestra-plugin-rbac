@@ -8,8 +8,6 @@ kestra:
     role-mapping:
       reader: [reader]
       writer: [writer]
-      other-reader: [other-reader]
-      exact-reader: [exact-reader]
       admin: [deployment-admin]
     roles:
       reader:
@@ -20,102 +18,19 @@ kestra:
           resource: FLOW
           actions: [READ, LIST]
           all-ids: true
-        - scope: NAMESPACE
-          tenant: main
-          namespace: rbac.allowed
-          descendants: true
-          resource: EXECUTION
-          actions: [READ, LIST, ACCESS_OUTPUTS]
-          all-ids: true
-        - scope: NAMESPACE
-          tenant: main
-          namespace: rbac.allowed
-          descendants: true
-          resource: NAMESPACE
-          actions: [READ, LIST]
-          all-ids: true
-        - scope: NAMESPACE
-          tenant: main
-          namespace: rbac.allowed
-          descendants: true
-          resource: LOG
-          actions: [READ, LIST]
-          all-ids: true
-        - scope: NAMESPACE
-          tenant: main
-          namespace: rbac.allowed
-          descendants: true
-          resource: METRIC
-          actions: [READ, LIST]
-          all-ids: true
-        - scope: NAMESPACE
-          tenant: main
-          namespace: rbac.allowed
-          descendants: true
-          resource: TRIGGER
-          actions: [READ, LIST]
-          all-ids: true
-      other-reader:
-        - scope: NAMESPACE
-          tenant: main
-          namespace: rbac.other
-          descendants: true
-          resource: FLOW
-          actions: [READ, LIST]
-          all-ids: true
-        - scope: NAMESPACE
-          tenant: main
-          namespace: rbac.other
-          descendants: true
-          resource: EXECUTION
-          actions: [READ, LIST, ACCESS_OUTPUTS]
-          all-ids: true
-        - scope: NAMESPACE
-          tenant: main
-          namespace: rbac.other
-          descendants: true
-          resource: NAMESPACE
-          actions: [READ, LIST]
-          all-ids: true
-      exact-reader:
-        - scope: NAMESPACE
-          tenant: main
-          namespace: rbac.allowed
-          resource: FLOW
-          actions: [READ, LIST]
-          all-ids: true
-        - scope: NAMESPACE
-          tenant: main
-          namespace: rbac.allowed
-          resource: EXECUTION
-          actions: [READ, LIST, ACCESS_OUTPUTS]
-          all-ids: true
-        - scope: NAMESPACE
-          tenant: main
-          namespace: rbac.allowed
-          resource: NAMESPACE
-          actions: [READ, LIST]
-          all-ids: true
       writer:
         - scope: NAMESPACE
           tenant: main
           namespace: rbac.allowed
           descendants: true
           resource: FLOW
-          actions: [READ, LIST, CREATE, UPDATE, DELETE, EXECUTE]
+          actions: [READ, LIST, CREATE, UPDATE, EXECUTE]
           all-ids: true
         - scope: NAMESPACE
           tenant: main
           namespace: rbac.allowed
           descendants: true
           resource: EXECUTION
-          actions: [CREATE, READ, LIST, ACCESS_OUTPUTS]
-          all-ids: true
-        - scope: NAMESPACE
-          tenant: main
-          namespace: rbac.allowed
-          descendants: true
-          resource: NAMESPACE
-          actions: [READ, LIST]
+          actions: [CREATE, READ, ACCESS_OUTPUTS]
           all-ids: true
       deployment-admin: []

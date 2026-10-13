@@ -24,14 +24,12 @@ final class NamespaceUiPlans {
             && Set.of("/api/v1/configs", "/api/v1/pebble/filters", "/api/v1/pebble/functions").contains(request.path())) return metadata();
         if (simple.equals("PluginController") && read && Set.of("getSchemasFromType", "getPropertiesFromType", "getAllInputTypes", "getSchemaFromInputType", "listTriggerPlugins", "getPluginIcons", "getPluginIcon", "getPluginIconSvg", "getPluginGroupIcons", "getPluginDocumentation", "getPluginDocumentationFromVersion", "getPluginVersions", "getPluginBySubgroups", "getPluginUi").contains(handler)
             && request.path().startsWith("/api/v1/plugins/")) return metadata();
-        if (simple.equals("PluginController") && read && handler.equals("listPlugins")
-            && Set.of("/api/v1/plugins", "/api/v1/plugins/").contains(request.path())) return metadata();
         if (segments.length < 2 || !segments[0].equals("main")) return null;
         var local = new Principal(principal.subject(), Set.copyOf(principal.roles()));
         if (simple.equals("DashboardController") && read && handler.equals("getDefaultDashboardDefinitions")
             && request.path().equals("/api/v1/main/dashboards/defaults/definitions")) return metadata();
         if (simple.equals("FlowController") && segments[1].equals("flows")) {
-            if (read && matchesCollection(request, Map.of("searchFlows", "/search", "searchFlowsBySourceCode", "/source", "listDistinctNamespaces", "/distinct-namespaces", "listDeprecated", "/deprecated"), "/api/v1/main/flows"))
+            if (read && Set.of("searchFlows", "searchFlowsBySourceCode", "listDistinctNamespaces", "listDeprecated").contains(handler))
                 return collection(local, Kind.FLOW);
             if (read && segments.length >= 4 && Set.of("getFlow", "listFlowRevisions", "getTaskFromFlow", "generateFlowGraph", "getFlowDependencies").contains(handler))
                 return single(Kind.FLOW, segments[2], segments[3], Action.READ);
@@ -40,8 +38,7 @@ final class NamespaceUiPlans {
                 return single(Kind.FLOW, segments[2], segments[3], Action.DELETE);
         }
         if (simple.equals("NamespaceController") && segments[1].equals("namespaces")) {
-            if (read && handler.equals("searchNamespaces") && request.path().equals("/api/v1/main/namespaces/search")
-                || request.method().equals("POST") && handler.equals("autocompleteNamespaces") && request.path().equals("/api/v1/main/namespaces/autocomplete"))
+            if (read && handler.equals("searchNamespaces") || request.method().equals("POST") && handler.equals("autocompleteNamespaces"))
                 return collection(local, Kind.NAMESPACE);
             if (read && segments.length >= 3 && Set.of("getNamespace", "getFlowDependenciesFromNamespace").contains(handler))
                 return single(Kind.NAMESPACE, segments[2], null, Action.READ);
@@ -65,7 +62,7 @@ final class NamespaceUiPlans {
             if (request.method().equals("DELETE") && handler.equals("deleteFileDirectory")) return single(Kind.NAMESPACE_FILE, segments[2], file, Action.DELETE);
         }
         if (simple.equals("ExecutionController") && segments[1].equals("executions")) {
-            if (read && matchesCollection(request, Map.of("searchExecutions", "/search", "findDistinctFieldValues", "/distinct-field-values", "listExecutableDistinctNamespaces", "/namespaces"), "/api/v1/main/executions")) return collection(local, Kind.EXECUTION);
+            if (read && Set.of("searchExecutions", "findDistinctFieldValues", "listExecutableDistinctNamespaces").contains(handler)) return collection(local, Kind.EXECUTION);
             if (read && segments.length >= 4 && segments[2].equals("namespaces") && Set.of("listFlowExecutionsByNamespace", "getExecutionAverageDuration").contains(handler)) return domain(Kind.EXECUTION, segments[3]);
             if (request.method().equals("POST") && handler.equals("validateNewExecutionInputs") && segments.length == 5)
                 return new Plan(List.of(requirement(Kind.FLOW, segments[2], segments[3], Action.READ), requirement(Kind.FLOW, segments[2], segments[3], Action.EXECUTE)), Coverage.SINGLE);
@@ -101,10 +98,6 @@ final class NamespaceUiPlans {
         if (engine.namespaceScope(principal, kind).kind() == io.kestra.core.models.AccessScope.Kind.DENY_ALL) return null;
         return new Plan(List.of(new Requirement(new Resource(kind, Scope.TENANT, "main", null, null), Action.LIST),
             new Requirement(new Resource(kind, Scope.TENANT, "main", null, null), Action.READ)), Coverage.COMPLETE_QUERY);
-    }
-    private static boolean matchesCollection(Request request, Map<String, String> routes, String base) {
-        String suffix = routes.get(request.handler());
-        return suffix != null && request.path().equals(base + suffix);
     }
     private Plan execution(String id, Kind kind, Action... actions) {
         var execution = executions.findByIdWithoutAcl("main", id).orElse(null);
