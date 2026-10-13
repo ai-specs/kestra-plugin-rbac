@@ -1,0 +1,24 @@
+kestra:
+  rbac:
+    enabled: true
+    roles:
+      reader:
+        - scope: NAMESPACE
+          tenant: main
+          namespace: prod.team
+          descendants: true
+          resource: FLOW
+          actions: [READ, LIST]
+          all-ids: true
+      runner:
+        - scope: NAMESPACE
+          tenant: main
+          namespace: prod.team
+          descendants: false
+          resource: FLOW
+          actions: [READ, EXECUTE]
+          ids: [approved-flow]
+    subjects:
+      alice: [reader]
+    role-mapping:
+      oidc-approved-runner: [runner]

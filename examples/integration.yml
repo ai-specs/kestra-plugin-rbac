@@ -1,0 +1,54 @@
+# Controlled local acceptance only; merge this RBAC section into the deployment configuration.
+# Users are created by OidcRbacFixtureTest, not by this policy file.
+kestra:
+  rbac:
+    enabled: true
+    subjects: {}
+    role-mapping:
+      reader: [reader]
+      writer: [writer]
+      admin: [fixture-admin]
+    roles:
+      reader:
+        - scope: NAMESPACE
+          tenant: main
+          namespace: rbac.allowed
+          descendants: true
+          resource: FLOW
+          actions: [READ, LIST]
+          all-ids: true
+      writer:
+        - scope: NAMESPACE
+          tenant: main
+          namespace: rbac.allowed
+          descendants: true
+          resource: FLOW
+          actions: [READ, LIST, CREATE, UPDATE, EXECUTE]
+          all-ids: true
+        - scope: NAMESPACE
+          tenant: main
+          namespace: rbac.allowed
+          descendants: true
+          resource: EXECUTION
+          actions: [CREATE, READ, ACCESS_OUTPUTS]
+          all-ids: true
+      fixture-admin:
+        - scope: NAMESPACE
+          tenant: main
+          namespace: rbac.allowed
+          descendants: true
+          resource: FLOW
+          actions: [READ, LIST, CREATE, UPDATE, DELETE, EXECUTE]
+          all-ids: true
+        - scope: NAMESPACE
+          tenant: main
+          namespace: rbac.denied
+          descendants: true
+          resource: FLOW
+          actions: [READ, LIST, CREATE, UPDATE, DELETE, EXECUTE]
+          all-ids: true
+        - scope: TENANT
+          tenant: main
+          resource: MCP_SERVER
+          actions: [READ, LIST, CREATE, UPDATE]
+          all-ids: true

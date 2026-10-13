@@ -1,0 +1,76 @@
+plugins { id 'java-library' }
+group = 'io.kestra.extensions'
+version = '0.1.0-SNAPSHOT'
+repositories { mavenCentral() }
+java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
+def contractClasspath = new Properties()
+def classpathFile = file('.integration/classpath.properties')
+if (classpathFile.isFile()) classpathFile.withInputStream { contractClasspath.load(it) }
+def hostModules = providers.gradleProperty('kestraHostModules').map { it.split(',').collect { file(it) } }.getOrElse((contractClasspath.getProperty('kestraHostModules', '').split(',').findAll { !it.isBlank() }).collect { file(it) })
+def hostJar = providers.gradleProperty('kestraWebserverJar').orElse(contractClasspath.getProperty('kestraWebserverJar', ''))
+if (!hostJar.isPresent() || !file(hostJar.get()).isFile()) {
+    throw new GradleException('Supply -PkestraWebserverJar=<patched overlay webserver jar>; see README and scripts/prepare-host.sh')
+}
+dependencies {
+    compileOnly files(hostJar.get(), hostModules)
+    compileOnly platform('io.micronaut.platform:micronaut-platform:4.10.18')
+    compileOnly 'io.micronaut:micronaut-inject'
+    compileOnly 'io.micronaut.security:micronaut-security'
+    annotationProcessor platform('io.micronaut.platform:micronaut-platform:4.10.18')
+    annotationProcessor 'io.micronaut:micronaut-inject-java'
+    testImplementation files(provider { fileTree(layout.buildDirectory.dir("test-host")) { include "*.jar" } })
+    testImplementation platform('io.micronaut.platform:micronaut-platform:4.10.18')
+    testImplementation 'io.micronaut:micronaut-runtime'
+    testImplementation 'io.micronaut.security:micronaut-security'
+    compileOnly 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.1'
+    testImplementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.1'
+    testImplementation 'io.micronaut.data:micronaut-data-connection-jdbc'
+    testImplementation 'io.micronaut.data:micronaut-data-model'
+    testImplementation 'ch.qos.logback:logback-classic:1.5.34'
+    testImplementation 'com.google.guava:guava:33.5.0-jre'
+    testImplementation 'io.projectreactor:reactor-core:3.7.16'
+    testImplementation 'org.postgresql:postgresql:42.7.8'
+    testImplementation 'org.mindrot:jbcrypt:0.4'
+    compileOnly 'io.swagger.core.v3:swagger-annotations:2.2.45'
+    testImplementation 'org.mockito:mockito-core:5.21.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.14.1'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += ['-Amicronaut.processing.group=io.kestra.extensions', '-Amicronaut.processing.module=rbac']
+}
+tasks.register('prepareTestHost') {
+    inputs.files(files(hostJar.get(), hostModules))
+    outputs.dir(layout.buildDirectory.dir('test-host'))
+    doLast {
+        def target = layout.buildDirectory.dir('test-host').get().asFile
+        delete(target); target.mkdirs()
+        files(hostJar.get(), hostModules).each { source ->
+            ant.zip(destfile: new File(target, source.name)) {
+                zipfileset(src: source, excludes: 'META-INF/micronaut/**,META-INF/services/io.micronaut.inject.BeanDefinitionReference')
+            }
+        }
+    }
+}
+compileTestJava.dependsOn prepareTestHost
+test { useJUnitPlatform(); dependsOn prepareTestHost }
+jar {
+    archiveFileName = 'kestra-rbac-authorizer.jar'
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+tasks.register('verifyThinJar') {
+    dependsOn jar
+    doLast {
+        def archive = new java.util.zip.ZipFile(jar.archiveFile.get().asFile)
+        def names
+        try { names = archive.entries().collect { it.name } } finally { archive.close() }
+        if (names.any { it.endsWith('.class') && !it.startsWith('io/kestra/extensions/rbac/') }) {
+            throw new GradleException('Host classes leaked into extension jar')
+        }
+        if (!names.any { it.startsWith('META-INF/micronaut/io.micronaut.inject.BeanDefinitionReference/') }) {
+            throw new GradleException('Missing Micronaut bean index')
+        }
+    }
+}
+check.dependsOn verifyThinJar

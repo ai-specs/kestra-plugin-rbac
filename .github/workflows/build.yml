@@ -1,0 +1,39 @@
+name: build
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: rbac
+      - name: Read fixed host revision
+        id: contract
+        shell: bash
+        run: echo "ref=$(sed -n 's/^overlay.ref=//p' rbac/host-contract.properties)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: ai-specs/kestra-overlay
+          ref: ${{ steps.contract.outputs.ref }}
+          ssh-key: ${{ secrets.OVERLAY_DEPLOY_KEY }}
+          persist-credentials: false
+          path: overlay
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Replay fixed host and compile its contract
+        run: rbac/scripts/prepare-host.sh overlay
+      - name: Build, test, and verify thin jar
+        working-directory: rbac
+        run: ./gradlew clean check --console=plain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kestra-rbac-authorizer
+          path: |
+            rbac/build/libs/kestra-rbac-authorizer.jar
+            rbac/.integration/host-provenance.json
+            rbac/build/reports/tests/test/
