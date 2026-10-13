@@ -51,15 +51,7 @@ final class DefaultDashboardPlans {
         }
         var copy = chart.deepCopy();
         ((com.fasterxml.jackson.databind.node.ObjectNode) copy.path("data")).remove("where");
-        for (JsonNode builtin : charts) {
-            var candidate = copy.deepCopy();
-            JsonNode legend = candidate.path("chartOptions").path("legend");
-            JsonNode builtinLegend = builtin.path("chartOptions").path("legend");
-            if (legend.isObject() && legend.size() == 1 && legend.path("enabled").isBoolean() && builtinLegend.path("enabled").isBoolean())
-                ((com.fasterxml.jackson.databind.node.ObjectNode) legend).set("enabled", builtinLegend.path("enabled"));
-            if (builtin.equals(candidate)) return true;
-        }
-        return false;
+        return charts.contains(copy);
     }
     io.kestra.webserver.rbac.RbacAuthorizer.Resource description(byte[] body) {
         try {
