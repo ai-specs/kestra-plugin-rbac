@@ -132,6 +132,9 @@ class NamespaceUiPlansTest {
             var changed = safe.deepCopy();
             ((com.fasterxml.jackson.databind.node.ObjectNode) changed.path("data")).put("type", "io.kestra.plugin.jdbc.postgresql.Query");
             assertNull(parser.resource(json.writeValueAsBytes(Map.of("chart", yaml.writeValueAsString(changed)))));
+            for (var chart : charts) {
+                assertNotNull(parser.resource(json.writeValueAsBytes(Map.of("chart", yaml.writeValueAsString(chart)))), chart.path("id").asText());
+            }
             ((com.fasterxml.jackson.databind.node.ObjectNode) changed).put("expression", "{{ secret('x') }}");
             assertNull(parser.resource(json.writeValueAsBytes(Map.of("chart", yaml.writeValueAsString(changed)))));
         }

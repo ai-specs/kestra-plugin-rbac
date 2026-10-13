@@ -32,6 +32,8 @@ final class DefaultDashboardPlans {
             String type = chart.path("data").path("type").asText();
             if (Set.of("io.kestra.plugin.core.dashboard.data.Executions", "io.kestra.plugin.core.dashboard.data.ExecutionsKPI").contains(type)) return Kind.EXECUTION;
             if (Set.of("io.kestra.plugin.core.dashboard.data.Flows", "io.kestra.plugin.core.dashboard.data.FlowsKPI").contains(type)) return Kind.FLOW;
+            if (type.equals("io.kestra.plugin.core.dashboard.data.Logs")) return Kind.LOG;
+            if (type.equals("io.kestra.plugin.core.dashboard.data.Triggers")) return Kind.TRIGGER;
             return null;
         } catch (Exception invalid) { return null; }
     }
