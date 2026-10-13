@@ -25,6 +25,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: kestra-rbac-authorizer
+          include-hidden-files: true
           path: |
             rbac/build/libs/kestra-rbac-authorizer.jar
             rbac/.integration/host-provenance.json

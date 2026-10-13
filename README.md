@@ -82,5 +82,6 @@ gh run download -R ai-specs/kestra-plugin-rbac <run-id> \
   --name kestra-rbac-authorizer --dir /tmp/kestra-rbac-artifact
 ```
 
-After installing or replacing a jar in the deployment's bind mount, recreate or restart Kestra.
-`docker compose up -d` alone may retain a running JVM when only file contents changed.
+When only replacing a jar in the deployment bind mount, run `docker compose restart kestra`
+to restart the container JVM and load it. This does not compile Kestra or rebuild the host image.
+Use `docker compose up -d` for the initial deployment or configuration changes.
