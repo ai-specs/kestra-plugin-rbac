@@ -76,6 +76,10 @@ public final class PolicyEngine {
         if (request.scope() == Scope.NAMESPACE && request.resource() == Kind.NAMESPACE && request.id() == null
             && (request.action() == Action.READ || request.action() == Action.LIST))
             return namespaceScope(principal, Kind.NAMESPACE).namespaceAllowed(request.namespace());
+        if (request.scope() == Scope.NAMESPACE && Set.of(Kind.LOG, Kind.METRIC).contains(request.resource())
+            && (request.action() == Action.READ || request.action() == Action.LIST))
+            return authorize(principal, new AuthorizationRequest(request.tenant(), request.namespace(), Kind.EXECUTION,
+                request.action(), request.id(), request.scope()));
         return effectiveRoles(principal).stream().flatMap(role -> roles.getOrDefault(role, List.of()).stream()).anyMatch(g ->
             Objects.equals(g.tenant(), request.tenant()) && g.scope() == request.scope() && g.resource() == request.resource() && g.actions().contains(request.action())
             && (g.namespace() == null || g.namespace().equals(request.namespace())
@@ -98,7 +102,8 @@ public final class PolicyEngine {
         var exact = new TreeSet<String>();
         effectiveRoles(principal).stream().flatMap(role -> roles.getOrDefault(role, List.of()).stream())
             .filter(grant -> grant.scope() == Scope.NAMESPACE && "main".equals(grant.tenant())
-                && (grant.resource() == resource || resource == Kind.NAMESPACE && namespaceCandidateKind(grant.resource()))
+                && (grant.resource() == resource || resource == Kind.NAMESPACE && namespaceCandidateKind(grant.resource())
+                    || Set.of(Kind.LOG, Kind.METRIC).contains(resource) && grant.resource() == Kind.EXECUTION)
                 && grant.allIds() && grant.actions().containsAll(Set.of(Action.READ, Action.LIST)))
             .forEach(grant -> {
                 if (grant.descendants()) subtree.add(grant.namespace());

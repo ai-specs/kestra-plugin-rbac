@@ -89,4 +89,18 @@ class NamespaceUiPlansTest {
         assertNull(resolver.resolve(principal("reader"), new RestAuthorizationResolver.Request("POST", "/api/v1/main/dashboards/charts/preview", Map.of(), "application/json", "{}".getBytes(),
             "io.kestra.webserver.controllers.api.DashboardController", "previewChart", List.of())).toCompletableFuture().join());
     }
+    @Test void executionReadCoversLogsAndMetricsWithoutNewPolicyKinds() {
+        var repository = mock(ExecutionRepositoryInterface.class);
+        when(repository.findByIdWithoutAcl("main", "exec")).thenReturn(Optional.of(Execution.builder().id("exec").tenantId("main").namespace("rbac.allowed").flowId("flow").build()));
+        var resolver = new FlowRestAuthorizationResolver(repository, engine());
+        var principal = principal("reader");
+        for (var entry : List.of(List.of("/api/v1/main/logs/exec", "LogController", "listLogsFromExecution"),
+            List.of("/api/v1/main/metrics/exec", "MetricController", "searchByExecution"))) {
+            var request = request(entry.get(0), entry.get(1), entry.get(2));
+            var plan = resolver.resolve(principal, request).toCompletableFuture().join();
+            assertNotNull(plan);
+            assertEquals(1, plan.requirements().size());
+            assertTrue(allowed(engine(), principal, plan));
+        }
+    }
 }
