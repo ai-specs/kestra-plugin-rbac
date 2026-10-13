@@ -9,7 +9,6 @@ import java.util.*;
 final class NamespaceUiPlans {
     private final ExecutionRepositoryInterface executions;
     private final PolicyEngine engine;
-    private final DefaultDashboardPlans dashboards = new DefaultDashboardPlans();
     NamespaceUiPlans(ExecutionRepositoryInterface executions, PolicyEngine engine) {
         this.executions = executions;
         this.engine = engine;
@@ -31,11 +30,6 @@ final class NamespaceUiPlans {
         var local = new Principal(principal.subject(), Set.copyOf(principal.roles()));
         if (simple.equals("DashboardController") && read && handler.equals("getDefaultDashboardDefinitions")
             && request.path().equals("/api/v1/main/dashboards/defaults/definitions")) return metadata();
-        if (simple.equals("DashboardController") && request.method().equals("POST") && handler.equals("previewChart")
-            && request.path().equals("/api/v1/main/dashboards/charts/preview")) {
-            Kind kind = dashboards.resource(request.body());
-            return kind == null ? null : collection(local, kind);
-        }
         if (simple.equals("FlowController") && segments[1].equals("flows")) {
             if (read && matchesCollection(request, Map.of("searchFlows", "/search", "searchFlowsBySourceCode", "/source", "listDistinctNamespaces", "/distinct-namespaces", "listDeprecated", "/deprecated"), "/api/v1/main/flows"))
                 return collection(local, Kind.FLOW);
