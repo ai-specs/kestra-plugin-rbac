@@ -2,30 +2,31 @@
 
 Independent, configuration-driven authorization extension for the Kestra OSS overlay. The business policy lives in this repository. Output: **`build/libs/kestra-rbac-authorizer.jar`**. The jar is thin, includes Micronaut generated bean indexes, and contains no Kestra, Micronaut, Jackson or other dependency classes.
 
-Current status: implementation frozen; normal pinned local build/tests pass against overlay source contract `92745d02f05fac77ebb94ecdaf7cf7e998543cca`. **No release or complete image end-to-end acceptance is claimed.** Overlay release CI, independent plugin CI and deployed-image combination acceptance are separate gates. Successful source compilation does not establish image readiness or compatibility.
+The runtime authorization implementation passed independent CI and real monorepo Compose
+acceptance. See [validation evidence](docs/validation.md) for the tested scope. Build dependencies
+are extracted from the immutable published image, independently of any overlay source checkout.
 
 ## Build independently
 
-Requirements: JDK 25, Python 3, Git, Bash, network access to Maven Central/Gradle/upstream, and read access to `ai-specs/kestra-overlay`. No cloned monorepo paths are part of the release contract.
+Requirements: Docker, JDK 25, Python 3 and read access to the private GHCR host image.
+Authenticate to GHCR with a credential that has `read:packages` access, then run:
 
 ```bash
-# Check out the host repository separately. The script reads the pinned commit without modifying it.
-./scripts/prepare-host.sh /path/to/overlay-checkout
+./scripts/prepare-host.sh
 ./gradlew clean check --console=plain
 ```
 
-`prepare-host.sh` reconstructs upstream v2.0.5 at the fixed SHA, applies the fixed overlay patches, builds **thin webserver/core/model module jars**, and writes `.integration/classpath.properties` plus host provenance. Upstream is fetched with `--depth 1 --branch v2.0.5`, without partial/blob filtering. Existing `.integration` directories must be moved aside before rerunning. An optional second argument is a local upstream Git object cache. CI uses `actions/checkout` for the pinned private overlay ref with **`secrets.OVERLAY_DEPLOY_KEY`**, a dedicated read-only deploy key; no user PAT is required. Deployment and combination acceptance belong to the monorepo, not either project's independent CI.
+`prepare-host.sh` pulls the immutable image in `host-contract.properties`, extracts
+`/app/kestra` without starting a server, checks the three public SPI classes, and writes
+ignored local compilation dependencies and provenance. It is safe to rerun. No overlay
+checkout, upstream clone, patch replay or Kestra build is required.
 
-To consume published matching host artifacts instead of replaying sources:
-
-```bash
-./gradlew -PkestraWebserverJar=/artifacts/webserver-2.0.5.jar \
-  -PkestraHostModules=/artifacts/core-2.0.5.jar,/artifacts/model-2.0.5.jar clean check
-```
-
-A matching host fat jar may be supplied explicitly for the production-service fixture. All host artifacts remain compile/test dependencies only. Unit tests strip **host bean discovery indexes from test copies** to run a real ApplicationContext for extension beans without starting the entire Kestra application; host classes remain real. This is not the deployed-image bean discovery test.
-
-For local uncommitted SPI development only, `ALLOW_DEVELOPMENT_OVERLAY=1 scripts/prepare-host.sh <overlay> <upstream-cache>` reads current patches and records `development_worktree: true`; CI never enables this mode. Release compilation must use the fixed ref without this option.
+The host jar is a compile/test dependency only; it is never included in the extension jar.
+Unit tests remove host bean indexes from temporary test copies so extension bean discovery
+can be tested without booting Kestra. Real deployment discovery is verified by monorepo
+Compose acceptance. CI uses the same published-image extraction and build commands. The host package grants
+this repository Read access under Manage Actions access, so CI uses its own GITHUB_TOKEN
+with packages:read; no personal token or cross-repository source deploy key is required.
 
 ## Configure and deploy
 
@@ -68,4 +69,18 @@ Other routes are denied, including bulk/import/export, source replacement, revis
 
 The monorepo consumes fixed image digest, separately built jar/hash, and matching host artifact through Compose. Required remaining evidence includes real jar startup discovery, actual authenticated roles parity, scope/RBAC double denials with zero persistence/queue effects, namespace and query/count isolation, 403 rendering, CSRF order, missing jar, async/composite coverage and disabled deployment regression. Unit test green does not replace those gates. There is no IAM CRUD/UI, audit, EE token service or custom authentication in this extension.
 
-Build/test results, artifact hash and pending fixed-contract/image acceptance are recorded in [validation evidence](docs/validation.md).
+Build/test results, artifact hash and image acceptance are recorded in [validation evidence](docs/validation.md).
+
+## Obtain the built jar
+
+Successful [build runs](https://github.com/ai-specs/kestra-plugin-rbac/actions/workflows/build.yml)
+publish a `kestra-rbac-authorizer` artifact containing the jar, host provenance and test reports.
+Choose a successful run matching the desired host image contract, then download:
+
+```bash
+gh run download -R ai-specs/kestra-plugin-rbac <run-id> \
+  --name kestra-rbac-authorizer --dir /tmp/kestra-rbac-artifact
+```
+
+After installing or replacing a jar in the deployment's bind mount, recreate or restart Kestra.
+`docker compose up -d` alone may retain a running JVM when only file contents changed.

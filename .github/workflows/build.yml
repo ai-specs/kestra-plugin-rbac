@@ -2,6 +2,7 @@ name: build
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
+  packages: read
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -9,24 +10,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: rbac
-      - name: Read fixed host revision
-        id: contract
-        shell: bash
-        run: echo "ref=$(sed -n 's/^overlay.ref=//p' rbac/host-contract.properties)" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
-        with:
-          repository: ai-specs/kestra-overlay
-          ref: ${{ steps.contract.outputs.ref }}
-          ssh-key: ${{ secrets.OVERLAY_DEPLOY_KEY }}
-          persist-credentials: false
-          path: overlay
+      - name: Authenticate to the host image registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Replay fixed host and compile its contract
-        run: rbac/scripts/prepare-host.sh overlay
+      - name: Extract published host compilation contract
+        run: rbac/scripts/prepare-host.sh
       - name: Build, test, and verify thin jar
         working-directory: rbac
         run: ./gradlew clean check --console=plain
