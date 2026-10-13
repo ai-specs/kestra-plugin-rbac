@@ -18,6 +18,7 @@ import java.util.concurrent.*;
 public final class FlowRestAuthorizationResolver implements RestAuthorizationResolver {
     private final ExecutionRepositoryInterface executions;
     private final PolicyEngine engine;
+    private final NamespaceUiPlans uiPlans;
     private final ObjectMapper yaml = new ObjectMapper(new YAMLFactory()).enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
         .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     public FlowRestAuthorizationResolver(ExecutionRepositoryInterface executions) { this(executions, null); }
@@ -25,6 +26,7 @@ public final class FlowRestAuthorizationResolver implements RestAuthorizationRes
     public FlowRestAuthorizationResolver(ExecutionRepositoryInterface executions, PolicyEngine engine) {
         this.executions = executions;
         this.engine = engine;
+        this.uiPlans = engine == null ? null : new NamespaceUiPlans(executions, engine);
     }
     @Override public CompletionStage<Plan> resolve(RbacAuthorizer.Principal principal, Request request) {
         try { return CompletableFuture.completedFuture(plan(principal, request)); }
@@ -41,6 +43,10 @@ public final class FlowRestAuthorizationResolver implements RestAuthorizationRes
         String path = r.path();
         // Encoded separators, normalization ambiguity and suffix routes are never guessed.
         if (path == null || path.contains("%") || path.contains("//") || Arrays.stream(path.split("/")).anyMatch(segment -> segment.equals(".") || segment.equals("..")) || !path.startsWith("/api/v1/")) return null;
+        if (uiPlans != null) {
+            var plan = uiPlans.resolve(principal, r);
+            if (plan != null) return plan;
+        }
         String[] p = path.substring(8).split("/", -1);
         if (p.length < 2 || !name(p[0])) return null;
         String tenant = p[0];

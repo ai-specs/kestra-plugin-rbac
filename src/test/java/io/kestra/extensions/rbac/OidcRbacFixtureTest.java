@@ -17,10 +17,12 @@ class OidcRbacFixtureTest {
         create(service, "rbac-reader", "ReaderPass123!", "reader");
         create(service, "rbac-writer", "WriterPass123!", "writer");
         create(service, "rbac-blocked", "BlockedPass123!", "blocked");
+        create(service, "rbac-multi", "MultiPass123!", "reader", "other-reader");
+        create(service, "rbac-exact", "ExactPass123!", "exact-reader");
     }
-    private void create(OidcUserService service, String subject, String password, String role) {
-        service.create(new OidcUserService.CreateUserRequest(subject, subject, subject + "@example.test", password, List.of(role)));
+    private void create(OidcUserService service, String subject, String password, String... roles) {
+        service.create(new OidcUserService.CreateUserRequest(subject, subject, subject + "@example.test", password, List.of(roles)));
         assertTrue(service.validateCredentials(subject, password));
-        assertEquals(List.of(role), service.bySubject(subject).orElseThrow().roles(), "Fixture DB must be clean or have identical roles");
+        assertEquals(List.of(roles), service.bySubject(subject).orElseThrow().roles(), "Fixture DB must be clean or have identical roles");
     }
 }
