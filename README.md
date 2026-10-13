@@ -55,7 +55,8 @@ controller names, handler names, frontend routes or chart definitions.
 Single operations require the configured resource/action grant at the actual tenant and namespace.
 Complete queries require both READ and LIST with unrestricted IDs. All matching roles contribute
 the union of exact namespaces and namespace subtrees; the returned scope intersects the request
-domain. Empty restricted scope means no rows. A namespace grant does not promote to tenant or
+domain. READ and LIST can come from different roles; only namespaces authorized for both actions
+enter the query scope. Empty restricted scope means no rows. A namespace grant does not promote to tenant or
 instance authority. Prefix collisions and exact namespace children remain excluded.
 ID-restricted roles cannot query collections, counts or aggregates.
 

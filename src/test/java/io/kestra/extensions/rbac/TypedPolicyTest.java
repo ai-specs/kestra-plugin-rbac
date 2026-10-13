@@ -10,6 +10,24 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TypedPolicyTest {
     @Test
+    void queryPermissionsCombineAcrossRolesOnlyForTheirCommonNamespaceDomain() {
+        var configuration = configuration();
+        configuration.getRoles().get("exact").getFirst().setActions(List.of(RbacAuthorizer.Action.READ));
+        configuration.getRoles().get("tree").getFirst().setActions(List.of(RbacAuthorizer.Action.LIST));
+        configuration.getRoles().get("tree").getFirst().setNamespace("team.exact");
+        var engine = new PolicyEngine(configuration);
+        assertFalse(engine.authorizeTyped(principal("reader"), query(QueryDomain.unrestricted())).allowed());
+        assertFalse(engine.authorizeTyped(principal("writer"), query(QueryDomain.unrestricted())).allowed());
+        var decision = engine.authorizeTyped(principal("reader", "writer"), query(QueryDomain.unrestricted()));
+        assertTrue(decision.allowed());
+        assertTrue(decision.scope().contains("team.exact"));
+        assertFalse(decision.scope().contains("team.exact.child"));
+        assertFalse(decision.scope().contains("team.tree"));
+        configuration.getRoles().get("tree").getFirst().setNamespace("other");
+        assertFalse(new PolicyEngine(configuration).authorizeTyped(principal("reader", "writer"), query(QueryDomain.unrestricted()))
+            .scope().contains("team.exact"));
+    }
+    @Test
     void exactAndSubtreeRolesContributeUnionWithoutPrefixCollision() {
         var engine = new PolicyEngine(configuration());
         var result = engine.authorizeTyped(principal("reader", "writer"), query(QueryDomain.unrestricted()));

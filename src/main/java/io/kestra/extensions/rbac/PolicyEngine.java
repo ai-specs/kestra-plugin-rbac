@@ -110,14 +110,10 @@ public final class PolicyEngine {
             if (action != Action.READ && action != Action.LIST || operation.sideEffect() != TypedAuthorization.SideEffect.READ_ONLY)
                 return typedDeny();
             var grants = effectiveRoles(principal).stream().flatMap(role -> roles.getOrDefault(role, List.of()).stream())
-                .filter(grant -> "main".equals(grant.tenant()) && grant.resource() == resource && grant.allIds()
-                    && grant.actions().contains(Action.READ) && grant.actions().contains(Action.LIST)).toList();
-            if (grants.isEmpty()) return typedDeny();
-            boolean global = grants.stream().anyMatch(grant -> grant.scope() == Scope.TENANT);
-            var exact = grants.stream().filter(grant -> grant.scope() == Scope.NAMESPACE && !grant.descendants()).map(Grant::namespace).distinct().toList();
-            var subtrees = grants.stream().filter(grant -> grant.scope() == Scope.NAMESPACE && grant.descendants()).map(Grant::namespace).distinct().toList();
-            var scope = global ? TypedAuthorization.QueryDomain.unrestricted()
-                : new TypedAuthorization.QueryDomain(exact, subtrees, List.of(), true, false);
+                .filter(grant -> "main".equals(grant.tenant()) && grant.resource() == resource && grant.allIds()).toList();
+            if (grants.stream().noneMatch(grant -> grant.actions().contains(Action.READ))
+                || grants.stream().noneMatch(grant -> grant.actions().contains(Action.LIST))) return typedDeny();
+            var scope = queryScope(grants, Action.READ).intersect(queryScope(grants, Action.LIST));
             var intersection = operation.queryDomain().intersect(scope);
             if (operation.namespace() != null && !intersection.contains(operation.namespace())) return typedDeny();
             return TypedAuthorization.Decision.allow(intersection);
@@ -129,6 +125,16 @@ public final class PolicyEngine {
     }
     private TypedAuthorization.Decision typedDeny() {
         return TypedAuthorization.Decision.deny("Permission denied");
+    }
+    private TypedAuthorization.QueryDomain queryScope(List<Grant> grants, Action action) {
+        var applicable = grants.stream().filter(grant -> grant.actions().contains(action)).toList();
+        if (applicable.stream().anyMatch(grant -> grant.scope() == Scope.TENANT))
+            return TypedAuthorization.QueryDomain.unrestricted();
+        var exact = applicable.stream().filter(grant -> grant.scope() == Scope.NAMESPACE && !grant.descendants())
+            .map(Grant::namespace).distinct().toList();
+        var subtrees = applicable.stream().filter(grant -> grant.scope() == Scope.NAMESPACE && grant.descendants())
+            .map(Grant::namespace).distinct().toList();
+        return new TypedAuthorization.QueryDomain(exact, subtrees, List.of(), true, false);
     }
     /** Bulk authorization must finish before any mutation; empty/unresolved plans fail closed. */
     public boolean authorizeAll(Principal principal, List<AuthorizationRequest> requests) {
