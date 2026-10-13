@@ -68,11 +68,6 @@ public final class PolicyEngine {
                 || request.id() == null && (request.action() == Action.LIST || request.action() == Action.READ);
             return true;
         }
-        if (request.scope() == Scope.TENANT && request.resource() == Kind.SYSTEM
-            && "public-metadata".equals(request.id()) && request.action() == Action.READ) return true;
-        if (request.scope() == Scope.TENANT && request.id() == null
-            && (request.action() == Action.READ || request.action() == Action.LIST))
-            return namespaceScope(principal, request.resource()).kind() != io.kestra.core.models.AccessScope.Kind.DENY_ALL;
         return effectiveRoles(principal).stream().flatMap(role -> roles.getOrDefault(role, List.of()).stream()).anyMatch(g ->
             Objects.equals(g.tenant(), request.tenant()) && g.scope() == request.scope() && g.resource() == request.resource() && g.actions().contains(request.action())
             && (g.namespace() == null || g.namespace().equals(request.namespace())
@@ -86,21 +81,6 @@ public final class PolicyEngine {
         var effective = new HashSet<>(subjects.getOrDefault(principal.subject(), Set.of()));
         principal.roles().forEach(role -> effective.addAll(mapping.getOrDefault(role, Set.of())));
         return effective;
-    }
-    public io.kestra.core.models.AccessScope namespaceScope(Principal principal, Kind resource) {
-        if (principal == null || principal.subject() == null || principal.subject().isBlank() || resource == null)
-            return io.kestra.core.models.AccessScope.denyAll();
-        if (isInstanceAdmin(principal)) return io.kestra.core.models.AccessScope.global();
-        var subtree = new TreeSet<String>();
-        var exact = new TreeSet<String>();
-        effectiveRoles(principal).stream().flatMap(role -> roles.getOrDefault(role, List.of()).stream())
-            .filter(grant -> grant.scope() == Scope.NAMESPACE && "main".equals(grant.tenant())
-                && grant.resource() == resource && grant.allIds() && grant.actions().containsAll(Set.of(Action.READ, Action.LIST)))
-            .forEach(grant -> {
-                if (grant.descendants()) subtree.add(grant.namespace());
-                else exact.add(grant.namespace());
-            });
-        return io.kestra.core.models.AccessScope.namespaces(List.copyOf(subtree), List.copyOf(exact));
     }
     public boolean isInstanceAdmin(Principal principal) {
         return principal != null && principal.subject() != null && !principal.subject().isBlank()

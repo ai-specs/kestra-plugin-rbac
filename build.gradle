@@ -21,10 +21,6 @@ dependencies {
     testImplementation files(provider { fileTree(layout.buildDirectory.dir("test-host")) { include "*.jar" } })
     testImplementation platform('io.micronaut.platform:micronaut-platform:4.10.18')
     testImplementation 'io.micronaut:micronaut-runtime'
-    testImplementation 'io.micronaut:micronaut-http-server-netty'
-    testImplementation 'io.micronaut:micronaut-jackson-databind'
-    testAnnotationProcessor platform('io.micronaut.platform:micronaut-platform:4.10.18')
-    testAnnotationProcessor 'io.micronaut:micronaut-inject-java'
     testImplementation 'io.micronaut.security:micronaut-security'
     compileOnly 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.1'
     testImplementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.1'
