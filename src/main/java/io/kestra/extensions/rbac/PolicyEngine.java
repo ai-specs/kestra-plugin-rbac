@@ -73,9 +73,6 @@ public final class PolicyEngine {
         if (request.scope() == Scope.TENANT && request.id() == null
             && (request.action() == Action.READ || request.action() == Action.LIST))
             return namespaceScope(principal, request.resource()).kind() != io.kestra.core.models.AccessScope.Kind.DENY_ALL;
-        if (request.scope() == Scope.NAMESPACE && request.resource() == Kind.NAMESPACE && request.id() == null
-            && (request.action() == Action.READ || request.action() == Action.LIST))
-            return namespaceScope(principal, Kind.NAMESPACE).namespaceAllowed(request.namespace());
         return effectiveRoles(principal).stream().flatMap(role -> roles.getOrDefault(role, List.of()).stream()).anyMatch(g ->
             Objects.equals(g.tenant(), request.tenant()) && g.scope() == request.scope() && g.resource() == request.resource() && g.actions().contains(request.action())
             && (g.namespace() == null || g.namespace().equals(request.namespace())
@@ -98,16 +95,12 @@ public final class PolicyEngine {
         var exact = new TreeSet<String>();
         effectiveRoles(principal).stream().flatMap(role -> roles.getOrDefault(role, List.of()).stream())
             .filter(grant -> grant.scope() == Scope.NAMESPACE && "main".equals(grant.tenant())
-                && (grant.resource() == resource || resource == Kind.NAMESPACE && namespaceCandidateKind(grant.resource()))
-                && grant.allIds() && grant.actions().containsAll(Set.of(Action.READ, Action.LIST)))
+                && grant.resource() == resource && grant.allIds() && grant.actions().containsAll(Set.of(Action.READ, Action.LIST)))
             .forEach(grant -> {
                 if (grant.descendants()) subtree.add(grant.namespace());
                 else exact.add(grant.namespace());
             });
         return io.kestra.core.models.AccessScope.namespaces(List.copyOf(subtree), List.copyOf(exact));
-    }
-    private static boolean namespaceCandidateKind(Kind resource) {
-        return Set.of(Kind.FLOW, Kind.EXECUTION, Kind.TRIGGER, Kind.KVSTORE, Kind.NAMESPACE_FILE, Kind.LOG, Kind.METRIC).contains(resource);
     }
     public boolean isInstanceAdmin(Principal principal) {
         return principal != null && principal.subject() != null && !principal.subject().isBlank()

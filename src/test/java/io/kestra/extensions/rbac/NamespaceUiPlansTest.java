@@ -26,7 +26,7 @@ class NamespaceUiPlansTest {
         var roles = new HashMap<String, List<RbacConfiguration.Grant>>();
         for (String role : List.of("reader", "other-reader", "exact-reader")) {
             String namespace = role.equals("other-reader") ? "rbac.other" : "rbac.allowed";
-            roles.put(role, Arrays.stream(new Kind[]{Kind.FLOW, Kind.EXECUTION})
+            roles.put(role, Arrays.stream(new Kind[]{Kind.FLOW, Kind.EXECUTION, Kind.NAMESPACE})
                 .map(kind -> grant(namespace, !role.equals("exact-reader"), kind)).toList());
         }
         config.setRoles(roles);
@@ -60,9 +60,6 @@ class NamespaceUiPlansTest {
         assertNull(resolver.resolve(principal("reader"), request("/api/v1/main/unknown", "UnknownController", "unknown")).toCompletableFuture().join());
         assertNull(resolver.resolve(principal("reader"), request("/api/v1/main/flows/search", "FlowController", "unknown")).toCompletableFuture().join());
         verifyNoInteractions(repository);
-        var autocomplete = new RestAuthorizationResolver.Request("POST", "/api/v1/main/namespaces/autocomplete", Map.of(), "application/json", "{}".getBytes(),
-            "io.kestra.webserver.controllers.api.NamespaceController", "autocompleteNamespaces", List.of());
-        assertTrue(allowed(engine, principal("reader", "other-reader"), resolver.resolve(principal("reader", "other-reader"), autocomplete).toCompletableFuture().join()));
     }
     @Test void flowAndExecutionDetailsRespectUnionExactAndOwningNamespace() {
         var engine = engine();

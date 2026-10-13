@@ -40,12 +40,6 @@ class NamespaceScopeTest {
         assertEquals(List.of(), exact.namespaces());
         assertEquals(AccessScope.Kind.DENY_ALL, engine.namespaceScope(new Principal("", Set.of("reader")), Kind.FLOW).kind());
         assertEquals(AccessScope.Kind.DENY_ALL, engine.namespaceScope(multi, Kind.EXECUTION).kind());
-        var namespaces = engine.namespaceScope(multi, Kind.NAMESPACE);
-        assertTrue(namespaces.namespaceAllowed("rbac.kv"));
-        assertTrue(namespaces.namespaceAllowed("rbac.other.child"));
-        assertFalse(namespaces.namespaceAllowed("rbac.denied"));
-        assertTrue(engine.authorize(multi, new AuthorizationRequest("main", "rbac.kv", Kind.NAMESPACE, Action.READ, null, Scope.NAMESPACE)));
-        assertFalse(engine.authorize(multi, new AuthorizationRequest("main", "rbac.kv", Kind.NAMESPACE, Action.UPDATE, null, Scope.NAMESPACE)));
     }
     @Test void restrictedIdsAndIncompleteCollectionGrantsNeverBecomeNamespaceScope() {
         var grant = grant("rbac.allowed", true, Kind.FLOW);
