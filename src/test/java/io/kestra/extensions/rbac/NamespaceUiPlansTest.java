@@ -103,4 +103,37 @@ class NamespaceUiPlansTest {
             assertTrue(allowed(engine(), principal, plan));
         }
     }
+    @Test void editorValidationAndLatestExecutionsAuthorizeEveryRequestedNamespace() {
+        var resolver = new FlowRestAuthorizationResolver(mock(ExecutionRepositoryInterface.class), engine());
+        for (String namespace : List.of("rbac.allowed", "rbac.allowed.child", "rbac.other", "rbac.denied")) {
+            var requests = List.of(new RestAuthorizationResolver.Request("POST", "/api/v1/main/flows/validate", Map.of(), "application/x-yaml",
+                ("id: flow\nnamespace: " + namespace + "\ntasks: []\n").getBytes(), "io.kestra.webserver.controllers.api.FlowController", "validateFlows", List.of()),
+                new RestAuthorizationResolver.Request("POST", "/api/v1/main/executions/latest", Map.of(), "application/json",
+                    ("[{\"namespace\":\"" + namespace + "\",\"id\":\"flow\"}]").getBytes(), "io.kestra.webserver.controllers.api.ExecutionController", "getLatestExecutions", List.of()));
+            for (var request : requests) {
+                var plan = resolver.resolve(principal("reader", "other-reader"), request).toCompletableFuture().join();
+                assertEquals(!namespace.equals("rbac.denied"), allowed(engine(), principal("reader", "other-reader"), plan));
+                assertEquals(namespace.equals("rbac.allowed"), allowed(engine(), principal("exact-reader"), plan));
+            }
+        }
+        var mixed = new RestAuthorizationResolver.Request("POST", "/api/v1/main/executions/latest", Map.of(), "application/json",
+            "[{\"namespace\":\"rbac.allowed\",\"id\":\"flow\"},{\"namespace\":\"rbac.denied\",\"id\":\"flow\"}]".getBytes(),
+            "io.kestra.webserver.controllers.api.ExecutionController", "getLatestExecutions", List.of());
+        assertFalse(allowed(engine(), principal("reader"), resolver.resolve(principal("reader"), mixed).toCompletableFuture().join()));
+    }
+    @Test void publishedDefaultChartMatchesButDatasourceAndExpressionChangesDeny() throws Exception {
+        var yaml = new com.fasterxml.jackson.databind.ObjectMapper(new com.fasterxml.jackson.dataformat.yaml.YAMLFactory());
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        try (var source = getClass().getResourceAsStream("/dashboards/default_main_definition.yaml")) {
+            var charts = yaml.readTree(source).path("charts");
+            var safe = charts.get(0);
+            var parser = new DefaultDashboardPlans();
+            assertEquals(Kind.EXECUTION, parser.resource(json.writeValueAsBytes(Map.of("chart", yaml.writeValueAsString(safe)))));
+            var changed = safe.deepCopy();
+            ((com.fasterxml.jackson.databind.node.ObjectNode) changed.path("data")).put("type", "io.kestra.plugin.jdbc.postgresql.Query");
+            assertNull(parser.resource(json.writeValueAsBytes(Map.of("chart", yaml.writeValueAsString(changed)))));
+            ((com.fasterxml.jackson.databind.node.ObjectNode) changed).put("expression", "{{ secret('x') }}");
+            assertNull(parser.resource(json.writeValueAsBytes(Map.of("chart", yaml.writeValueAsString(changed)))));
+        }
+    }
 }

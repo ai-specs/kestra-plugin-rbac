@@ -5,11 +5,16 @@ import io.kestra.webserver.rbac.*;
 import static io.kestra.webserver.rbac.RbacAuthorizer.*;
 import static io.kestra.webserver.rbac.RestAuthorizationResolver.*;
 import java.util.*;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 
 final class NamespaceUiPlans {
     private final ExecutionRepositoryInterface executions;
     private final PolicyEngine engine;
     private final DefaultDashboardPlans dashboards = new DefaultDashboardPlans();
+    private final ObjectMapper json = new ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION).enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+    private final ObjectMapper yaml = new ObjectMapper(new YAMLFactory()).enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION).enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     NamespaceUiPlans(ExecutionRepositoryInterface executions, PolicyEngine engine) {
         this.executions = executions;
         this.engine = engine;
@@ -37,6 +42,8 @@ final class NamespaceUiPlans {
             return kind == null ? null : collection(local, kind);
         }
         if (simple.equals("FlowController") && segments[1].equals("flows")) {
+            if (request.method().equals("POST") && handler.equals("validateFlows") && request.path().equals("/api/v1/main/flows/validate"))
+                return validateFlows(request);
             if (read && matchesCollection(request, Map.of("searchFlows", "/search", "searchFlowsBySourceCode", "/source", "listDistinctNamespaces", "/distinct-namespaces", "listDeprecated", "/deprecated"), "/api/v1/main/flows"))
                 return collection(local, Kind.FLOW);
             if (read && segments.length >= 4 && Set.of("getFlow", "listFlowRevisions", "getTaskFromFlow", "generateFlowGraph", "getFlowDependencies").contains(handler))
@@ -71,6 +78,8 @@ final class NamespaceUiPlans {
             if (request.method().equals("DELETE") && handler.equals("deleteFileDirectory")) return single(Kind.NAMESPACE_FILE, segments[2], file, Action.DELETE);
         }
         if (simple.equals("ExecutionController") && segments[1].equals("executions")) {
+            if (request.method().equals("POST") && handler.equals("getLatestExecutions") && request.path().equals("/api/v1/main/executions/latest"))
+                return latestExecutions(request);
             if (read && matchesCollection(request, Map.of("searchExecutions", "/search", "findDistinctFieldValues", "/distinct-field-values", "listExecutableDistinctNamespaces", "/namespaces"), "/api/v1/main/executions")) return collection(local, Kind.EXECUTION);
             if (read && segments.length >= 4 && segments[2].equals("namespaces") && Set.of("listFlowExecutionsByNamespace", "getExecutionAverageDuration").contains(handler)) return domain(Kind.EXECUTION, segments[3]);
             if (request.method().equals("POST") && handler.equals("validateNewExecutionInputs") && segments.length == 5)
@@ -85,7 +94,7 @@ final class NamespaceUiPlans {
             if (segments.length == 3 && request.method().equals("DELETE") && handler.equals("deleteExecution")) return execution(segments[2], Kind.EXECUTION, Action.DELETE);
         }
         if (simple.equals("LogController") && segments[1].equals("logs")) {
-            if (read && handler.equals("searchLogs")) return collection(local, Kind.LOG);
+            if (read && handler.equals("searchLogs") && request.path().equals("/api/v1/main/logs/search")) return collection(local, Kind.LOG);
             if (read && segments.length >= 3 && Set.of("listLogsFromExecution", "downloadLogsFromExecution", "followLogsFromExecution").contains(handler)) return execution(segments[2], Kind.LOG, Action.READ);
             if (request.method().equals("DELETE") && handler.equals("deleteLogsFromExecution") && segments.length == 3) return execution(segments[2], Kind.LOG, Action.DELETE);
             if (request.method().equals("DELETE") && handler.equals("deleteLogsFromFlow") && segments.length == 4) return single(Kind.LOG, segments[2], segments[3], Action.DELETE);
@@ -107,6 +116,37 @@ final class NamespaceUiPlans {
         if (engine.namespaceScope(principal, kind).kind() == io.kestra.core.models.AccessScope.Kind.DENY_ALL) return null;
         return new Plan(List.of(new Requirement(new Resource(kind, Scope.TENANT, "main", null, null), Action.LIST),
             new Requirement(new Resource(kind, Scope.TENANT, "main", null, null), Action.READ)), Coverage.COMPLETE_QUERY);
+    }
+    private Plan latestExecutions(Request request) {
+        try {
+            if (request.body().length == 0 || request.body().length > 2_000_000) return null;
+            JsonNode flows = json.readTree(request.body());
+            if (!flows.isArray() || flows.isEmpty() || flows.size() > 1000) return null;
+            var requirements = new ArrayList<Requirement>();
+            for (JsonNode flow : flows) {
+                if (!flow.isObject() || !flow.path("namespace").isTextual() || !flow.path("id").isTextual()) return null;
+                var fields = flow.fieldNames();
+                while (fields.hasNext()) if (!Set.of("namespace", "id").contains(fields.next())) return null;
+                requirements.add(requirement(Kind.FLOW, flow.path("namespace").asText(), flow.path("id").asText(), Action.READ));
+                requirements.add(requirement(Kind.EXECUTION, flow.path("namespace").asText(), null, Action.LIST));
+                requirements.add(requirement(Kind.EXECUTION, flow.path("namespace").asText(), null, Action.READ));
+            }
+            return new Plan(requirements, Coverage.COMPLETE_QUERY);
+        } catch (Exception invalid) { return null; }
+    }
+    private Plan validateFlows(Request request) {
+        try {
+            if (request.contentType() == null || request.contentType().startsWith("multipart/")
+                || request.body().length == 0 || request.body().length > 2_000_000) return null;
+            String source = new String(request.body(), java.nio.charset.StandardCharsets.UTF_8).trim();
+            var requirements = new ArrayList<Requirement>();
+            for (String document : source.split("\\n+---\\n*?")) {
+                JsonNode flow = yaml.readTree(document);
+                if (flow == null || !flow.isObject() || !flow.path("namespace").isTextual() || !flow.path("id").isTextual() || flow.has("tenantId")) return null;
+                requirements.add(requirement(Kind.FLOW, flow.path("namespace").asText(), flow.path("id").asText(), Action.READ));
+            }
+            return requirements.isEmpty() ? null : new Plan(requirements, Coverage.COMPLETE_BATCH);
+        } catch (Exception invalid) { return null; }
     }
     private static boolean matchesCollection(Request request, Map<String, String> routes, String base) {
         String suffix = routes.get(request.handler());
