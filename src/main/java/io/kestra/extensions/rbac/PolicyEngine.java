@@ -4,6 +4,7 @@ import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Singleton;
 import java.util.*;
 import io.kestra.webserver.rbac.RbacAuthorizer.*;
+import io.kestra.webserver.rbac.TypedAuthorization;
 
 @Singleton
 @io.micronaut.context.annotation.Context
@@ -88,6 +89,46 @@ public final class PolicyEngine {
     }
     public boolean isInstanceAdmin(io.kestra.webserver.rbac.RbacAuthorizer.Principal principal) {
         return principal != null && isInstanceAdmin(new Principal(principal.subject(), Set.copyOf(principal.roles())));
+    }
+    public TypedAuthorization.Decision authorizeTyped(
+        io.kestra.webserver.rbac.RbacAuthorizer.Principal subject,
+        TypedAuthorization.Operation operation) {
+        if (subject == null || subject.subject() == null || subject.subject().isBlank() || operation == null
+            || operation.contractVersion() != TypedAuthorization.CONTRACT_VERSION
+            || !"main".equals(operation.tenant())) return typedDeny();
+        var principal = new Principal(subject.subject(), Set.copyOf(subject.roles()));
+        if (isInstanceAdmin(principal)) return TypedAuthorization.Decision.allow(operation.queryDomain());
+        if (operation.resource() == TypedAuthorization.Resource.SYSTEM) return typedDeny();
+        if (operation.resource() == TypedAuthorization.Resource.METADATA) {
+            boolean reader = effectiveRoles(principal).stream().flatMap(role -> roles.getOrDefault(role, List.of()).stream())
+                .anyMatch(grant -> "main".equals(grant.tenant()) && grant.actions().contains(Action.READ));
+            return reader ? TypedAuthorization.Decision.allow(operation.queryDomain()) : typedDeny();
+        }
+        Kind resource = Kind.valueOf(operation.resource().name());
+        Action action = Action.valueOf(operation.action().name());
+        if (operation.coverage() == TypedAuthorization.Coverage.COMPLETE_QUERY) {
+            if (action != Action.READ && action != Action.LIST || operation.sideEffect() != TypedAuthorization.SideEffect.READ_ONLY)
+                return typedDeny();
+            var grants = effectiveRoles(principal).stream().flatMap(role -> roles.getOrDefault(role, List.of()).stream())
+                .filter(grant -> "main".equals(grant.tenant()) && grant.resource() == resource && grant.allIds()
+                    && grant.actions().contains(Action.READ) && grant.actions().contains(Action.LIST)).toList();
+            if (grants.isEmpty()) return typedDeny();
+            boolean global = grants.stream().anyMatch(grant -> grant.scope() == Scope.TENANT);
+            var exact = grants.stream().filter(grant -> grant.scope() == Scope.NAMESPACE && !grant.descendants()).map(Grant::namespace).distinct().toList();
+            var subtrees = grants.stream().filter(grant -> grant.scope() == Scope.NAMESPACE && grant.descendants()).map(Grant::namespace).distinct().toList();
+            var scope = global ? TypedAuthorization.QueryDomain.unrestricted()
+                : new TypedAuthorization.QueryDomain(exact, subtrees, List.of(), true, false);
+            var intersection = operation.queryDomain().intersect(scope);
+            if (operation.namespace() != null && !intersection.contains(operation.namespace())) return typedDeny();
+            return TypedAuthorization.Decision.allow(intersection);
+        }
+        Scope scope = operation.namespace() == null ? Scope.TENANT : Scope.NAMESPACE;
+        boolean allowed = authorize(principal, new AuthorizationRequest(operation.tenant(), operation.namespace(), resource,
+            action, operation.resourceId(), scope));
+        return allowed ? TypedAuthorization.Decision.allow(operation.queryDomain()) : typedDeny();
+    }
+    private TypedAuthorization.Decision typedDeny() {
+        return TypedAuthorization.Decision.deny("Permission denied");
     }
     /** Bulk authorization must finish before any mutation; empty/unresolved plans fail closed. */
     public boolean authorizeAll(Principal principal, List<AuthorizationRequest> requests) {

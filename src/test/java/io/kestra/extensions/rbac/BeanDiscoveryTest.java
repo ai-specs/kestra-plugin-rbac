@@ -21,7 +21,8 @@ class BeanDiscoveryTest {
             assertTrue(engine.authorize(new Principal("alice", Set.of()), req));
             assertTrue(engine.authorize(new Principal("bob", Set.of("trusted")), req));
             assertNotNull(context.getBean(RbacAuthorizer.class));
-            assertNotNull(context.getBean(io.kestra.webserver.rbac.RestAuthorizationResolver.class));
+            assertNotNull(context.getBean(io.kestra.webserver.rbac.TypedAuthorizationResolver.class));
+            assertFalse(context.containsBean(io.kestra.webserver.rbac.RestAuthorizationResolver.class));
             assertNotNull(context.getBean(io.kestra.webserver.rbac.McpAuthorizationResolver.class));
         }
     }
@@ -34,11 +35,13 @@ class BeanDiscoveryTest {
             .singletons(org.mockito.Mockito.mock(io.kestra.core.repositories.ExecutionRepositoryInterface.class)).start()) {
             assertEquals(List.of("deployment-admin"), context.getBean(RbacConfiguration.class).getInstanceAdminRoles());
             var principal = new RbacAuthorizer.Principal("bootstrap", List.of("admin"), "client", "aud", List.of());
-            var request = new io.kestra.webserver.rbac.RestAuthorizationResolver.Request("GET", "/api/v1/configs", Map.of(), null,
-                new byte[0], "io.kestra.webserver.controllers.api.ConfigController", "getConfigs", List.of());
-            var plan = context.getBean(io.kestra.webserver.rbac.RestAuthorizationResolver.class).resolve(principal, request).toCompletableFuture().join();
-            assertNotNull(plan);
-            assertTrue(context.getBean(RbacAuthorizer.class).authorize(principal, plan.requirements().getFirst().resource(), plan.requirements().getFirst().action()).toCompletableFuture().join());
+            var operation = new io.kestra.webserver.rbac.TypedAuthorization.Operation(1,
+                io.kestra.webserver.rbac.TypedAuthorization.Source.REST, io.kestra.webserver.rbac.TypedAuthorization.Resource.SYSTEM,
+                io.kestra.webserver.rbac.TypedAuthorization.Action.EXECUTE, "main", null, null,
+                io.kestra.webserver.rbac.TypedAuthorization.QueryDomain.unrestricted(),
+                io.kestra.webserver.rbac.TypedAuthorization.Coverage.COMPLETE_BATCH,
+                io.kestra.webserver.rbac.TypedAuthorization.Aggregate.NONE, io.kestra.webserver.rbac.TypedAuthorization.SideEffect.EXTERNAL);
+            assertTrue(context.getBean(io.kestra.webserver.rbac.TypedAuthorizationResolver.class).authorize(principal, operation).toCompletableFuture().join().allowed());
             var invocation = new io.kestra.webserver.rbac.McpAuthorizationResolver.Invocation("main", "prod", "flow", "execution",
                 "id: flow\nnamespace: prod\nvariables:\n  value: \"{{ kv('key') }}\"\n");
             assertEquals(List.of(), context.getBean(io.kestra.webserver.rbac.McpAuthorizationResolver.class).resolve(principal, invocation).toCompletableFuture().join());
@@ -56,8 +59,8 @@ class BeanDiscoveryTest {
         try (var context = ApplicationContext.builder().packages("io.kestra.extensions.rbac").properties(Map.of("kestra.rbac.enabled", false)).start()) {
             assertFalse(context.containsBean(ConfiguredRbacAuthorizer.class));
             assertFalse(context.containsBean(PolicyEngine.class));
-            assertFalse(context.containsBean(FlowRestAuthorizationResolver.class));
             assertFalse(context.containsBean(SafeFlowDependencies.class));
+            assertFalse(context.containsBean(ConfiguredTypedAuthorization.class));
         }
     }
 }

@@ -1,6 +1,8 @@
 kestra:
   rbac:
     enabled: true
+    typed:
+      enabled: true
     # Explicitly map the bootstrap host role; default instance-admin-roles is empty.
     instance-admin-roles: [deployment-admin]
     roles:

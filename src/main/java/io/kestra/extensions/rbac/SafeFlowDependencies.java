@@ -41,7 +41,8 @@ public final class SafeFlowDependencies implements McpAuthorizationResolver {
         }
         if (!node.isTextual()) return true;
         String value = node.asText();
-        if (!value.contains("{{") && !value.contains("{%") && !value.contains("}}") && !value.contains("%}")) return true;
+        if (!io.kestra.core.utils.PebbleUtil.containsOpeningBlockDelimiter(value)
+            && io.kestra.core.utils.PebbleUtil.closingBlockDelimiters().stream().noneMatch(value::contains)) return true;
         // No functions, filters, operators, indexing, dynamic names, nesting or interpolation accepted.
         return outputs && value.matches("[ ]*[{][{][ ]*outputs[.][A-Za-z0-9_-]+(?:[.][A-Za-z0-9_-]+)+[ ]*[}][}][ ]*");
     }

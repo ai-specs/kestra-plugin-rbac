@@ -17,7 +17,7 @@ import hashlib,json,sys,zipfile
 path,image,output=sys.argv[1:]
 with zipfile.ZipFile(path) as jar:
     names=set(jar.namelist())
-    for name in ['RbacAuthorizer','RestAuthorizationResolver','McpAuthorizationResolver']:
+    for name in ['RbacAuthorizer','RestAuthorizationResolver','McpAuthorizationResolver','TypedAuthorization','TypedAuthorizationResolver']:
         assert f'io/kestra/webserver/rbac/{name}.class' in names, f'Missing host SPI: {name}'
     assert 'io/kestra/core/models/executions/Execution.class' in names
 with open(output,'w') as stream:

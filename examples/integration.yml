@@ -3,6 +3,8 @@
 kestra:
   rbac:
     enabled: true
+    typed:
+      enabled: true
     instance-admin-roles: [deployment-admin]
     subjects: {}
     role-mapping:

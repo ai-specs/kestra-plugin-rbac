@@ -17,7 +17,7 @@ Authenticate to GHCR with a credential that has `read:packages` access, then run
 ```
 
 `prepare-host.sh` pulls the immutable image in `host-contract.properties`, extracts
-`/app/kestra` without starting a server, checks the three public SPI classes, and writes
+`/app/kestra` without starting a server, checks the public legacy and typed SPI classes, and writes
 ignored local compilation dependencies and provenance. It is safe to rerun. No overlay
 checkout, upstream clone, patch replay or Kestra build is required.
 
@@ -41,24 +41,39 @@ Policy rules:
 - Every grant requires `scope`, `resource`, and `actions`. `INSTANCE` has no tenant/namespace; `TENANT` requires tenant and no namespace; `NAMESPACE` requires both. Scope matches exactly and does not promote a namespace grant to tenant/instance. Resource and execution authorization targets OSS `main`; other tenant resources deny. Instance administrators cover every matched REST route at the instance level, without interpreting its business path.
 - Namespace names are dot-separated segments. `descendants: true` grants `rbac.allowed.child`, never `rbac.allowed2`. Without it, only the exact namespace matches. No wildcard syntax is supported.
 - Concrete IDs require `ids: [id1, id2]` or explicit `all-ids: true`. Missing/empty `ids` grant **zero IDs**. Combining nonempty IDs with `all-ids` is invalid. Random execution creation requires `all-ids: true`. Collection/domain requirements with null ID also require `all-ids`.
-- LIST requires LIST and READ for a complete query domain with unrestricted IDs. An ID-restricted role cannot list and infer counts. The resolver permits only a single exact namespace filter for flow search; it never filters an already paginated response.
+- LIST requires LIST and READ for a complete query domain with unrestricted IDs. An ID-restricted role cannot list and infer counts. The host applies the returned namespace scope before pagination and totals.
 - Default is deny. Invalid/unresolved routes, plans, principals or dependencies fail closed. The overlay gate owns absent/throwing bean behavior, authentication 401/redirect, 403 problem+json, and independent MCP scope AND checks.
 
-## Explicitly supported REST surface
+## Typed resource policy
 
-| Operation | Route/handler | Policy/limits |
-|---|---|---|
-| Flow create | POST `/api/v1/main/flows`, `createFlow` | YAML namespace/id required; FLOW CREATE; only `draft` query supported |
-| Flow update | PUT `/flows/{namespace}/{id}`, `updateFlow` | YAML identity must equal path; FLOW UPDATE; only `draft` query supported |
-| Flow read/delete | GET/DELETE `/flows/{namespace}/{id}`, `getFlow`/`deleteFlow` | FLOW READ/DELETE; read `source=true` supported |
-| Flow search | GET `/flows/search`, `searchFlows` | Exactly `filters[namespace][EQUALS]=rbac.allowed`; only page/size/sort alongside; complete-domain LIST+READ |
-| Namespace flow list | GET `/flows/{namespace}`, `listFlowsByNamespace` | Complete-domain FLOW LIST+READ |
-| Execute | POST `/executions/{namespace}/{id}`, `createExecution` | FLOW READ+EXECUTE, EXECUTION CREATE domain; absent wait or strict `wait=false`/`wait=true` (true also requires EXECUTION ACCESS_OUTPUTS); final overlay gate **must** recheck actual runtime flow, allocated ID and dependency plan before input parsing/queue |
-| Execution detail | GET `/executions/{id}`, `getExecution` | Resolve real owning namespace using production repository; EXECUTION READ+ACCESS_OUTPUTS |
-| Execution file/metas | GET `/executions/{id}/file` or `/file/metas` | READ+ACCESS_OUTPUTS; one canonical `kestra:` URI strictly inside that execution storage prefix; no authority/query/fragment/encoding/traversal, global file, namespace file, state or other execution |
-| MCP server management | `/mcp-servers`, `listMcps`/`getMcp`/`createMcp`/`updateMcp` | Explicit MCP_SERVER TENANT grant; list needs full-domain LIST+READ; no controller-wide allowance |
+Set both `kestra.rbac.enabled: true` and `kestra.rbac.typed.enabled: true`. This jar implements
+`TypedAuthorizationResolver`; it does not implement the legacy REST route resolver. The host
+owns route matching, YAML identity, execution ownership, query filters, dashboard datasource
+validation, query ACL and the final runtime execution gate. The plugin never parses URLs,
+controller names, handler names, frontend routes or chart definitions.
 
-For non-administrators, other routes are denied, including bulk/import/export, source replacement, revisions/tasks/graphs, execution search/replay/kill/resume, namespace files, KV/secrets, logs/metrics, plugin management and unclassified UI API calls. UI pages may load but unsupported business actions receive 403. There is no implicit owner/admin privilege or menu/button hiding. Ordinary namespace-role UI support remains limited to the routes above and is a separate deployment requirement. Multiple ordinary local roles already contribute the union of their grants; no role-switch mechanism is added here.
+Single operations require the configured resource/action grant at the actual tenant and namespace.
+Complete queries require both READ and LIST with unrestricted IDs. All matching roles contribute
+the union of exact namespaces and namespace subtrees; the returned scope intersects the request
+domain. Empty restricted scope means no rows. A namespace grant does not promote to tenant or
+instance authority. Prefix collisions and exact namespace children remain excluded.
+ID-restricted roles cannot query collections, counts or aggregates.
+
+The host declares shared metadata as METADATA/READ. A subject with a configured READ grant can
+read those declarations. Metadata permission does not allow plugin installation or other writes.
+Unclassified operations require SYSTEM instance authority and deny for ordinary users.
+Mapped instance administrators may authorize all valid host operations; missing identity,
+unknown contract version and policy exceptions deny.
+
+FLOW, EXECUTION, NAMESPACE, LOG, METRIC, TRIGGER, KVSTORE and NAMESPACE_FILE grants are
+independent. Configure READ/LIST for every resource a reader must view, and explicit
+CREATE/UPDATE/DELETE/EXECUTE/ACCESS_OUTPUTS for required writer operations. The host supplies
+the operation and enforces the scope before pagination, totals and aggregates. Supported host
+operations and unavailable OSS pages are described by the host release; this policy does not
+invent EE features. UI menu/button behavior is owned by the host.
+
+Real authenticated UI and Compose acceptance remain a deployment gate. Unit tests prove policy
+semantics and bean discovery, and do not prove every rendered page or deployed operation.
 
 ## Explicit instance administrator
 
@@ -70,6 +85,8 @@ merge this explicit deployment policy with the ordinary namespace roles:
 kestra:
   rbac:
     enabled: true
+    typed:
+      enabled: true
     instance-admin-roles: [deployment-admin]
     roles:
       deployment-admin: []
@@ -84,8 +101,8 @@ Never map roles from untrusted headers or client input. The default configuratio
 instance administrator rights. An authenticated role with the same name as a local role is
 not automatically mapped.
 
-For a mapped administrator, the REST resolver returns a nonempty `SYSTEM` / `INSTANCE`
-`EXECUTE` plan with `COMPLETE_BATCH` coverage for every matched route supplied by the host.
+For a mapped administrator, typed policy permits the host's valid `SYSTEM` / `EXECUTE`
+operation with `COMPLETE_BATCH` coverage for unclassified matched business routes.
 Instance authority covers the full query domain and all mutations; no business-route whitelist,
 namespace filter or execution-repository lookup is required. This includes global configuration,
 execution search, bulk operations, plugin management and all other current host UI operations.
@@ -107,7 +124,7 @@ reads; this is an intentional full-instance privilege, not a task sandbox.
 Independent tests and CI validate plugin behavior and bean injection. The monorepo owner must
 still execute real authenticated UI/Compose acceptance before claiming production delivery,
 including RBAC on/off, CSRF, MCP scope denials, missing components and refusal side effects.
-Ordinary namespace users' filtered UI support is outside this administrator change.
+Ordinary namespace users require explicit resource grants and deployment UI acceptance.
 
 ## Input/output dependency policy
 
