@@ -6,6 +6,26 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: rbac_fixture
+          POSTGRES_USER: rbac_fixture
+          POSTGRES_PASSWORD: local-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rbac_fixture -d rbac_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      OIDC_FIXTURE_JDBC: jdbc:postgresql://localhost:5432/rbac_fixture
+      OIDC_FIXTURE_USER: rbac_fixture
+      OIDC_FIXTURE_PASSWORD: local-ci-only
+      OIDC_FIXTURE_INIT_SCHEMA: 'true'
+      OIDC_FIXTURE_REQUIRED: 'true'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,6 +42,17 @@ jobs:
       - name: Build, test, and verify thin jar
         working-directory: rbac
         run: ./gradlew clean check --console=plain
+      - name: Require production OIDC fixture and zero skipped tests
+        working-directory: rbac
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          reports = [ET.parse(path).getroot() for path in glob.glob('build/test-results/test/TEST-*.xml')]
+          assert reports, 'No test reports'
+          assert all(int(report.attrib['skipped']) == 0 for report in reports), 'Skipped tests are not acceptance'
+          fixture = [report for report in reports if report.attrib['name'].endswith('OidcRbacFixtureTest')]
+          assert len(fixture) == 1 and int(fixture[0].attrib['tests']) == 1, 'Production fixture did not run'
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: kestra-rbac-authorizer
