@@ -139,4 +139,28 @@ class NamespaceUiPlansTest {
             assertNull(parser.resource(json.writeValueAsBytes(Map.of("chart", yaml.writeValueAsString(changed)))));
         }
     }
+    @Test void defaultFlowChartNarrowingAndDescriptionHaveExactPlans() throws Exception {
+        var yaml = new com.fasterxml.jackson.databind.ObjectMapper(new com.fasterxml.jackson.dataformat.yaml.YAMLFactory());
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var parser = new DefaultDashboardPlans();
+        try (var source = getClass().getResourceAsStream("/dashboards/default_flow_definition.yaml")) {
+            for (var chart : yaml.readTree(source).path("charts")) {
+                if (chart.path("id").asText().equals("total_executions_timeseries")) {
+                    var modified = chart.deepCopy();
+                    ((com.fasterxml.jackson.databind.node.ObjectNode) modified.path("data")).set("where", json.valueToTree(List.of(
+                        Map.of("type", "EQUAL_TO", "field", "NAMESPACE", "value", "rbac.allowed"),
+                        Map.of("type", "EQUAL_TO", "field", "FLOW_ID", "value", "flow"))));
+                    assertEquals(Kind.EXECUTION, parser.resource(json.writeValueAsBytes(Map.of("chart", yaml.writeValueAsString(modified)))));
+                    ((com.fasterxml.jackson.databind.node.ObjectNode) modified.path("data").path("where").get(0)).put("type", "CONTAINS");
+                    assertNull(parser.resource(json.writeValueAsBytes(Map.of("chart", yaml.writeValueAsString(modified)))));
+                }
+                if (chart.path("id").asText().equals("description")) {
+                    var modified = chart.deepCopy();
+                    ((com.fasterxml.jackson.databind.node.ObjectNode) modified.path("source")).put("namespace", "rbac.allowed").put("flowId", "flow");
+                    var resource = parser.description(json.writeValueAsBytes(Map.of("chart", yaml.writeValueAsString(modified))));
+                    assertEquals(new Resource(Kind.FLOW, Scope.NAMESPACE, "main", "rbac.allowed", "flow"), resource);
+                }
+            }
+        }
+    }
 }
