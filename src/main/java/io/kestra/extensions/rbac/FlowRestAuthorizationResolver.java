@@ -17,15 +17,27 @@ import java.util.concurrent.*;
 @Requires(property = "kestra.rbac.enabled", value = "true")
 public final class FlowRestAuthorizationResolver implements RestAuthorizationResolver {
     private final ExecutionRepositoryInterface executions;
+    private final PolicyEngine engine;
     private final ObjectMapper yaml = new ObjectMapper(new YAMLFactory()).enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
         .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
-    public FlowRestAuthorizationResolver(ExecutionRepositoryInterface executions) { this.executions = executions; }
+    public FlowRestAuthorizationResolver(ExecutionRepositoryInterface executions) { this(executions, null); }
+    @jakarta.inject.Inject
+    public FlowRestAuthorizationResolver(ExecutionRepositoryInterface executions, PolicyEngine engine) {
+        this.executions = executions;
+        this.engine = engine;
+    }
     @Override public CompletionStage<Plan> resolve(RbacAuthorizer.Principal principal, Request request) {
         try { return CompletableFuture.completedFuture(plan(principal, request)); }
         catch (Exception failure) { return CompletableFuture.completedFuture(null); }
     }
     private Plan plan(RbacAuthorizer.Principal principal, Request r) throws Exception {
         if (principal == null || principal.subject() == null || principal.subject().isBlank() || r == null) return null;
+        if (engine != null && engine.isInstanceAdmin(principal)) {
+            if (r.path() == null || !r.path().startsWith("/") || r.controller() == null || r.controller().isBlank()
+                || r.handler() == null || r.handler().isBlank() || r.method() == null
+                || !Set.of("GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE").contains(r.method())) return null;
+            return new Plan(List.of(new Requirement(new Resource(Kind.SYSTEM, Scope.INSTANCE, null, null, null), Action.EXECUTE)), Coverage.COMPLETE_BATCH);
+        }
         String path = r.path();
         // Encoded separators, normalization ambiguity and suffix routes are never guessed.
         if (path == null || path.contains("%") || path.contains("//") || Arrays.stream(path.split("/")).anyMatch(segment -> segment.equals(".") || segment.equals("..")) || !path.startsWith("/api/v1/")) return null;

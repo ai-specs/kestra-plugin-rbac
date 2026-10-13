@@ -25,6 +25,33 @@ class BeanDiscoveryTest {
             assertNotNull(context.getBean(io.kestra.webserver.rbac.McpAuthorizationResolver.class));
         }
     }
+    @Test void administratorConfigurationIsInjectedIntoBothResolvers() {
+        var properties = Map.<String, Object>of("kestra.rbac.enabled", true,
+            "kestra.rbac.roles", Map.of("deployment-admin", List.of()),
+            "kestra.rbac.instance-admin-roles", List.of("deployment-admin"),
+            "kestra.rbac.role-mapping", Map.of("admin", List.of("deployment-admin")));
+        try (var context = ApplicationContext.builder().packages("io.kestra.extensions.rbac").properties(properties)
+            .singletons(org.mockito.Mockito.mock(io.kestra.core.repositories.ExecutionRepositoryInterface.class)).start()) {
+            assertEquals(List.of("deployment-admin"), context.getBean(RbacConfiguration.class).getInstanceAdminRoles());
+            var principal = new RbacAuthorizer.Principal("bootstrap", List.of("admin"), "client", "aud", List.of());
+            var request = new io.kestra.webserver.rbac.RestAuthorizationResolver.Request("GET", "/api/v1/configs", Map.of(), null,
+                new byte[0], "io.kestra.webserver.controllers.api.ConfigController", "getConfigs", List.of());
+            var plan = context.getBean(io.kestra.webserver.rbac.RestAuthorizationResolver.class).resolve(principal, request).toCompletableFuture().join();
+            assertNotNull(plan);
+            assertTrue(context.getBean(RbacAuthorizer.class).authorize(principal, plan.requirements().getFirst().resource(), plan.requirements().getFirst().action()).toCompletableFuture().join());
+            var invocation = new io.kestra.webserver.rbac.McpAuthorizationResolver.Invocation("main", "prod", "flow", "execution",
+                "id: flow\nnamespace: prod\nvariables:\n  value: \"{{ kv('key') }}\"\n");
+            assertEquals(List.of(), context.getBean(io.kestra.webserver.rbac.McpAuthorizationResolver.class).resolve(principal, invocation).toCompletableFuture().join());
+        }
+    }
+    @Test void undefinedAdministratorRoleFailsContextStartup() {
+        var context = ApplicationContext.builder().packages("io.kestra.extensions.rbac").properties(Map.of(
+            "kestra.rbac.enabled", true, "kestra.rbac.instance-admin-roles", List.of("missing"))).build();
+        try {
+            var failure = assertThrows(io.micronaut.context.exceptions.BeanInstantiationException.class, context::start);
+            assertTrue(failure.getMessage().contains("Unknown instance-admin role"));
+        } finally { context.close(); }
+    }
     @Test void disabledDoesNotRegisterAuthorizer() {
         try (var context = ApplicationContext.builder().packages("io.kestra.extensions.rbac").properties(Map.of("kestra.rbac.enabled", false)).start()) {
             assertFalse(context.containsBean(ConfiguredRbacAuthorizer.class));

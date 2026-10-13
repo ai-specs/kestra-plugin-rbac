@@ -2,8 +2,8 @@
 
 Independent, configuration-driven authorization extension for the Kestra OSS overlay. The business policy lives in this repository. Output: **`build/libs/kestra-rbac-authorizer.jar`**. The jar is thin, includes Micronaut generated bean indexes, and contains no Kestra, Micronaut, Jackson or other dependency classes.
 
-The runtime authorization implementation passed independent CI and real monorepo Compose
-acceptance. See [validation evidence](docs/validation.md) for the tested scope. Build dependencies
+The earlier runtime authorization implementation passed independent CI and real monorepo Compose
+acceptance; that historical result does not validate the instance-admin change. See [validation evidence](docs/validation.md) for the tested scope. Build dependencies
 are extracted from the immutable published image, independently of any overlay source checkout.
 
 ## Build independently
@@ -30,14 +30,15 @@ with packages:read; no personal token or cross-repository source deploy key is r
 
 ## Configure and deploy
 
-Consume an independently accepted overlay image whose published manifest classpath includes `libs/kestra-rbac-authorizer.jar` and whose unified SPI/execution gates match the contract pin. Mount the jar **read-only at `/app/libs/kestra-rbac-authorizer.jar`**. `/app/plugins` is for Kestra task/trigger plugins and does not discover this extension's web beans. Restart after adding the jar or changing policy. The older overlay README explicitly states `/app/libs` carrier support was not yet delivered; do not infer that mounting works on those images.
+Consume an independently accepted overlay image whose published manifest classpath includes `libs/kestra-rbac-authorizer.jar` and whose unified SPI/execution gates match the contract pin. Mount the jar **read-only at `/app/libs/kestra-rbac-authorizer.jar`**. `/app/plugins` is for Kestra task/trigger plugins and does not discover this extension's web beans. Restart the container JVM after replacing the jar. Apply policy configuration changes with Compose to update the container.
 
 Merge [examples/rbac.yml](examples/rbac.yml) into deployment `KESTRA_CONFIGURATION`. [examples/integration.yml](examples/integration.yml) is the controlled local acceptance policy for `rbac.allowed` and `rbac.denied`; infrastructure/authentication configuration is owned by the deployment. The accepted host authenticates requests, validates tokens and supplies an immutable principal. This jar never verifies JWTs, reads raw identity headers, or treats OAuth scopes/client IDs as roles.
 
 Policy rules:
 
 - `roles` maps local role names to grants. `subjects` binds exact trusted subjects to local roles. `role-mapping` maps exact **authenticated host role values** to local roles. Both REST and MCP call the same authorizer with the same subject/roles semantics. Unknown presented roles grant nothing; configured bindings to undefined local roles fail startup.
-- Every grant requires `scope`, `resource`, and `actions`. `INSTANCE` has no tenant/namespace; `TENANT` requires tenant and no namespace; `NAMESPACE` requires both. Scope matches exactly and does not promote a namespace grant to tenant/instance. This project targets OSS `main` only; other tenant paths deny.
+- `instance-admin-roles` is an explicit list of **local** roles, empty by default. Each listed role must exist in `roles` (an empty grant list is valid). Only `subjects` or `role-mapping` can assign these roles. A presented role named `deployment-admin` does not confer instance authority unless explicitly mapped. Invalid administrator-role configuration fails startup when RBAC is enabled.
+- Every grant requires `scope`, `resource`, and `actions`. `INSTANCE` has no tenant/namespace; `TENANT` requires tenant and no namespace; `NAMESPACE` requires both. Scope matches exactly and does not promote a namespace grant to tenant/instance. Resource and execution authorization targets OSS `main`; other tenant resources deny. Instance administrators cover every matched REST route at the instance level, without interpreting its business path.
 - Namespace names are dot-separated segments. `descendants: true` grants `rbac.allowed.child`, never `rbac.allowed2`. Without it, only the exact namespace matches. No wildcard syntax is supported.
 - Concrete IDs require `ids: [id1, id2]` or explicit `all-ids: true`. Missing/empty `ids` grant **zero IDs**. Combining nonempty IDs with `all-ids` is invalid. Random execution creation requires `all-ids: true`. Collection/domain requirements with null ID also require `all-ids`.
 - LIST requires LIST and READ for a complete query domain with unrestricted IDs. An ID-restricted role cannot list and infer counts. The resolver permits only a single exact namespace filter for flow search; it never filters an already paginated response.
@@ -57,7 +58,56 @@ Policy rules:
 | Execution file/metas | GET `/executions/{id}/file` or `/file/metas` | READ+ACCESS_OUTPUTS; one canonical `kestra:` URI strictly inside that execution storage prefix; no authority/query/fragment/encoding/traversal, global file, namespace file, state or other execution |
 | MCP server management | `/mcp-servers`, `listMcps`/`getMcp`/`createMcp`/`updateMcp` | Explicit MCP_SERVER TENANT grant; list needs full-domain LIST+READ; no controller-wide allowance |
 
-Other routes are denied, including bulk/import/export, source replacement, revisions/tasks/graphs, execution search/replay/kill/resume, namespace files, KV/secrets, logs/metrics, plugin management and unclassified UI API calls. UI pages may load but unsupported business actions receive 403. There is no automatic owner/admin bypass, SYSTEM-wide UI recovery rule, or menu/button hiding. The fixture administrator receives only the explicitly configured preparation permissions.
+For non-administrators, other routes are denied, including bulk/import/export, source replacement, revisions/tasks/graphs, execution search/replay/kill/resume, namespace files, KV/secrets, logs/metrics, plugin management and unclassified UI API calls. UI pages may load but unsupported business actions receive 403. There is no implicit owner/admin privilege or menu/button hiding. Ordinary namespace-role UI support remains limited to the routes above and is a separate deployment requirement. Multiple ordinary local roles already contribute the union of their grants; no role-switch mechanism is added here.
+
+## Explicit instance administrator
+
+The first user created by the host bootstrap has the authenticated presented role `admin`.
+To retain access to all current host UI pages, menus and operations after enabling RBAC,
+merge this explicit deployment policy with the ordinary namespace roles:
+
+```yaml
+kestra:
+  rbac:
+    enabled: true
+    instance-admin-roles: [deployment-admin]
+    roles:
+      deployment-admin: []
+    role-mapping:
+      admin: [deployment-admin]
+```
+
+This maps **every trusted principal carrying the host role `admin`** to instance authority.
+Use an exact trusted `subjects` binding instead if only one account should receive that authority;
+use the host's immutable authenticated subject, not a display name or an assumed login name.
+Never map roles from untrusted headers or client input. The default configuration grants no
+instance administrator rights. An authenticated role with the same name as a local role is
+not automatically mapped.
+
+For a mapped administrator, the REST resolver returns a nonempty `SYSTEM` / `INSTANCE`
+`EXECUTE` plan with `COMPLETE_BATCH` coverage for every matched route supplied by the host.
+Instance authority covers the full query domain and all mutations; no business-route whitelist,
+namespace filter or execution-repository lookup is required. This includes global configuration,
+execution search, bulk operations, plugin management and all other current host UI operations.
+Missing route metadata or invalid identity still denies. The authorizer permits valid resource
+requirements for administrators, including the final runtime execution checks.
+
+With `kestra.rbac.enabled: false`, the host disables the RBAC gate and the extension beans
+are absent; existing host UI behavior is retained. Enabling instance authority changes resource
+authorization only: host authentication, CSRF, MCP capability scopes and missing/throwing
+component fail-closed checks still apply. This extension does not enable host-disabled features,
+create missing plugins or implement unavailable host UI pages.
+
+Administrators receive an **explicit empty extra-dependency list** for a valid runtime flow,
+including dynamic input/default/output/variable expressions. Runtime YAML must still parse
+without duplicate keys and match invocation namespace, flow ID and OSS tenant. Ordinary users
+retain the conservative dependency policy below. Instance authority includes secret/KV/file
+reads; this is an intentional full-instance privilege, not a task sandbox.
+
+Independent tests and CI validate plugin behavior and bean injection. The monorepo owner must
+still execute real authenticated UI/Compose acceptance before claiming production delivery,
+including RBAC on/off, CSRF, MCP scope denials, missing components and refusal side effects.
+Ordinary namespace users' filtered UI support is outside this administrator change.
 
 ## Input/output dependency policy
 

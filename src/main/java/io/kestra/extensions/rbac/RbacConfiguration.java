@@ -6,6 +6,9 @@ import java.util.Map;
 
 @ConfigurationProperties("kestra.rbac")
 public class RbacConfiguration {
+    private List<String> instanceAdminRoles = List.of();
+    public List<String> getInstanceAdminRoles() { return instanceAdminRoles; }
+    public void setInstanceAdminRoles(List<String> value) { instanceAdminRoles = List.copyOf(value); }
     private Map<String, List<Grant>> roles = Map.of();
     private Map<String, List<String>> subjects = Map.of();
     private Map<String, List<String>> roleMapping = Map.of();

@@ -3,11 +3,12 @@
 kestra:
   rbac:
     enabled: true
+    instance-admin-roles: [deployment-admin]
     subjects: {}
     role-mapping:
       reader: [reader]
       writer: [writer]
-      admin: [fixture-admin]
+      admin: [deployment-admin]
     roles:
       reader:
         - scope: NAMESPACE
@@ -32,23 +33,4 @@ kestra:
           resource: EXECUTION
           actions: [CREATE, READ, ACCESS_OUTPUTS]
           all-ids: true
-      fixture-admin:
-        - scope: NAMESPACE
-          tenant: main
-          namespace: rbac.allowed
-          descendants: true
-          resource: FLOW
-          actions: [READ, LIST, CREATE, UPDATE, DELETE, EXECUTE]
-          all-ids: true
-        - scope: NAMESPACE
-          tenant: main
-          namespace: rbac.denied
-          descendants: true
-          resource: FLOW
-          actions: [READ, LIST, CREATE, UPDATE, DELETE, EXECUTE]
-          all-ids: true
-        - scope: TENANT
-          tenant: main
-          resource: MCP_SERVER
-          actions: [READ, LIST, CREATE, UPDATE]
-          all-ids: true
+      deployment-admin: []

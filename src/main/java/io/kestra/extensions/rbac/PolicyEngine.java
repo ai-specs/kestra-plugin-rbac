@@ -6,10 +6,12 @@ import java.util.*;
 import io.kestra.webserver.rbac.RbacAuthorizer.*;
 
 @Singleton
+@io.micronaut.context.annotation.Context
 @Requires(property = "kestra.rbac.enabled", value = "true")
 public final class PolicyEngine {
     private record Grant(String tenant, String namespace, boolean descendants,
                          Kind resource, Set<Action> actions, Set<String> ids, Scope scope, boolean allIds) {}
+    private final Set<String> instanceAdminRoles;
     private final Map<String, List<Grant>> roles;
     private final Map<String, Set<String>> subjects;
     private final Map<String, Set<String>> mapping;
@@ -31,6 +33,9 @@ public final class PolicyEngine {
             }).toList());
         });
         roles = Map.copyOf(compiled);
+        config.getInstanceAdminRoles().forEach(PolicyEngine::requireName);
+        if (!roles.keySet().containsAll(config.getInstanceAdminRoles())) throw new IllegalArgumentException("Unknown instance-admin role");
+        instanceAdminRoles = Set.copyOf(config.getInstanceAdminRoles());
         subjects = bindings(config.getSubjects());
         mapping = bindings(config.getRoleMapping());
     }
@@ -57,9 +62,13 @@ public final class PolicyEngine {
         if (request.scope() != Scope.INSTANCE && (request.tenant() == null || request.tenant().isBlank())) return false;
         if (request.scope() == Scope.NAMESPACE && !namespace(request.namespace())) return false;
         if (request.scope() != Scope.NAMESPACE && request.namespace() != null) return false;
-        var effective = new HashSet<>(subjects.getOrDefault(principal.subject(), Set.of()));
-        principal.roles().forEach(role -> effective.addAll(mapping.getOrDefault(role, Set.of())));
-        return effective.stream().flatMap(role -> roles.getOrDefault(role, List.of()).stream()).anyMatch(g ->
+        if (isInstanceAdmin(principal)) {
+            if (request.scope() == Scope.INSTANCE) return request.resource() == Kind.SYSTEM && request.id() == null;
+            if (request.scope() == Scope.TENANT) return Set.of(Kind.SYSTEM, Kind.MCP_SERVER, Kind.AI, Kind.DASHBOARD, Kind.BLUEPRINT).contains(request.resource())
+                || request.id() == null && (request.action() == Action.LIST || request.action() == Action.READ);
+            return true;
+        }
+        return effectiveRoles(principal).stream().flatMap(role -> roles.getOrDefault(role, List.of()).stream()).anyMatch(g ->
             Objects.equals(g.tenant(), request.tenant()) && g.scope() == request.scope() && g.resource() == request.resource() && g.actions().contains(request.action())
             && (g.namespace() == null || g.namespace().equals(request.namespace())
                 || g.descendants() && request.namespace().startsWith(g.namespace() + "."))
@@ -67,6 +76,18 @@ public final class PolicyEngine {
                 ? g.allIds() && g.actions().contains(Action.READ)
                 : g.allIds() || request.id() != null && g.ids().contains(request.id())));
 
+    }
+    private Set<String> effectiveRoles(Principal principal) {
+        var effective = new HashSet<>(subjects.getOrDefault(principal.subject(), Set.of()));
+        principal.roles().forEach(role -> effective.addAll(mapping.getOrDefault(role, Set.of())));
+        return effective;
+    }
+    public boolean isInstanceAdmin(Principal principal) {
+        return principal != null && principal.subject() != null && !principal.subject().isBlank()
+            && effectiveRoles(principal).stream().anyMatch(instanceAdminRoles::contains);
+    }
+    public boolean isInstanceAdmin(io.kestra.webserver.rbac.RbacAuthorizer.Principal principal) {
+        return principal != null && isInstanceAdmin(new Principal(principal.subject(), Set.copyOf(principal.roles())));
     }
     /** Bulk authorization must finish before any mutation; empty/unresolved plans fail closed. */
     public boolean authorizeAll(Principal principal, List<AuthorizationRequest> requests) {

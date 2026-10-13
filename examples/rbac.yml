@@ -1,7 +1,10 @@
 kestra:
   rbac:
     enabled: true
+    # Explicitly map the bootstrap host role; default instance-admin-roles is empty.
+    instance-admin-roles: [deployment-admin]
     roles:
+      deployment-admin: []
       reader:
         - scope: NAMESPACE
           tenant: main
@@ -21,4 +24,5 @@ kestra:
     subjects:
       alice: [reader]
     role-mapping:
+      admin: [deployment-admin]
       oidc-approved-runner: [runner]
