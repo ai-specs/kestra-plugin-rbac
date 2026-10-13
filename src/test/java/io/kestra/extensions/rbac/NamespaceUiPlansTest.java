@@ -151,6 +151,9 @@ class NamespaceUiPlansTest {
                         Map.of("type", "EQUAL_TO", "field", "NAMESPACE", "value", "rbac.allowed"),
                         Map.of("type", "EQUAL_TO", "field", "FLOW_ID", "value", "flow"))));
                     assertEquals(Kind.EXECUTION, parser.resource(json.writeValueAsBytes(Map.of("chart", yaml.writeValueAsString(modified)))));
+                    ((com.fasterxml.jackson.databind.node.ObjectNode) modified.path("chartOptions").path("legend")).put("enabled", false);
+                    assertEquals(Kind.EXECUTION, parser.resource(json.writeValueAsBytes(Map.of("chart", yaml.writeValueAsString(modified),
+                        "globalFilter", Map.of("filters", List.of(Map.of("field", "timeRange", "value", "PT24H", "operation", "EQUALS")))))));
                     ((com.fasterxml.jackson.databind.node.ObjectNode) modified.path("data").path("where").get(0)).put("type", "CONTAINS");
                     assertNull(parser.resource(json.writeValueAsBytes(Map.of("chart", yaml.writeValueAsString(modified)))));
                 }
