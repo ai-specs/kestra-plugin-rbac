@@ -21,6 +21,7 @@ class PolicyEngineTest {
     }
     @Test void boundariesAndDefaultDeny() {
         var engine = new PolicyEngine(configuration()); var alice = new Principal("alice", Set.of());
+        assertFalse(engine.authorize(new Principal("unknown", Set.of("unmapped")), request("main", "prod.team", Action.READ, "flow")));
         assertTrue(engine.authorize(alice, request("main", "prod.team", Action.READ, "flow")));
         assertTrue(engine.authorize(alice, request("main", "prod.team.child", Action.EXECUTE, "flow")));
         for (String ns : Arrays.asList("prod", "prod.team2", "prod.team.", "prod.team..child", null, "", "prod.team/child"))
@@ -33,6 +34,24 @@ class PolicyEngineTest {
         assertFalse(engine.authorize(new Principal("", Set.of("trusted-runner")), request("main", "prod.team", Action.READ, "flow")));
         assertFalse(engine.authorize(alice, null));
         assertFalse(engine.authorize(new Principal("bob", Set.of("runner")), request("main", "prod.team", Action.READ, "flow")));
+    }
+
+    @Test void multiRoleAcrossNamespacesKeepsEachRoleScopeAndActions() {
+        var reader = new RbacConfiguration.Grant();
+        reader.setScope(Scope.NAMESPACE); reader.setTenant("main"); reader.setNamespace("domain.b");
+        reader.setResource(Kind.FLOW); reader.setActions(List.of(Action.READ, Action.LIST)); reader.setAllIds(true);
+        var writer = new RbacConfiguration.Grant();
+        writer.setScope(Scope.NAMESPACE); writer.setTenant("main"); writer.setNamespace("domain.a");
+        writer.setResource(Kind.FLOW); writer.setActions(List.of(Action.READ, Action.LIST, Action.CREATE, Action.UPDATE, Action.DELETE, Action.EXECUTE)); writer.setAllIds(true);
+        var config = new RbacConfiguration();
+        config.setRoles(Map.of("multi-reader", List.of(reader), "multi-writer", List.of(writer)));
+        config.setRoleMapping(Map.of("multi-reader", List.of("multi-reader"), "multi-writer", List.of("multi-writer")));
+        var engine = new PolicyEngine(config);
+        var principal = new Principal("multi", Set.of("multi-reader", "multi-writer"));
+        assertTrue(engine.authorize(principal, request("main", "domain.a", Action.UPDATE, "a")));
+        assertTrue(engine.authorize(principal, request("main", "domain.b", Action.READ, "b")));
+        assertFalse(engine.authorize(principal, request("main", "domain.b", Action.UPDATE, "b")));
+        assertFalse(engine.authorize(principal, request("main", "domain.c", Action.READ, "c")));
     }
     @Test void trustedRoleMappingAndSnapshot() {
         var config = configuration(); var engine = new PolicyEngine(config);

@@ -17,7 +17,7 @@ class OidcRbacFixtureTest {
         create(service, "rbac-reader", "ReaderPass123!", "reader");
         create(service, "rbac-writer", "WriterPass123!", "writer");
         create(service, "rbac-blocked", "BlockedPass123!", "blocked");
-        create(service, "rbac-multi", "MultiPass123!", List.of("reader", "writer"));
+        create(service, "rbac-multi", "MultiPass123!", List.of("multi-reader", "multi-writer"));
         create(service, "rbac-exact", "ExactPass123!", "exact-reader");
     }
     private void create(OidcUserService service, String subject, String password, String role) {

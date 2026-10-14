@@ -10,6 +10,39 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TypedPolicyTest {
     @Test
+    void tenantMcpReadGrantAllowsReadsWithoutConfigurationWrites() {
+        var grant = grant("unused", false, List.of(RbacAuthorizer.Action.READ, RbacAuthorizer.Action.LIST));
+        grant.setNamespace(null);
+        grant.setScope(RbacAuthorizer.Scope.TENANT);
+        grant.setResource(RbacAuthorizer.Kind.MCP_SERVER);
+        var configuration = new RbacConfiguration();
+        configuration.setRoles(Map.of("reader", List.of(grant)));
+        configuration.setRoleMapping(Map.of("reader", List.of("reader")));
+        var engine = new PolicyEngine(configuration);
+        var operation = new Operation(CONTRACT_VERSION, Source.REST, Resource.MCP_SERVER, Action.LIST, "main", null, null,
+            QueryDomain.unrestricted(), Coverage.COMPLETE_QUERY, Aggregate.NONE, SideEffect.READ_ONLY);
+        assertTrue(engine.authorizeTyped(principal("reader"), operation).allowed());
+        for (Action action : List.of(Action.READ, Action.UPDATE, Action.DELETE)) {
+            var single = new Operation(CONTRACT_VERSION, Source.REST, Resource.MCP_SERVER, action, "main", null, "default",
+                QueryDomain.unrestricted(), Coverage.SINGLE, Aggregate.NONE,
+                action == Action.READ ? SideEffect.READ_ONLY : SideEffect.STORAGE_WRITE);
+            assertEquals(action == Action.READ, engine.authorizeTyped(principal("reader"), single).allowed());
+        }
+    }
+    @Test
+    void crossDomainRolesKeepReadAndWritePermissionsSeparate() {
+        var engine = new PolicyEngine(configuration());
+        var combined = principal("reader", "writer");
+        assertTrue(engine.authorizeTyped(combined, single("team.tree", Action.UPDATE)).allowed());
+        assertTrue(engine.authorizeTyped(combined, single("team.exact", Action.READ)).allowed());
+        assertFalse(engine.authorizeTyped(combined, single("team.exact", Action.UPDATE)).allowed());
+        assertFalse(engine.authorizeTyped(combined, single("outside", Action.READ)).allowed());
+        var domain = engine.authorizeTyped(combined, query(QueryDomain.unrestricted())).scope();
+        assertTrue(domain.contains("team.exact"));
+        assertTrue(domain.contains("team.tree"));
+        assertFalse(domain.contains("outside"));
+    }
+    @Test
     void queryPermissionsCombineAcrossRolesOnlyForTheirCommonNamespaceDomain() {
         var configuration = configuration();
         configuration.getRoles().get("exact").getFirst().setActions(List.of(RbacAuthorizer.Action.READ));
