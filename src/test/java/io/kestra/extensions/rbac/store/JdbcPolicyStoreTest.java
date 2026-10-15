@@ -59,11 +59,13 @@ class JdbcPolicyStoreTest {
     void shouldSerializeConcurrentSchemaInitialization() throws Exception {
         var source = database();
         var barrier = new CyclicBarrier(2);
-        var tasks = List.of(1, 2).stream().map(index -> CompletableFuture.runAsync(() -> {
-            try { barrier.await(2, TimeUnit.SECONDS); store(source).initializeSchema(); }
-            catch (Exception failure) { throw new IllegalStateException(failure); }
-        })).toArray(CompletableFuture[]::new);
-        CompletableFuture.allOf(tasks).get(10, TimeUnit.SECONDS);
+        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var tasks = List.of(1, 2).stream().map(index -> CompletableFuture.runAsync(() -> {
+                try { barrier.await(2, TimeUnit.SECONDS); store(source).initializeSchema(); }
+                catch (Exception failure) { throw new IllegalStateException(failure); }
+            }, executor)).toArray(CompletableFuture[]::new);
+            CompletableFuture.allOf(tasks).get(10, TimeUnit.SECONDS);
+        }
         assertEquals(1, store(source).importInitial(json("concurrent schema"), "owner").revision());
     }
 
@@ -95,15 +97,17 @@ class JdbcPolicyStoreTest {
         var barrier = new CyclicBarrier(2);
         var successes = new AtomicInteger();
         var conflicts = new AtomicInteger();
-        var tasks = List.of("first", "second").stream().map(description -> CompletableFuture.runAsync(() -> {
-            try {
-                barrier.await(2, TimeUnit.SECONDS);
-                store(database).replace(1, json(description), description);
-                successes.incrementAndGet();
-            } catch (JdbcPolicyStore.RevisionConflictException expected) { conflicts.incrementAndGet(); }
-            catch (Exception failure) { throw new RuntimeException(failure); }
-        })).toArray(CompletableFuture[]::new);
-        CompletableFuture.allOf(tasks).get(10, TimeUnit.SECONDS);
+        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var tasks = List.of("first", "second").stream().map(description -> CompletableFuture.runAsync(() -> {
+                try {
+                    barrier.await(2, TimeUnit.SECONDS);
+                    store(database).replace(1, json(description), description);
+                    successes.incrementAndGet();
+                } catch (JdbcPolicyStore.RevisionConflictException expected) { conflicts.incrementAndGet(); }
+                catch (Exception failure) { throw new RuntimeException(failure); }
+            }, executor)).toArray(CompletableFuture[]::new);
+            CompletableFuture.allOf(tasks).get(10, TimeUnit.SECONDS);
+        }
         assertEquals(1, successes.get());
         assertEquals(1, conflicts.get());
         assertEquals(2, store.readCurrent().revision());
