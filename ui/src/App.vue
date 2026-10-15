@@ -37,7 +37,7 @@ const bindings = computed(() => [false, true].flatMap(mapping => Object.entries(
 const copy = value => JSON.parse(JSON.stringify(value))
 const encodeSubject = value => btoa(String.fromCharCode(...new TextEncoder().encode(value))).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
 const decodeSubject = value => new TextDecoder('utf-8', {fatal: true}).decode(Uint8Array.from(atob(value.replaceAll('-', '+').replaceAll('_', '/')), character => character.charCodeAt(0)))
-const navigate = value => props.context.navigate('/' + value)
+const navigate = value => props.context.navigate(value)
 
 async function perform(action) {
   if (busy.value) return
@@ -156,35 +156,37 @@ watch(path, () => {role.value = null; user.value = null; password.value = ''; lo
       <p class="muted">{{ t('policyMode') }}: {{ policy.mode }} · {{ t('revision') }}: {{ policy.revision }}</p>
       <p v-if="readOnly" class="message">{{ t('readOnly') }}</p>
       <template v-if="section === 'roles' && !detail">
-        <KsButton :disabled="readOnly || busy" @click="navigate('roles/new')">{{ t('create') }}</KsButton>
+        <KsButton data-test="create-role" :disabled="readOnly || busy" @click="navigate('roles/new')">{{ t('create') }}</KsButton>
         <div class="table-wrap"><KsTable :data="roles" :empty-text="t('noRows')" row-key="id">
+          <template #empty><p>{{ t('noRows') }}</p></template>
           <KsTableColumn prop="name" :label="t('name')" min-width="180" />
           <KsTableColumn prop="description" :label="t('description')" min-width="240" />
-          <KsTableColumn :label="t('actions')" min-width="120"><template #default="{row}"><KsButton @click="navigate('roles/' + row.id)">{{ t('edit') }}</KsButton></template></KsTableColumn>
+          <KsTableColumn :label="t('actions')" min-width="120"><template #default="{row}"><KsButton :data-role-id="row.id" @click="navigate('roles/' + row.id)">{{ t('edit') }}</KsButton></template></KsTableColumn>
         </KsTable></div>
       </template>
       <form v-else-if="section === 'roles' && role" @submit.prevent="saveRole">
         <KsButton native-type="button" @click="navigate('roles')">{{ t('back') }}</KsButton>
         <fieldset :disabled="busy || readOnly">
-          <label>{{ t('name') }}<KsInput v-model="role.name" required /></label>
-          <label>{{ t('description') }}<KsInput v-model="role.description" /></label>
+          <label>{{ t('name') }}<KsInput v-model="role.name" name="role-name" required /></label>
+          <label>{{ t('description') }}<KsInput v-model="role.description" name="role-description" /></label>
           <section v-for="(grant, index) in role.grants" :key="index" class="grant">
-            <label>{{ t('namespace') }}<select v-model="grant.scope"><option>NAMESPACE</option><option>TENANT</option></select></label>
-            <label v-if="grant.scope === 'NAMESPACE'">{{ t('namespace') }}<KsInput v-model="grant.namespace" required /></label>
+            <label>{{ t('namespace') }}<select v-model="grant.scope" name="grant-scope"><option>NAMESPACE</option><option>TENANT</option></select></label>
+            <label v-if="grant.scope === 'NAMESPACE'">{{ t('namespace') }}<KsInput v-model="grant.namespace" name="grant-namespace" required /></label>
             <label v-if="grant.scope === 'NAMESPACE'" class="checkbox"><input v-model="grant.descendants" type="checkbox">{{ t('children') }}</label>
-            <label>{{ t('resource') }}<select v-model="grant.resource"><option v-for="resource in resources" :key="resource">{{ resource }}</option></select></label>
-            <fieldset><legend>{{ t('actions') }}</legend><label v-for="action in actions" :key="action" class="checkbox"><input v-model="grant.actions" type="checkbox" :value="action">{{ action }}</label></fieldset>
+            <label>{{ t('resource') }}<select v-model="grant.resource" name="grant-resource"><option v-for="resource in resources" :key="resource">{{ resource }}</option></select></label>
+            <fieldset><legend>{{ t('actions') }}</legend><label v-for="action in actions" :key="action" class="checkbox"><input v-model="grant.actions" name="grant-action" type="checkbox" :value="action">{{ action }}</label></fieldset>
             <label class="checkbox"><input v-model="grant.allIds" type="checkbox">{{ t('allIds') }}</label>
             <label v-if="!grant.allIds">{{ t('ids') }}<input :value="Array.isArray(grant.ids) ? grant.ids.join(', ') : grant.ids" @input="grant.ids = $event.target.value"></label>
             <KsButton native-type="button" @click="role.grants.splice(index, 1)">{{ t('removeGrant') }}</KsButton>
           </section>
-          <div class="buttons"><KsButton native-type="button" @click="addGrant">{{ t('addGrant') }}</KsButton><KsButton native-type="submit">{{ t('save') }}</KsButton><KsButton v-if="detail !== 'new'" native-type="button" @click="confirmDelete = true">{{ t('delete') }}</KsButton></div>
+          <div class="buttons"><KsButton data-test="add-grant" native-type="button" @click="addGrant">{{ t('addGrant') }}</KsButton><KsButton data-test="save-role" native-type="submit">{{ t('save') }}</KsButton><KsButton v-if="detail !== 'new'" native-type="button" @click="confirmDelete = true">{{ t('delete') }}</KsButton></div>
           <div v-if="confirmDelete" class="message"><p>{{ t('confirm') }}</p><KsButton native-type="button" @click="perform(async () => { policy = await api.deleteRole(role.id, policy.revision); navigate('roles') })">{{ t('delete') }}</KsButton><KsButton native-type="button" @click="confirmDelete = false">{{ t('cancel') }}</KsButton></div>
         </fieldset>
       </form>
       <template v-else-if="section === 'users' && !detail">
-        <KsButton :disabled="busy || readOnly || !capabilities.userDirectory" @click="navigate('users/new')">{{ t('create') }}</KsButton>
+        <KsButton data-test="create-user" :disabled="busy || readOnly || !capabilities.userDirectory" @click="navigate('users/new')">{{ t('create') }}</KsButton>
         <div class="table-wrap"><KsTable :data="users.items" :empty-text="t('noRows')" row-key="subject">
+          <template #empty><p>{{ t('noRows') }}</p></template>
           <KsTableColumn prop="subject" :label="t('subject')" min-width="180" /><KsTableColumn prop="name" :label="t('name')" min-width="180" /><KsTableColumn prop="email" :label="t('email')" min-width="220" />
           <KsTableColumn :label="t('active')" min-width="100"><template #default="{row}">{{ t(row.active ? 'active' : 'inactive') }}</template></KsTableColumn>
           <KsTableColumn :label="t('actions')" min-width="120"><template #default="{row}"><KsButton @click="navigate('users/' + encodeSubject(row.subject))">{{ t('edit') }}</KsButton></template></KsTableColumn>
@@ -194,10 +196,10 @@ watch(path, () => {role.value = null; user.value = null; password.value = ''; lo
       <template v-else-if="section === 'users' && user">
         <KsButton @click="navigate('users')">{{ t('back') }}</KsButton>
         <form @submit.prevent="saveUser"><fieldset :disabled="busy || readOnly">
-          <label>{{ t('subject') }}<KsInput v-if="detail === 'new'" v-model="user.username" required autocomplete="off" /><output v-else>{{ user.subject }}</output></label>
-          <label>{{ t('name') }}<KsInput v-model="user.name" required /></label><label>{{ t('email') }}<KsInput v-model="user.email" type="email" /></label>
-          <label v-if="detail === 'new'">{{ t('password') }}<KsInput v-model="user.password" type="password" required autocomplete="new-password" /></label>
-          <KsButton native-type="submit">{{ t('save') }}</KsButton>
+          <label>{{ t('subject') }}<KsInput v-if="detail === 'new'" v-model="user.username" name="user-subject" required autocomplete="off" /><output v-else>{{ user.subject }}</output></label>
+          <label>{{ t('name') }}<KsInput v-model="user.name" name="user-name" required /></label><label>{{ t('email') }}<KsInput v-model="user.email" name="user-email" type="email" /></label>
+          <label v-if="detail === 'new'">{{ t('password') }}<KsInput v-model="user.password" name="user-password" type="password" required autocomplete="new-password" /></label>
+          <KsButton data-test="save-user" native-type="submit">{{ t('save') }}</KsButton>
         </fieldset></form>
         <template v-if="detail !== 'new'">
           <p>{{ t(user.active ? 'active' : 'inactive') }} · {{ t('revision') }}: {{ user.revision }}</p>
@@ -208,14 +210,15 @@ watch(path, () => {role.value = null; user.value = null; password.value = ''; lo
       </template>
       <template v-else-if="section === 'bindings'">
         <div class="table-wrap"><KsTable :data="bindings" :empty-text="t('noRows')">
+          <template #empty><p>{{ t('noRows') }}</p></template>
           <KsTableColumn :label="t('subject') + ' / ' + t('trustedRole')" min-width="220"><template #default="{row}">{{ t(row.mapping ? 'trustedRole' : 'subject') }}: {{ row.key }}</template></KsTableColumn>
           <KsTableColumn :label="t('roleIds')" min-width="220"><template #default="{row}">{{ row.identifiers.join(', ') }}</template></KsTableColumn>
           <KsTableColumn :label="t('actions')" min-width="120"><template #default="{row}"><KsButton @click="chooseBinding(row.key, row.identifiers, row.mapping)">{{ t('edit') }}</KsButton></template></KsTableColumn>
         </KsTable></div>
         <form @submit.prevent="saveBinding"><fieldset :disabled="busy || readOnly">
-          <label>{{ t('subject') }}<KsInput v-model="subject" :disabled="Boolean(trustedRole)" /></label><label>{{ t('trustedRole') }}<KsInput v-model="trustedRole" :disabled="Boolean(subject)" /></label>
-          <fieldset><legend>{{ t('roleIds') }}</legend><label v-for="item in roles" :key="item.id" class="checkbox"><input v-model="selected" type="checkbox" :value="item.id">{{ item.name }}</label></fieldset>
-          <div class="buttons"><KsButton native-type="submit" :disabled="!subject && !trustedRole">{{ t('save') }}</KsButton><KsButton native-type="button" @click="subject = ''; trustedRole = ''; selected = []">{{ t('cancel') }}</KsButton></div>
+          <label>{{ t('subject') }}<KsInput v-model="subject" name="binding-subject" :disabled="Boolean(trustedRole)" /></label><label>{{ t('trustedRole') }}<KsInput v-model="trustedRole" name="binding-role" :disabled="Boolean(subject)" /></label>
+          <fieldset><legend>{{ t('roleIds') }}</legend><label v-for="item in roles" :key="item.id" class="checkbox"><input v-model="selected" name="binding-selection" type="checkbox" :value="item.id">{{ item.name }}</label></fieldset>
+          <div class="buttons"><KsButton data-test="save-binding" native-type="submit" :disabled="!subject && !trustedRole">{{ t('save') }}</KsButton><KsButton native-type="button" @click="subject = ''; trustedRole = ''; selected = []">{{ t('cancel') }}</KsButton></div>
         </fieldset></form>
       </template>
     </template>
