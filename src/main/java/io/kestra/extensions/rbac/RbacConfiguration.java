@@ -6,6 +6,12 @@ import java.util.Map;
 
 @ConfigurationProperties("kestra.rbac")
 public class RbacConfiguration {
+    private String policySource = "configuration";
+    private List<String> managementAdminSubjects = List.of();
+    public String getPolicySource() { return policySource; }
+    public void setPolicySource(String value) { policySource = value; }
+    public List<String> getManagementAdminSubjects() { return managementAdminSubjects; }
+    public void setManagementAdminSubjects(List<String> value) { managementAdminSubjects = List.copyOf(value); }
     private List<String> instanceAdminRoles = List.of();
     public List<String> getInstanceAdminRoles() { return instanceAdminRoles; }
     public void setInstanceAdminRoles(List<String> value) { instanceAdminRoles = List.copyOf(value); }

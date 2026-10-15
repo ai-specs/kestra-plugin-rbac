@@ -1,0 +1,56 @@
+package io.kestra.extensions.rbac;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicReference;
+import io.kestra.webserver.rbac.AuthorizationEvaluationProviderV1;
+import io.kestra.webserver.rbac.AuthorizationEvaluationV1;
+import io.kestra.webserver.rbac.RbacAuthorizer;
+import io.kestra.webserver.rbac.TypedAuthorization;
+import io.micronaut.context.annotation.Requires;
+import io.micronaut.scheduling.TaskExecutors;
+import jakarta.inject.Named;
+import jakarta.inject.Singleton;
+
+@Singleton
+@Requires(property = "kestra.rbac.enabled", value = "true")
+@Requires(property = "kestra.rbac.typed.enabled", value = "true")
+@Requires(property = "kestra.rbac.evaluation.enabled", value = "true")
+public final class ConfiguredEvaluationProvider implements AuthorizationEvaluationProviderV1 {
+    private final RuntimePolicies policies;
+    private final Executor executor;
+
+    public ConfiguredEvaluationProvider(RuntimePolicies policies, @Named(TaskExecutors.IO) Executor executor) {
+        this.policies = policies;
+        this.executor = executor;
+    }
+
+    @Override
+    public CompletionStage<AuthorizationEvaluationV1> begin(RbacAuthorizer.Principal principal, String tenant) {
+        if (principal == null || principal.subject() == null || principal.subject().isBlank()
+            || tenant != null && !"main".equals(tenant)) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid evaluation identity or tenant"));
+        }
+        return CompletableFuture.supplyAsync(() -> {
+            var snapshot = new AtomicReference<>(policies.snapshot());
+            return new AuthorizationEvaluationV1() {
+                @Override
+                public CompletionStage<TypedAuthorization.Decision> authorize(TypedAuthorization.Operation operation) {
+                    var current = snapshot.get();
+                    if (current == null) return CompletableFuture.completedFuture(TypedAuthorization.Decision.deny("Evaluation is closed"));
+                    try {
+                        return CompletableFuture.completedFuture(current.authorize(principal, operation));
+                    } catch (Exception failure) {
+                        return CompletableFuture.completedFuture(TypedAuthorization.Decision.deny("Invalid policy input"));
+                    }
+                }
+                @Override
+                public CompletionStage<Void> close() {
+                    snapshot.set(null);
+                    return CompletableFuture.completedFuture(null);
+                }
+            };
+        }, executor);
+    }
+}

@@ -29,6 +29,9 @@ jobs:
           distribution: temurin
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Extract published host compilation contract
         run: rbac/scripts/prepare-host.sh
       - name: Build, test, and verify thin jar

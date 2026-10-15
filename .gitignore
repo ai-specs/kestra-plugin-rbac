@@ -2,3 +2,4 @@
 build/
 .integration*/
 .evidence/
+ui/node_modules/

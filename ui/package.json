@@ -1,0 +1,20 @@
+{
+  "name": "@ai-specs/kestra-rbac-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/check-translations.mjs && vite build && node scripts/generate-ui-manifest.mjs",
+    "test:logic": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@kestra-io/design-system": "0.5.0",
+    "vue": "3.5.39",
+    "vue-i18n": "11.4.4",
+    "vue-router": "5.0.6"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.7",
+    "postcss": "8",
+    "vite": "7.1.9"
+  }
+}

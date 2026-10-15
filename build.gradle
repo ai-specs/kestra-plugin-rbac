@@ -59,6 +59,28 @@ jar {
     preserveFileTimestamps = false
     reproducibleFileOrder = true
 }
+tasks.register('installUi', Exec) {
+    workingDir 'ui'
+    commandLine 'npm', 'ci', '--ignore-scripts'
+    inputs.files('ui/package.json', 'ui/package-lock.json')
+    outputs.file('ui/node_modules/.package-lock.json')
+}
+tasks.register('buildUi', Exec) {
+    dependsOn installUi
+    workingDir 'ui'
+    commandLine 'npm', 'run', 'build'
+    inputs.dir('ui/src')
+    inputs.dir('ui/scripts')
+    inputs.file('ui/vite.config.js')
+    inputs.dir('.integration/ui-sdk')
+    outputs.dir(layout.buildDirectory.dir('generated-ui'))
+}
+tasks.register('testUi', Exec) {
+    workingDir 'ui'
+    commandLine 'npm', 'run', 'test:logic'
+}
+sourceSets.main.resources.srcDir(layout.buildDirectory.dir('generated-ui'))
+processResources.dependsOn buildUi
 tasks.register('verifyThinJar') {
     dependsOn jar
     doLast {
@@ -71,6 +93,11 @@ tasks.register('verifyThinJar') {
         if (!names.any { it.startsWith('META-INF/micronaut/io.micronaut.inject.BeanDefinitionReference/') }) {
             throw new GradleException('Missing Micronaut bean index')
         }
+        if (!names.containsAll(['ui-extensions/rbac/manifest.json', 'ui-extensions/rbac/entry.js'])
+            || !names.any { it.startsWith('ui-extensions/rbac/') && it.endsWith('.css') }) {
+            throw new GradleException('Missing independently built management UI resources')
+        }
     }
 }
 check.dependsOn verifyThinJar
+check.dependsOn testUi

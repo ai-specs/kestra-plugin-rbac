@@ -10,10 +10,10 @@ are extracted from the immutable published image, independently of any overlay s
 
 用户、角色和授权管理功能的业务调查与阶段方案见
 [RBAC 管理功能方案](docs/rbac-management-plan.md)。该方案属于本插件，相关宿主机制
-需求向 overlay 独立提案；管理 API、页面和数据库策略尚未实现或发布。
+需求向 overlay 独立提案；管理 API、页面和数据库策略正在实施，尚未完成发布与组合验收。
 
-策略存储的纯业务组件与独立初始化入口已加入源码，尚未接入生产授权或管理接口，也未
-通过新的发布／组合门。`examples/management-policy.json` 展示 schemaVersion 1 的输入，
+策略存储、运行时快照、管理控制器与页面已加入源码，新宿主契约与插件仍须分别通过
+正式发布门，再执行组合验收。`examples/management-policy.json` 展示 schemaVersion 1 的输入，
 不包含账号或管理员授权。初始化工具只允许在空策略库创建首个版本，重复相同输入幂等，
 已有不同策略拒绝；管理身份与普通数据库策略分开配置。
 
@@ -30,7 +30,7 @@ are extracted from the immutable published image, independently of any overlay s
 
 ## Build independently
 
-Requirements: Docker, JDK 25, Python 3 and read access to the private GHCR host image.
+Requirements: Docker, JDK 25, Node.js 24 (including npm), Python 3 and read access to the private GHCR host image.
 Authenticate to GHCR with a credential that has `read:packages` access, then run:
 
 ```bash
@@ -49,6 +49,65 @@ can be tested without booting Kestra. Real deployment discovery is verified by m
 Compose acceptance. CI uses the same published-image extraction and build commands. The host package grants
 this repository Read access under Manage Actions access, so CI uses its own GITHUB_TOKEN
 with packages:read; no personal token or cross-repository source deploy key is required.
+
+构建同时执行独立前端的 `npm ci --ignore-scripts`、翻译完整性检查、ESM 与 CSS 构建及
+管理资源清单生成。Java jar 包含插件自有前端资源，不包含宿主源码或框架 Java 类。
+前端框架来自固定 npm 依赖；UI SDK 从同一个已发布宿主镜像的 executable 提取，写入
+被忽略的 `.integration/ui-sdk`。SDK 缺失时构建失败，不从相邻仓补文件。
+
+## 数据库管理模式
+
+以下是管理版本的配置与实施契约。正式使用前必须选择已通过完整发布门的兼容宿主与
+插件，并完成部署仓组合验收。不得仅根据源码或单元测试启用生产管理功能。
+
+```yaml
+kestra:
+  rbac:
+    enabled: true
+    typed:
+      enabled: true
+    evaluation:
+      enabled: true
+    management:
+      enabled: true
+    policy-source: database
+    management-admin-subjects: [your-exact-authenticated-subject]
+```
+
+数据库模式必须完整移除原配置中的 `roles`、`subjects`、`role-mapping` 和
+`instance-admin-roles`。本插件拒绝把配置策略与数据库策略混合。部署管理员由精确的
+已认证 subject 列表定义；普通数据库角色、可信角色映射和 OAuth scope 均不能赋予管理权。
+部署管理员具有完整实例权限，名单必须由部署负责人维护。管理账号不能通过页面停用或
+重置密码；资料修改不改变其身份。
+
+首次启用前，使用兼容已发布宿主和插件的 classpath 初始化策略。连接变量必须由操作者
+提供，并指向部署 PostgreSQL；不要在命令历史写入密码：
+
+```bash
+export RBAC_POLICY_JDBC_URL RBAC_POLICY_JDBC_USER RBAC_POLICY_JDBC_PASSWORD
+export RBAC_POLICY_OPERATOR_SUBJECT
+java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar' \
+  io.kestra.extensions.rbac.store.PolicyImportCommand validate examples/management-policy.json
+java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar' \
+  io.kestra.extensions.rbac.store.PolicyImportCommand initialize examples/management-policy.json
+```
+
+初始化只允许空库首建，重复相同内容幂等，已有不同内容拒绝。它不创建登录账号，不
+授予管理身份，不覆盖已有策略。策略表使用宿主配置的同一 PostgreSQL 数据源，保留当前
+版本及最多 100 个历史版本。运行时每个授权评估读取当前数据库版本，并固定不可变快照；
+评估不持有连接或事务。新请求读取新版本，数据库不可用时拒绝，不复用旧允许结果。
+这不是任务 worker 的权限沙箱，已经提交到队列的任务不承诺因后续改权而撤回。
+
+管理页面入口为宿主 Plugins 菜单中的 RBAC 管理页，根路径为
+`/ui/main/extensions/rbac`。角色使用稳定 ID；授权通过逐条权限表单配置。用户创建后
+没有普通授权，必须另行绑定角色。启停与密码重置会使旧认证会话和 token 失效；重新启用
+账号不会恢复旧会话。资料修改、角色绑定与密码修改分别保存。
+
+管理 API 要求宿主认证、CSRF 与当前管理权限。策略写入使用全局策略 revision，账号
+更新使用该账号 revision；过时版本返回 412，页面要求重新加载，不覆盖并发修改。
+删除已被引用的角色返回冲突。完整接口、只读模式和错误语义见
+[管理接口实施契约](docs/management-api.md)。默认策略来源仍为 configuration，管理开关
+默认关闭；配置模式的管理页面只读，不允许账号或策略写入。
 
 ## Configure and deploy
 

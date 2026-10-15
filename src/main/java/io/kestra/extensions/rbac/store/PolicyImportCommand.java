@@ -14,7 +14,14 @@ public final class PolicyImportCommand {
         if (value == null || value.isBlank()) throw new IllegalArgumentException("Required environment: " + name);
         return value;
     }
-    public static void main(String[] arguments) throws Exception {
+    public static void main(String[] arguments) {
+        try { execute(arguments); }
+        catch (Exception failure) {
+            System.err.println("Policy command failed: " + failure.getClass().getSimpleName());
+            System.exit(1);
+        }
+    }
+    private static void execute(String[] arguments) throws Exception {
         if (arguments.length != 2 || !(arguments[0].equals("validate") || arguments[0].equals("initialize"))) {
             throw new IllegalArgumentException("Usage: PolicyImportCommand validate|initialize <policy.json>");
         }
