@@ -6,6 +6,18 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      policy-postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: policy-test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,8 +33,23 @@ jobs:
         run: rbac/scripts/prepare-host.sh
       - name: Build, test, and verify thin jar
         working-directory: rbac
-        run: ./gradlew clean check --console=plain
+        run: |
+          ./gradlew clean check --console=plain
+          mkdir -p .evidence/unit
+          cp -R build/reports/tests/test .evidence/unit/report
+          cp -R build/test-results/test .evidence/unit/results
+      - name: Verify policy storage against PostgreSQL
+        working-directory: rbac
+        env:
+          RBAC_STORE_TEST_JDBC: jdbc:postgresql://localhost:5432/postgres
+        run: |
+          ./gradlew test --tests 'io.kestra.extensions.rbac.store.*' --rerun-tasks --console=plain
+          python3 scripts/check-policy-tests.py build/test-results/test
+          mkdir -p .evidence/postgres
+          cp -R build/reports/tests/test .evidence/postgres/report
+          cp -R build/test-results/test .evidence/postgres/results
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: kestra-rbac-authorizer
           include-hidden-files: true
@@ -30,3 +57,5 @@ jobs:
             rbac/build/libs/kestra-rbac-authorizer.jar
             rbac/.integration/host-provenance.json
             rbac/build/reports/tests/test/
+            rbac/build/test-results/test/
+            rbac/.evidence/

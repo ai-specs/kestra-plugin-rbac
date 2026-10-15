@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "roles": [
+    {
+      "id": "examples-reader",
+      "name": "Examples reader",
+      "description": "Read flows in the exact examples namespace",
+      "grants": [
+        {
+          "scope": "NAMESPACE",
+          "tenant": "main",
+          "namespace": "examples",
+          "descendants": false,
+          "resource": "FLOW",
+          "actions": ["READ", "LIST"],
+          "ids": [],
+          "allIds": true
+        }
+      ]
+    }
+  ],
+  "subjects": {},
+  "roleMapping": {}
+}

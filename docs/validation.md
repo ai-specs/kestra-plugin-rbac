@@ -1,5 +1,21 @@
 # Validation evidence
 
+## 管理存储与业务服务的本地检查（2026-10-15）
+
+策略数据库、规范文档校验、独立初始化入口及角色／绑定业务服务已加入源码；本节不代表
+管理控制器、页面、动态授权或新宿主契约已发布。编译仍消费 host-contract.properties
+指定的既有正式宿主镜像，未读取相邻源码或候选 jar。
+
+本地 `clean check` 共44项、43通过、零失败／错误，1项生产账号准备测试因没有部署JDBC
+受控跳过；该项由部署验收实际运行，不能计为通过。存储与规范校验共15项没有跳过，
+另在独立PostgreSQL 18逐项运行同一矩阵全部通过，包含并发schema初始化和并发写入。
+独立工具在该数据库两次初始化相同JSON，核对头版本为1、快照数为1。薄jar检查通过。
+本地记录保留于忽略的.integration及build日志；最终源码还须独立克隆构建、CI及下载
+报告核对，不以当前工作树的本地结果替代正式交付。
+
+CI保存完整单元报告和PostgreSQL报告到独立目录，并显式上传隐藏证据目录。上传成功
+不能代替下载核对；同一artifact保留jar、provenance、JUnit XML与HTML报告。
+
 The authorization implementation at commit `41aac28c60c9e9820982b6a5492fc3b7f4f11ce9`
 passed [independent CI 38355208652](https://github.com/ai-specs/kestra-plugin-rbac/actions/runs/38355208652).
 Real monorepo Compose acceptance on 2026-10-13 passed with published overlay image

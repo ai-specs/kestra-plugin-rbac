@@ -12,6 +12,22 @@ are extracted from the immutable published image, independently of any overlay s
 [RBAC 管理功能方案](docs/rbac-management-plan.md)。该方案属于本插件，相关宿主机制
 需求向 overlay 独立提案；管理 API、页面和数据库策略尚未实现或发布。
 
+策略存储的纯业务组件与独立初始化入口已加入源码，尚未接入生产授权或管理接口，也未
+通过新的发布／组合门。`examples/management-policy.json` 展示 schemaVersion 1 的输入，
+不包含账号或管理员授权。初始化工具只允许在空策略库创建首个版本，重复相同输入幂等，
+已有不同策略拒绝；管理身份与普通数据库策略分开配置。
+
+工具入口为 `io.kestra.extensions.rbac.store.PolicyImportCommand`，运行 classpath 必须是
+兼容的已发布宿主 executable 与独立插件 jar，不能使用相邻源码或开发树。`validate`
+仅检查 JSON；`initialize` 使用 `RBAC_POLICY_JDBC_URL`、`RBAC_POLICY_JDBC_USER`、
+`RBAC_POLICY_JDBC_PASSWORD` 和 `RBAC_POLICY_OPERATOR_SUBJECT`。正式版本完整使用命令
+须在管理契约发布后核对，这里不把未发布入口作为部署要求。
+
+独立存储测试默认使用 H2；设置 `RBAC_STORE_TEST_JDBC` 可对隔离 PostgreSQL 执行同一
+套检查。该变量仅用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
+每个用例使用独立 schema；不得指向生产数据库。CI 运行 H2 完整检查和 PostgreSQL
+存储矩阵，要求存储测试无失败、无跳过，不执行其他仓库的构建或部署。
+
 ## Build independently
 
 Requirements: Docker, JDK 25, Python 3 and read access to the private GHCR host image.
