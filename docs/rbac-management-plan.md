@@ -1,223 +1,213 @@
 # RBAC 管理功能：机制调查与阶段方案
 
-调查日期：2026-10-15。状态：调查与方案，不是实现或发布记录。
-本文属于 `kestra-plugin-rbac`，定义本项目的业务调查与阶段方案，不是部署根仓的业务设计。
-宿主机制需求由本项目向 overlay 提出，overlay 独立接收并发布；根仓只组织子项目、
-选择部署组合和执行 Compose 集成验收。首项交付到此文档及宿主候选提案为止。
+调查与审查日期：2026-10-15。状态：业务范围与设计约束已明确，宿主候选契约未接收、
+未实现、未发布。本文不是用户安装说明，也不授权直接实施宿主 patch。
 
-## 1. 裁决与范围
+本文属于 `kestra-plugin-rbac`。本项目负责业务需求、策略、存储、管理 API 和页面；
+overlay 独立接收必要的宿主机制提案；部署根仓只组织子项目、选择部署组合、配置
+Compose 和执行集成验收。主控跨仓调查不改变文档与实现归属。
 
-目标是在 `kestra-plugin-rbac` 提供用户、角色和授权管理页面，使管理保存的数据用于后续
-REST、查询和 MCP 实际授权。业务模型、页面、管理控制器及策略存储归插件；overlay
-只提供公开宿主机制、可信身份和账号目录能力；部署仓负责版本选择与真实组合验收。
+## 1. 业务范围与非目标
 
-本轮裁决如下。下文接口名和配置名均为候选名称，必须在对应项目实施前定稿并发布。
+首期提供实例管理员使用的角色与授权管理，随后增加登录账号管理。普通资源 READ
+不授予管理权。页面、API 和运行时授权必须使用同一策略模型，保存不能只更新表单数据。
 
-1. 先实现实例管理员管理。所有管理读取和写入都要求当前有效实例管理员身份。
-   首期不提供独立的只读管理员或 namespace 管理员，不能把普通资源 READ 当作管理权限。
-2. 保留现有配置模式；新增数据库模式，两者互斥。数据库模式不得按请求合并 YAML 策略。
-3. 角色、grant、subject 绑定和可信角色映射均归插件；登录账号及密码归宿主 OIDC 目录。
-   “用户管理”必须分别呈现账号状态、可信 subject、插件绑定及有效授权，不能混为角色字段。
-4. 首期管理 API 可复用宿主现有 SYSTEM 管理门，再由插件按当前策略复核。无需先增加
-   USER/ROLE/BINDING 到宿主资源枚举，也无需让插件识别宿主 controller 或 URL。
-5. 管理页面需要新的通用装载契约。上游任务插槽不能直接注册管理菜单或页面。
-   已发布 design-system 可以作为组件候选输入，但不能单凭包存在声明与宿主版本兼容。
-6. 登录账号完整管理依赖新的宿主公开目录契约。不得调用内部 `OidcUserService` 或直接写
-   `oidc_user`。在该契约发布前，可以交付角色与授权管理，不能称为完整用户管理。
-
-不做：EE IAM 复刻、组、服务账号、邀请、SCIM、身份冒用、EE token、完整审计产品、
-任意外部脚本 URL、运行时装载 bean、无重启替换 jar、多租户和跨 IdP 账号合并。
-首期账号不提供改登录名或物理删除，避免当前 username 即 subject 的账号重用造成旧绑定继承。
-新账号默认无可信管理角色、无插件绑定；创建账号不自动授权。
-
-## 2. 证据基线与边界
-
-以下为本次调查使用的部署环境历史证据，不是本项目构建输入或当前版本锁。
-本节路径以当时部署根仓为基准，不要求独立克隆存在这些相邻目录。
-启动时三仓工作树干净。HEAD 与当时 `git ls-remote origin refs/heads/main` 一致：根仓
-`27954a0`、overlay `a7d4ea6`、插件 `58d38bd`。submodule 指针与这两个子仓一致。
-交接文件完整读取后已删除，忽略规则保留。实际命令环境为 zsh；不采用交接中旧机器路径。
-
-| 检查 | 本轮核实结果 | 能证明什么 |
+| 对象 | 本项目责任 | 宿主责任 |
 |---|---|---|
-| overlay 当前 HEAD CI | `38695537351` 失败；patch-verify 通过，build-push 依赖解析失败，后续发布门跳过 | 不能宣称当前 HEAD 镜像已发布 |
-| 既有发布宿主 | `9a8dbdae8e13761e135f0e42ccd5ffe4a9635635`，CI `38686689513` 四个 job 成功 | 已发布宿主机制的基线 |
-| 插件当前 HEAD CI | `38695540439` 成功，实际下载 `kestra-rbac-authorizer` artifact | 当前插件产物可获取，不含管理页面 |
-| 既有组合 CI | `38688730525`，根提交 `66226c9` 成功，实际下载含隐藏目录的报告 | 只证明既有角色矩阵，不证明新管理功能 |
-| 当前根 HEAD CI | 启动检查时 `38695562898` pending | 不能以既有组合报告替代当前 HEAD 结果 |
+| 本地角色与 grant | 创建、编辑、删除、引用校验、有效权限计算 | 提供版本化资源与动作契约 |
+| subject 绑定、可信角色映射 | 精确匹配、角色并集、查询域、撤权 | 提供经过认证的可信身份 |
+| 登录账号 | 管理页面、控制器、操作授权和错误显示 | 公开目录接口、账号与凭据存储、认证有效性 |
+| 管理页面 | 业务组件、表格、表单、翻译和保存流程 | 通用菜单／页面激活点、主题／语言上下文 |
+| 策略数据 | PostgreSQL 表、迁移、版本、初始化与更新 | 公开迁移机制，不提供业务策略表 |
 
-本次直接检查运行容器的 image ID、RepoDigests 和从 `/app/kestra` 复制出的实际 jar：
-镜像 digest 为 `sha256:878be36bcb1a2d15266f6c7c05921f77d836136604bd956a5318671c2f34186c`，
-宿主 executable SHA-256 为 `bc4c8645de85a2fe2fa395af5d7b13067c236ef276a33476662f68da49732ec7`。
-下载插件 artifact 与保留部署 jar 的 SHA-256 均为
-`914e655b1c8e0d3e25db5ece7981391532711cd381f248e03407438f2cef2748`。
-下载 provenance 指向同一宿主镜像和 executable hash。宿主含 533 个 `ui/` 条目，插件
-没有 UI 资源。overlay 从上述发布提交到当前 HEAD 的 `patches/`、`scripts/`、README 和
-能力文档无差异；文档规则变更不能自动视作新镜像通过发布门。
+不做：组、服务账号、邀请、SCIM、身份冒用、EE token、完整审计产品、多租户、跨 IdP
+身份合并、运行时装载 bean、无重启替换 jar。首期不改登录名、不物理删除账号，避免
+当前 username 即 subject 时账号重用继承旧绑定。创建账号不自动绑定角色。
 
-下载的既有组合报告中，普通角色浏览器 199/199 通过，管理员 seed/enabled/disabled
-各 78/78 通过；生产账号准备 XML 为 1 项、零失败、零错误、零跳过。下载插件 jar 无
-宿主／Micronaut／Jackson 类，含 10 个 Micronaut 索引条目。这些检查不包含新管理功能。
+## 2. 机制证据与结论的边界
 
-overlay 失败日志列出 Micronaut Security、Nimbus、jbcrypt 及测试依赖找不到。这里仅确认
-失败发生在依赖解析，未判定为代码缺陷或可安全重跑的问题；未修改依赖、未重触发 workflow。
-后续构建 overlay 镜像前必须重新调查并通过发布门，不能复用本次红色 HEAD 作为编译凭证。
+源码调查基线为宿主固定 BASE `172dd0f3760fb1255d3b22bd1fd07ce31b173fa3` 加 overlay
+`a7d4ea6` 补丁，以及本插件 `58d38bd`。源码调查允许识别契约缺口，不是本项目构建步骤。
+公开构建入口仍是本项目 README 和 `host-contract.properties`。
 
-本地 ego-browser 实际从 `/ui/` 进入生产 OIDC 登录。浏览器填充凭据登录被拒绝；当前
-bootstrap 配置未建立有效登录，本轮未进入管理参考页。因此未宣称当前管理页面视觉验收
-通过。浏览器任务空间 7 已结束。后续必须在隔离 Compose 中准备有效测试账号，再观察
-MCP Servers 列表与编辑页，完成主题、语言和窄屏比较。不得为调查重置用户部署密码。
+发布产物、provenance 和既有组合报告已经核对；版本与 hash 不在本文重复保存。插件
+历史检查见 `docs/validation.md`，宿主发布与候选状态以所属能力文档和成功发布门为准。
+既有组合报告由部署仓维护，不能证明本方案的新功能。源码存在、公开发布、独立验证、
+组合验证分别判定，不以 CI 成功代替新契约验收。
 
-源码调查使用 `.work/rbac-management-source`：从本地已有 Git 对象独立检出固定 BASE
-`172dd0f3760fb1255d3b22bd1fd07ce31b173fa3`，逐个 `git apply --check` 后应用当前补丁。
-该树仅作源码调查，未编译宿主，不是插件构建依赖。原有 `.work` 树未 reset 或清理。
-下载的发布产物和报告保留于 `.work/rbac-management-evidence/`，不提交。
-
-## 3. 机制证据表
-
-表中上游源码路径相对于上述 BASE 加补丁树；插件路径相对于插件仓。源码定位与公开
-契约分别列出，不能把 Java 的 `public` 方法或 UI workspace 包当作正式扩展契约。
-
-| 用户行为 | 源码与公开文档定位 | 已发布产物与实际行为／可复现缺口 | 负责仓与判定 |
+| 用户行为 | 调查定位 | 已有证据与限制 | 归因与处理 |
 |---|---|---|---|
-| 装载插件后端管理控制器 | overlay README 的 classpath 契约；`TypedRestRbacFilter.doFilter`；`OssRestOperationAdapter.resolve/administrative` | 发布 jar 有 typed SPI；匹配路由带 `tenant=main` 时未知控制器落 SYSTEM/EXECUTE；已有 CI 管理员门通过。尚未运行真实外部管理控制器探针 | 插件实现控制器；已有公开机制可用，须补宿主独立探针确认边界 |
-| 从菜单进入角色页面，直接访问并刷新详情 | `ui/src/main.ts`、`utils/init.ts`、`routes/routes.ts`、`override/components/useLeftMenu.ts` | 路由和菜单为构建期表；`admin/iam` 指向 `components/demo/IAM.vue` 且菜单 locked。jar 无 RBAC 页面；无 classpath 管理页面注册机制 | overlay；需宿主扩展点，候选见 R-EE-RBAC 的管理页面提案 |
-| 使用上游插件 UI | `ui/src/remoteComponents/useFederatedModule.ts`、`packages/slot-contracts/src/index.ts`；`PluginController.getPluginUiManifest/getPluginUi` | 现有联邦模块按 task type 和 plugin group 装载，仅 topology details/task drawer/task modal 三插槽；不是管理路由。公开 npm 的 slot-contracts 查询 404，源码标 private | overlay 复用装载思想；不得假装任务插槽已支持管理页 |
-| 从独立 jar 提供静态资源 | `UiController.serve` 的 classloader `getResource("ui/" + path)`；overlay README 静态放行范围 | classpath 资源有读取路径，但未知路径回退 SPA HTML，HTTP 200 不能证明 JS 存在；没有名称隔离、资源清单和外部管理页发布契约 | overlay；需最小资源注册契约，不直接将内部 UiController 当发布 API |
-| 使用宿主表单、表格和按钮 | `ui/packages/design-system/package.json`；公开 npm `@kestra-io/design-system@0.5.0` | 实际下载 tarball，含 dist、KsListingPage/KsDataTable/KsForm/KsButton 与 styleBase 等 exports。宿主 workspace 版本是 `0.0.0-dev`，不能从版本名证明二者一致 | 公开组件包已有机制可用；overlay 只需发布精确兼容清单及验证文档，缺少兼容项才补适配 |
-| 跟随主题和切换语言 | `utils/init.ts` 的 i18n 初始化／additionalTranslations，`override/stores/misc.ts` 的 theme；REQ-0320 机制文档 | 内部初始化可合并翻译；design-system 有自身语言资源。独立登录翻译入口仅服务认证表单，无外部页面主题、应用翻译和偏好上下文契约 | overlay；需窄化的宿主 UI 上下文，不复制内部翻译源码 |
-| 管理请求使用登录身份和 CSRF | `TypedRestRbacFilter` 读取 `SecurityFilter.AUTHENTICATION`；`filter/CsrfTokenFilter`；`UiIndexService`；README cookie/CSRF 契约 | `/api/.*` 的 cookie 写请求由宿主 CSRF 门处理，页面 meta 提供 token；已有组合检查。OAuth scope 不能作为管理角色；插件不能信任请求体 subject 作为调用人 | 插件复用已认证 Authentication 及现有 API 门；已有公开机制可用，部署不得放宽 `/api/**` |
-| 列出、创建、停用登录账号或重置密码 | `oidc/services/OidcUserService`；`oidc/controllers/`；`r-oidc-server.md` 的 REQ-0140 历史待项 | 发布 jar 含内部服务，没有公开 UserDirectory SPI 或用户管理控制器；`create` 冲突后仍调用 setPassword，不能直接提升为公开创建语义。首装 API 完成后关闭，不可复用 | overlay；需宿主公开目录契约，候选在 OIDC 能力文档 |
-| 修改角色后实际授权改变 | 插件 `RbacConfiguration`；`PolicyEngine` 构造器、effectiveRoles、authorizeTyped；两个 Configured authorizer 与 SafeFlowDependencies | 策略编译为 final Map/Set，三个消费入口持有同一引擎；没有仓储、管理控制器、写入或刷新入口。改配置需 Compose 更新容器，不能即时保存 | 插件业务缺失；已有 DI/JDBC 可用，不需宿主策略存储扩展点 |
-| 重启后保留策略和升级表结构 | `core/migration/MigrationRunner` 注入 `Collection<MigrationScript>`；MigrationScript 文档 | 发布 executable 有 MigrationScript；F2 已有收集机制，插件尚无自身迁移。SQL 必须配 bean；独立构建与真实迁移仍待实施验证 | 插件；已有公开机制可用，宿主 README 应补稳定消费与唯一脚本 ID 约束 |
+| 注册管理 API | overlay 的 TypedRestRbacFilter、OssRestOperationAdapter；本项目 README 的 typed 契约 | 当前源码把带 tenant 的未知控制器归为 SYSTEM，但 README 没有明确承诺外部控制器分类稳定性；未运行外部控制器探针 | 待宿主公开确认并验证，不依赖 default 分支永久不变 |
+| 菜单、详情与刷新 | 宿主 routes/routes.ts、utils/init.ts、useLeftMenu.ts | 路由／菜单为构建期表，IAM 为 demo；没有独立管理页面注册契约 | 宿主候选激活点，不复制宿主路由源码 |
+| 插件 UI 通道 | useFederatedModule.ts、slot-contracts/src/index.ts、PluginController | 现有联邦装载 task 类型的 topology 三插槽，不能注册管理页面；公开 npm 未取得 slot-contracts | 不注册假任务绕过缺口 |
+| 独立静态资源 | UiController.serve | classpath 资源可读取，缺失文件可能回退 SPA HTML；没有外部页面资源发布契约 | 候选资源描述与真实 404，不以 200 证明 JS 存在 |
+| 表单与表格 | 公开 npm @kestra-io/design-system@0.5.0 | 实际取得 tarball，含 dist、组件与样式 exports；尚未证明与宿主 workspace 一致 | 优先独立消费公开包，先做兼容探针 |
+| 主题与语言 | 宿主 utils/init.ts、misc store、独立认证翻译入口 | 内部可初始化 i18n；登录入口不提供外部管理上下文 | 候选偏好桥接，不暴露内部 store／翻译源码 |
+| 可信身份与 CSRF | 宿主认证链、CsrfTokenFilter、UiIndexService；公开 README | API cookie 写请求已有 CSRF，typed SPI 已有可信 principal；控制器身份接收方式仍须正式说明 | 复用认证／CSRF，不信任请求体调用人 |
+| 登录账号管理 | OidcUserService、OIDC controllers、OIDC 能力文档 | 有内部服务，无公开目录 SPI；内部 create 冲突后仍 setPassword | 目录适配候选，不调用内部类或写表 |
+| 即时策略更新 | 本项目 RbacConfiguration、PolicyEngine、authorizer、SafeFlowDependencies | 启动时编译 final Map/Set，无持久化或刷新入口 | 本项目业务缺失，不需宿主策略表 |
+| 复合操作与查询一致性 | TypedRestRbacFilter、RbacExecutionGate、TypedNamespaceAccessControl | 多次 SPI 调用及请求内查询范围缓存，没有公开策略快照边界 | 新宿主机制候选，存储实现不能单独解决 |
+| 数据库故障拒绝 | TypedAuthorizationGate、TypedRestRbacFilter | 授权异常／超时转 deny，REST 返回 403 | 保留已有语义，控制器内存储故障才返回 503 |
+| 插件业务表升级 | MigrationRunner 聚合 MigrationScript bean | 已有迁移收集机制，插件尚无业务迁移与初始化工具 | 插件自带 bean+SQL；先确认稳定接口与 ID 约束 |
 
-公开组件 tarball 的 npm integrity 为
-`sha512-5KJ229xVkJs8tMSWDDxJbv1eB70oKlMP1GQ9KkeZhjyWyJKnPuxyRROwSuD4nxK1dvQFGIabjJldsgXdicl0mQ==`。
-该证据只证明包可获取和包含公开入口，尚未进行独立安装、挂载与兼容验证。
+源码位置只作调查定位，不能写成本项目运行时依赖。真实 UI 参考页的本地登录未成功，
+因此未完成布局、语言和主题比较；实施前必须使用隔离环境的测试账号补验，不修改用户
+部署密码。候选宿主提案接收前必须用宿主最小探针补足行为证据。
 
-## 4. 管理对象、页面与 API
+## 3. 管理 API、开关与权限
 
-| 对象 | 插件页面与拟定 API（均未实现） | 首期语义 |
-|---|---|---|
-| 登录账号 | 用户列表／详情；`/api/v1/{tenant}/extensions/rbac/users` | 插件控制器鉴权后消费宿主目录 SPI；分页、创建、资料更新、启停、密码重置，不读内部表 |
-| 本地角色 | 角色列表／详情；同前缀 `/roles` | 名称、说明、grant 列表；角色 ID 稳定，名称与显示说明分开；被绑定角色不得直接删除 |
-| 主体授权绑定 | 用户详情的授权页；同前缀 `/bindings` | 精确可信 subject → 本地角色；展示账号不存在或已停用状态，不推断为新身份 |
-| 可信角色映射 | 授权管理页；同前缀 `/role-mappings` | 精确宿主角色值 → 本地角色，不把前端输入当可信身份声明 |
-| 当前策略 | 同前缀 `/policy`、`/policy/validate`、`/policy/import` | 模式、revision、校验／迁移预览和显式导入；不提供任意 SQL 或脚本 |
+候选 API 根路径 `/api/v1/{tenant}/extensions/rbac`，tenant 为当前 OSS 的 main。
+这是插件自己的 API；插件不得解析宿主 controller、handler、URL 或 chart 进行授权。
 
-页面路由建议放在 `/ui/main/extensions/rbac/` 下，使用宿主外壳中的用户、角色、授权三个
-入口；不替换 EE `admin/iam`，不改变 edition，不把三个页面实现写入 overlay。
-用户详情分别读取账号资料与插件授权，并明确两者保存边界。账号创建成功但绑定保存失败
-时账号保持零授权，页面报告两步结果；不得伪造跨仓数据库事务。
+| 页面／API | 首期语义 |
+|---|---|
+| 角色列表与详情；/roles | 稳定角色 ID、名称、说明、grant；被引用角色删除返回冲突 |
+| 授权管理；/bindings、/role-mappings | subject 或可信角色值绑定普通本地角色，引用必须存在 |
+| 策略信息；/policy、/policy/validate | 来源、schemaVersion、revision；无 HTTP 首次导入或任意 SQL 接口 |
+| 用户列表与详情；/users | 后续消费公开目录契约；资料、启停、密码重置与授权分别保存 |
 
-首期只允许实例管理员。管理 API 仍在关闭管理功能或关闭 RBAC 时拒绝装载／调用，不能因
-宿主业务 RBAC 门关闭而变成“所有已登录用户可管理”。管理可见性从插件 capability 查询
-获得，服务端每次重新检查。匿名 401，已认证非管理员 403；不存在资源 404；名称／绑定
-冲突 409；缺少 If-Match 428、版本不符 412；非法 grant 400；数据库故障 503，无写入。
-正式实现必须为错误返回稳定 code，并将界面文案放入翻译目录，不回显密码或存储异常。
+页面位于宿主扩展根路径下，不覆盖 EE IAM，不改 edition。账号创建与绑定是两个独立
+操作：前者成功、后者失败时账号保持零授权，分别报告结果，不假造跨仓事务。
 
-不得通过管理 API 新增实例管理员标志或编辑应急管理员。首期保留一个部署侧精确 subject
-到受保护管理员角色的绑定，作为数据库模式不可编辑的授权锚点；该角色无普通 grant，
-不参与普通角色并集。必须先核对并显式配置该 subject，不能默认相信客户端 `admin` 字符串。
-数据库不可用时锚点也不绕过数据库故障门；恢复通过数据库备份和部署操作进行。
-后续如需委派或可编辑实例管理员，必须另行设计权限升级边界和最后管理员防锁死事务。
+候选 `kestra.rbac.management.enabled` 默认 false，启用要求 RBAC 与 typed 均开启，
+不要求数据库模式，因此配置模式也能显示只读页面。数据库模式且管理开启才提供写入。
+管理关闭或 RBAC 关闭时控制器不装载；capability 若保留，只返回 disabled，不返回业务
+数据。资源可读与菜单可见不代替服务端授权。
 
-## 5. 数据事实来源、并发与更新
+业务读取和写入仅允许当前实例管理员。配置模式沿用已有管理身份；数据库模式采用下述
+独立规则。宿主如何分类外部控制器须先公开确认，插件仍必须自己检查管理身份。不能依赖
+@Secured、菜单或内部 default 分支。
 
-候选配置 `kestra.rbac.policy-source: configuration|database`，默认 configuration。
-候选管理开关默认关闭；开启时必须 database、统一 RBAC 和 typed 门均开启。
+| 失败阶段 | 响应语义 |
+|---|---|
+| 宿主认证、CSRF、统一授权门 | 沿用发布契约：匿名 API 401；CSRF／策略拒绝和授权组件异常为 403，不承诺插件业务 code |
+| 控制器已进入，管理身份不足 | 403；插件稳定 code，不暴露账号详情 |
+| 配置模式写入 | 409 policy_read_only，不落库 |
+| 不存在、名称或引用冲突 | 404 或 409，不静默覆盖 |
+| 缺 If-Match、revision 不符 | 428 或 412，整个策略变更回滚 |
+| 非法输入、控制器内存储失败 | 400 或 503，不包含密码、哈希和 SQL |
 
-### 配置模式
+### 数据库模式的管理身份
 
-沿用现有 roles、subjects、role-mapping、instance-admin-roles 校验和启动时不可变策略。
-管理页面可以显示模式及只读配置来源，不提供保存按钮；写 API 拒绝。不能将 API 写入
-仅存内存，不能通过管理页面修改 Compose 的 `KESTRA_CONFIGURATION`。
+候选部署配置 `management-admin-subjects` 为核实后的精确 subject 集合，必须非空。
+它直接授予实例管理权，不经普通 roles／subjects／role-mapping 形成管理员角色。
+这是独立于可编辑普通授权的部署信任根，不是 YAML 与数据库普通策略的合并。
+不读取原始 header，不按显示名或客户端自报角色匹配，不在数据库故障时绕过授权门。
 
-### 数据库模式
+数据库策略不得包含 instance-admin-roles、实例管理 grant 或管理身份字段；导入、校验、
+角色／绑定／映射写入的同一编译器必须拒绝这些字段。管理 API 不能修改信任根或通过
+角色名取得等价权限；看似保留的角色名也不能获得特殊语义。
+配置中的管理 subject 都受保护：插件拒绝停用、改身份或重置其密码，恢复与轮换由部署方
+通过定义好的恢复流程执行。宿主目录不接收受保护角色、不判断最后管理员。
+轮换先验证新 subject 能登录和管理，再移除旧 subject；首期不提供在线委派。
 
-插件拥有 PostgreSQL 表：策略头（schemaVersion/revision）、版本化完整策略数据和最小
-变更元数据（操作者 subject、时间、旧／新 revision）。最小元数据用于诊断和并发裁决，
-不是完整审计产品。首次可使用完整规范化策略 JSON 加 revision，避免同时引入多套复杂
-实体关系与同步协议；角色、绑定 API 都在同一完整策略事务内校验并提交。
+## 4. 策略事实来源与初始化
 
-1. 初始化必须显式导入配置快照；预览校验所有角色引用、scope、ID 约束、exact/subtree
-   与管理员锚点，管理员确认后原子建立首个 revision。不在每次启动自动导入。
-   数据库模式启用但无有效策略必须拒绝运行，不回退到 YAML。
-2. 导入是迁移操作，由独立受控命令执行，消费同一策略校验器、连接配置和发布产物；在
-   数据库模式启动前完成。禁止通过匿名 setup 或业务 API 绕过管理员校验进行首建。
-3. 数据库模式出现旧 YAML 普通策略时启动报错并指明迁移方法。部署锚点使用独立配置，
-   不与 YAML 普通 roles 混用。数据库已初始化后，重启不得覆盖数据或恢复已撤销绑定。
-4. 每个授权决策先取得数据库已提交 revision；在一致读事务中读取对应完整策略，编译为
-   不可变快照。可按 revision 缓存编译结果，但不得缓存“当前 revision”并靠通知保证撤权。
-   新决策在提交后必须读到新 revision。数据库读取失败则拒绝，不能用旧缓存继续允许。
-5. REST、typed、MCP、查询 scope 和 SafeFlowDependencies 的管理员判断统一使用策略
-   提供器，禁止其中一个仍持有启动期 PolicyEngine。runtime execution gate 再取当前策略。
-   一次决策只使用一个完整 revision；已经通过检查的在途副作用不宣称可追溯取消。
-6. 管理写操作在事务中锁定策略头，按锁内当前 revision 重新验证调用人管理权，再比较
-   If-Match 并编译候选策略，最后写入完整新 revision。不能用请求入口处的旧管理员检查
-   覆盖撤权后的并发写。候选校验／数据库失败全部回滚；成功响应只在 commit 后返回。
-7. 账户目录状态和策略库是两个事实来源。停用账号由宿主使会话／token 失效；撤销绑定由
-   插件使后续授权拒绝。账号停用不删绑定，恢复账号的授权效果必须在确认页明确展示。
-8. 多实例共用同一 PostgreSQL，依赖数据库锁和 revision，不依赖单 JVM 事件。首个交付
-   只声明 PostgreSQL，必须验证两个 JVM 撤权一致性；通知只能优化界面刷新。
+候选 `kestra.rbac.policy-source: configuration|database` 默认 configuration。
+配置模式保留现有 roles、subjects、role-mapping、instance-admin-roles 校验和行为，页面
+只读。配置变更通过部署更新并重启 JVM 生效，不由管理 API 改 Compose。
 
-读取 revision 增加数据库负载，但省去广播丢失、失效窗口和双事实来源；首期优先保证撤权
-正确性。性能门测量真实授权频率与延迟；有证据后再设计优化，不能先引入容许旧授权的 TTL。
+数据库模式只从插件 PostgreSQL 表读取普通策略。出现旧 YAML 普通策略明确报错，不在
+启动时覆盖数据库。表包含策略头、schemaVersion、单调 revision 和不可变规范策略内容；
+变更记录操作者 subject、时间和旧／新 revision，用于诊断而非完整审计产品。
+首期采用完整策略 JSON 简化跨对象引用，不同时引入实体表及另一套同步机制。
 
-## 6. 阶段与发布依赖
+首次初始化由插件独立工具执行：
 
-| 阶段 | 实施范围与负责仓 | 进入下一阶段的门 |
-|---|---|---|
-| A：契约定稿 | overlay 收窄页面装载和账号目录候选提案，确认 design-system 精确版本及主题／语言桥接；插件确定策略模式与迁移 schema | 文档接收、失败探针和兼容矩阵明确；现有 CI 依赖解析失败已归因；候选仍不可作为编译输入 |
-| B：宿主机制发布 | overlay 实现通用 UI 注册／上下文和目录 SPI；补外部控制器管理员／CSRF 独立探针，公开迁移使用说明 | 宿主独立 CI 全通过，发布 digest 与兼容元数据；探针不得读取真实 RBAC 源码 |
-| C：策略与角色授权管理 | 插件从发布镜像取得依赖，先实现数据源、迁移、revision、管理守卫、角色／绑定 API 和页面 | 独立克隆 README 构建与 CI 通过；jar 含 bean、SQL、静态资源且无宿主类；发布 artifact |
-| D：账号管理 | 插件消费已发布目录 SPI，提供用户页面与账号 API；复用阶段 C 的授权绑定 | 创建、重复账号、资料更新、停用、密码重置及会话撤销独立验证；无内部服务／表依赖 |
-| E：组合验收 | 根仓选择发布 digest 与 jar hash，隔离 Compose + 真实浏览器；如 C 单独部署，明确标为角色授权管理阶段 | 下载最终提交成功报告并核对矩阵、零跳过、hash、权限及副作用；才可声明完整管理交付 |
+1. 从发布插件 artifact 和声明的运行依赖启动插件自有入口；不启动宿主 Web server，
+   不依赖宿主内部 CLI 注册或相邻源码。凭据从受保护配置／环境读取，不上日志。
+2. dry-run 解析配置、验证 schema 与全部 grant／引用，单列原管理员绑定供部署方确认
+   移入独立信任根。不得将旧管理员角色保留为可编辑实例管理员。
+3. 在最小 JDBC 上下文中取得迁移锁，执行与 MigrationScript bean 共用的插件迁移代码。
+   表和迁移 ID 必须插件专属；不依赖 PolicyEngine 或业务 repository 初始化。
+4. 取得初始化锁，仅在空策略库原子写入首个 revision；相同输入重入不变更，已有不同
+   内容返回冲突。工具不提供无条件 overwrite。
+5. 部署方设置 database、移除旧普通 YAML 策略、配置管理 subject 后启动 JVM；无有效
+   schema／策略失败关闭。重启只读取，不重导入。命令、退出码、dry-run、冲突与恢复
+   必须进入插件 README 后才可交付。
 
-可以先交付阶段 C，但不能将“为已知 subject 编辑绑定”描述为登录账号管理。
-本轮没有实现 API、创建业务表、编译插件 jar、构建镜像或变更用户部署。
+工具依赖打包和正式命令尚未实现，属于插件交付门，不要求部署方使用开发树。恢复使用
+兼容 schemaVersion 的完整 revision；不兼容则拒绝启动，禁止回退 YAML。历史保留策略、
+策略大小、角色和 grant 上限必须在存储实施前定稿，不能无限增长。
+工具入口属于同一个薄插件 jar，运行依赖来自声明的发布产物，不另建宿主构建流程或
+平行的业务产品。工具与启动迁移必须使用同一锁协议，防止命令和 JVM 并发迁移。
 
-## 7. 独立验证与组合验收条件
+## 5. 更新一致性、并发与性能
 
-宿主独立探针必须验证：classpath 测试扩展注册页面／菜单／资源、普通用户不能访问管理
-API、管理员允许、缺 bean／重复 ID／未知版本拒绝、cookie 写入 CSRF、资源 MIME／缓存、
-直接访问与刷新、扩展故障不破坏原页面。目录探针必须覆盖原子创建与冲突不改密码、
-乐观锁、停用／重置后既有 UI、IdP、access/refresh token 与 MCP session 的失效边界。
+安全单位是完整操作计划，不是单个 SPI 调用。候选运行语义：
 
-插件必须验证：配置模式回归、导入幂等与重启不覆盖、非法引用回滚、并发更新一胜一冲突、
-事务内再授权、数据库故障拒绝、两 JVM 撤权、所有策略消费入口版本一致、缺／多 bean、
-旧 schema 拒绝与备份恢复。不得通过插件 CI checkout overlay 源码完成上述检查。
+1. 宿主在一次 REST 操作计划、一次 MCP 工具操作或一次 runtime execution 检查开始时，
+   建立授权评估边界；插件读取当时数据库已提交 revision，取得不可变策略快照。
+2. 同一边界的全部资源／动作、额外依赖和查询范围使用该快照。READ 与 EXECUTE 不得
+   从不同 revision 拼接；scope 缓存限定在同一边界内。
+3. 边界开始前已提交的变更必须可见。已开始边界可以使用旧快照完成，不宣称撤权能取消
+   已授权副作用；runtime execution 为新边界，必须重新检查完整执行要求。
+4. 新边界读取数据库失败则拒绝，不用旧缓存允许。可按 revision 缓存编译结果，不跨边界
+   缓存当前 revision。快照必须释放，异步任务不得继承旧句柄。
 
-根仓实际用户矩阵至少包含：实例管理员、单角色 reader/writer、多角色 A 写/B 读、exact
-namespace、无角色映射且无 subject 绑定的零授权账号。管理员通过真实 UI 修改明确字段，
-核对保存记录与 revision；普通用户直接请求同一 API 拒绝，比较账号、策略和队列副作用。
-创建账号后实际登录，先验证零授权，再绑定并验证 A 写/B 读/B 写拒绝/范围外拒绝；撤销
-绑定后用既有会话同时验证 REST、列表 total/aggregate 和 MCP 后续调用已拒绝。
+现有公开 SPI 仅接收单个 operation，宿主还缓存请求内查询域，无法据此证明上述语义。
+最小宿主候选记录在 overlay 的 R-EE-RBAC 文档；未接收和发布前，不宣称数据库热更新
+可安全部署。不得用 ThreadLocal、subject 全局缓存、反射或复制内部上下文模拟边界。
+句柄不包含 JDBC 连接或事务；获取快照后立即结束读取事务，评估期间只保留不可变数据。
 
-允许保存后无需重启即影响新请求；重启 JVM 后仍保留。并发保存、失联数据库、无 jar、
-管理关闭、RBAC 关闭、坏 CSRF、跨源和未知路径均有确定拒绝行为。目录停用或重置后
-旧会话不得仍能进入业务；绑定撤销不得靠退出登录才生效。拒绝必须核对延迟副作用。
+管理策略写入在锁定策略头的事务中，读取当前策略、再次验证调用人、比较 If-Match、
+编译完整候选策略并原子提交 revision；失败全部回滚，响应只在 commit 后返回。
+账号写入由目录 revision 保证并发；管理身份来自部署信任根，因此普通策略修改不能
+新增或撤销管理人。目录操作不持有插件策略事务跨越另一个服务事务。
 
-UI 必须对照实际发布宿主 MCP Servers 列表／编辑页面，检查正常、空数据、加载、拒绝、
-错误、未保存离开、保存冲突及成功状态。覆盖全部宿主语言、light/dark/dark-2/跟随系统、
-390 像素窄屏、键盘焦点、翻译实际内容、直接访问、刷新和退出换号。本地与 CI 复用同一
-矩阵；静态资源可读不授予数据权限。本轮没有执行这些新功能验收，不将调查计为通过。
+性能预算：缓存命中每边界最多一次当前 revision 查询，缺失最多再读一次完整快照；
+禁止每个 grant／operation 往返数据库，无变化不重编译 JSON，同 revision 并发编译合并。
+两个 JVM 都必须在新边界看见提交后的版本。实施前声明策略规模、并发数、连接池上限、
+查询超时和可接受 p95 授权延迟；未测量不得称性能通过，不靠缓存旧当前版本达标。
 
-## 8. 复核入口
+## 6. 两条发布依赖链
 
-```bash
-git status --short
-git submodule status
-git ls-remote origin refs/heads/main
-gh run view 38695537351 -R ai-specs/kestra-overlay --log-failed
-gh run view 38686689513 -R ai-specs/kestra-overlay
-gh run view 38695540439 -R ai-specs/kestra-plugin-rbac
-gh run download 38695540439 -R ai-specs/kestra-plugin-rbac --name kestra-rbac-authorizer --dir <空目录>
-gh run download 38688730525 -R ai-specs/kestra-monorepo --name compose-acceptance-38688730525-1 --dir <空目录>
-npm view @kestra-io/design-system@0.5.0 --registry=https://registry.npmjs.org version exports dist.integrity --json
-npm pack @kestra-io/design-system@0.5.0 --registry=https://registry.npmjs.org --pack-destination <证据目录>
-```
+| 线路 | 宿主先决条件 | 插件独立实现与发布 | 部署仓验证 |
+|---|---|---|---|
+| 角色／授权 | 通用页面挂载、偏好桥接、外部控制器授权公开说明、授权评估边界通过接收并发布 | 策略库、初始化工具、编译器、角色／绑定 API 与页面；从发布宿主产物构建，发布 jar 与工具运行依赖 | 固定兼容产物，验证管理、即时更新、重启及复合授权一致性 |
+| 登录账号 | 独立接收并发布目录适配与认证失效机制 | 消费目录契约，增加用户 API 和页面，沿用普通授权绑定 | 创建后零授权登录、绑定、撤销、停用、重置及会话失效 |
 
-本项目提出的宿主候选需求分别由 overlay 仓 `docs/r-ee-rbac.md` 的管理页面提案和
-`docs/r-oidc-server.md` 的账号目录提案承载。两者自包含，不要求宿主构建读取
-本插件文档；差异表和机制文档同步标记候选、未接收、未发布。
+账号目录不阻塞角色／授权线路。配置回归、编译器和存储纯业务验证可先做；依赖候选宿主
+契约的生产功能等待正式发布。每条线路均按宿主发布、插件发布、Compose 集成验收推进，
+不得由插件 CI 触发宿主构建或组合运行。
+
+## 7. 验证条件
+
+插件独立验证：配置只读、模式开关、schema 升级、初始化重入／冲突、非法引用回滚、
+管理员字段及间接引用拒绝、If-Match、事务再授权、数据库失败、版本切换、缓存上限及
+多角色并集。旧版本只允许 A、新版本只允许 B 时，必须拒绝要求 A+B 的完整计划。
+使用公开契约替身，不 checkout 或编译相邻宿主。
+
+宿主独立探针归宿主维护；插件需求只描述行为，不指定测试内部目录、不要求真实插件
+业务代码。探针覆盖评估句柄传播／释放、查询缓存边界、REST/MCP/runtime 完整计划、
+资源真实 404、管理 API 认证／CSRF 和 UI 契约兼容。
+
+部署仓使用发布产物验证管理员、单角色 reader/writer、A 写 B 读多角色、exact namespace
+及无映射／绑定的零授权账号。UI 修改明确字段并核对 revision，撤权后用既有会话的
+新请求检查 REST、列表 total/aggregate 和 MCP，比较拒绝的存储与延迟队列副作用。
+多 JVM 检查只验证策略可见性，不据此宣称完整宿主高可用。
+
+UI 对照实际发布宿主管理页，检查正常、空数据、加载、拒绝、错误、编辑、冲突和保存；
+覆盖全部语言、light/dark/dark-2/跟随系统、窄屏、焦点、直接访问、刷新和退出换号。
+本地与 CI 复用矩阵；发布门、视觉一致性和组合行为分别提供证据。
+
+上游升级时，overlay 先验证公开契约与最小探针，插件再使用正式产物独立构建。前端模块
+不接收宿主框架实例，业务授权不识别宿主控制器；内部变化应优先止于宿主适配层。
+兼容表分别声明 Java SPI、前端模块协议、公开组件包与策略 schemaVersion，不用一个
+镜像标签替代这些兼容关系。新增 enum／未知字段按契约明确拒绝或兼容，不静默扩大权限。
+旧数据库的前向迁移必须可验证；回滚旧插件若不支持新 schema，明确拒绝并从备份恢复，
+不得承诺任意二进制降级。支持的旧／新产物组合必须在发布前通过公开契约测试。
+
+## 8. 规则审查与下一项工作
+
+| 规则 | 前版偏差与修正 |
+|---|---|
+| 根仓职责及用户纠正 | 业务方案留插件；删除部署进程、浏览器空间、重复 hash 及根仓 CI 状态，避免插件文档变成部署会话记录 |
+| 插件公开契约要求 | default 分支、内部 Authentication attribute 和 classpath 读取不是稳定接口；改为待宿主公开确认与探针验证 |
+| overlay 入口 B 与 UI 禁令 | 候选提案可以保留；缺行为探针、明确接收和必要例外不得实现 patch，插件业务裁决不能代替宿主接收 |
+| overlay 薄激活点边界 | 应急管理员保护归插件；目录只处理账号／凭据／认证有效性；评估提案不含策略表与 revision 模型 |
+| 独立发布与证据 | 既有测试不证明新功能；工具、契约和两条线路分别通过发布门 |
+
+下一项工作是宿主在所属能力文档中比较候选并设计最小行为探针，优先确认授权评估边界
+及页面激活的最小面；完成接收前不得实施生产 patch。插件同步定稿存储限额和工具依赖。
+本文不重复宿主接口实现细节，不改变各仓 AGENTS.md 的实现和接收规则。
