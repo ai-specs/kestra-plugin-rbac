@@ -8,6 +8,10 @@ are extracted from the immutable published image, independently of any overlay s
 
 ## Build independently
 
+用户、角色和授权管理功能的业务调查与阶段方案见
+[RBAC 管理功能方案](docs/rbac-management-plan.md)。该方案属于本插件，相关宿主机制
+需求向 overlay 独立提案；管理 API、页面和数据库策略尚未实现或发布。
+
 Requirements: Docker, JDK 25, Python 3 and read access to the private GHCR host image.
 Authenticate to GHCR with a credential that has `read:packages` access, then run:
 
