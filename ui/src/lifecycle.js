@@ -1,5 +1,6 @@
 import {createApp, h, shallowReactive} from 'vue'
 import {createI18n} from 'vue-i18n'
+import {ElConfigProvider} from 'element-plus'
 import App from './App.vue'
 
 const documents = import.meta.glob('./translations/*.json', {eager: true, import: 'default'})
@@ -56,7 +57,7 @@ export async function mountPage(container, initial) {
       target.lang = locale(next.locale).replaceAll('_', '-')
     }
     update(initial)
-    app = createApp({render: () => h(App, {context: state.context})})
+    app = createApp({render: () => h(ElConfigProvider, {namespace: 'kel'}, {default: () => h(App, {context: state.context})})})
     app.use(i18n)
     app.mount(target)
     return {update, unmount}

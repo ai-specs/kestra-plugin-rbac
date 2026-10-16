@@ -53,6 +53,18 @@ SYSTEM、INSTANCE和管理员配置；ids与allIds互斥，不支持通配符。
 
 ## 页面与请求
 
+扩展页组件样式、主题和筛选必须与上游同构页一致。验收以所消费正式宿主的 MCP Servers
+详情 tabs 和按钮、Namespaces 表格和搜索为参照。不能以组件导入成功或 CSS 文件存在代替
+实际样式验证。组件必须消费 `.integration/ui-sdk` 指定版本与 integrity 的公开组件包，
+Element Plus 必须在扩展自己的 Vue 上下文中配置 `kel` 命名空间，不借用宿主 Vue 实例。
+tab 使用公开 KsTabs/KsTabPane，搜索使用 KsSearch，按钮与表格使用 KsButton/KsTable。
+这些组件来自同一公开包；tabs/search 属本次新增消费，须通过明暗主题实测后记录兼容结果。
+
+浏览器必须在 light 和 dark 分别断言：按钮不是浏览器默认边框和圆角；tab 的字号、字重、
+pill 形态与圆角和参考页一致；表头及行分隔线正确；背景、文字、按钮、输入与表格随主题
+翻转；搜索确实改变角色、用户和绑定列表，清空恢复。账号筛选必须覆盖全部分页，而非只
+过滤当前页；筛选后的总数和分页必须对应可见结果。刷新、切换页面、空结果及窄屏同时检查。
+
 页面根内路径为roles、roles/new、roles/{id}、users、users/new、users/{encodedSubject}、
 bindings。subject的路径片段使用UTF-8的base64url，避免路径穿越与百分号歧义；实际API
 操作的subject在JSON体中或列表结果中使用原值，不把角色显示名当身份。

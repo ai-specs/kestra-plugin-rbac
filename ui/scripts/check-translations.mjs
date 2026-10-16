@@ -9,7 +9,7 @@ const sdk = await import(sdkPath)
 if (typeof sdk.checkTranslations !== 'function') throw new Error('正式 UI SDK 缺少 checkTranslations(directory)')
 const files = (await readdir(directory)).filter(name => name.endsWith('.json')).sort()
 if (files.length !== 13) throw new Error('翻译文件数量必须为 13，实际为 ' + files.length)
-const required = ['title', 'roles', 'users', 'bindings', 'name', 'description', 'save', 'create', 'delete', 'cancel', 'back', 'subject', 'password', 'email', 'active', 'inactive', 'reset', 'roleIds', 'trustedRole', 'resource', 'actions', 'namespace', 'children', 'allIds', 'ids', 'revision', 'loading', 'error', 'saved', 'confirm', 'readOnly', 'denied', 'noRows', 'protected', 'edit', 'reload', 'conflict', 'policyMode', 'next', 'previous', 'addGrant', 'removeGrant', 'bindingSubject', 'bindingRole']
+const required = ['title', 'roles', 'users', 'bindings', 'search', 'name', 'description', 'save', 'create', 'delete', 'cancel', 'back', 'subject', 'password', 'email', 'active', 'inactive', 'reset', 'roleIds', 'trustedRole', 'resource', 'actions', 'namespace', 'children', 'allIds', 'ids', 'revision', 'loading', 'error', 'saved', 'confirm', 'readOnly', 'denied', 'noRows', 'protected', 'edit', 'reload', 'conflict', 'policyMode', 'next', 'previous', 'addGrant', 'removeGrant', 'bindingSubject', 'bindingRole']
 const titles = {}
 for (const file of files) {
   const data = JSON.parse(await readFile(resolve(directory, file), 'utf8'))

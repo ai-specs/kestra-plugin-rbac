@@ -5,6 +5,9 @@ import KsButton from '@kestra-io/design-system/components/Basic/KsButton/KsButto
 import KsInput from '@kestra-io/design-system/components/Form/KsInput'
 import KsTable from '@kestra-io/design-system/components/Data/KsTable/KsTable'
 import KsTableColumn from '@kestra-io/design-system/components/Data/KsTable/KsTableColumn'
+import KsTabs from '@kestra-io/design-system/components/Navigation/KsTabs/KsTabs'
+import KsTabPane from '@kestra-io/design-system/components/Navigation/KsTabs/KsTabPane'
+import KsSearch from '@kestra-io/design-system/components/Form/KsSearch'
 import {createClient} from './client.js'
 
 const props = defineProps({context: {type: Object, required: true}})
@@ -24,6 +27,9 @@ const error = ref('')
 const notice = ref('')
 const confirmDelete = ref(false)
 const conflicted = ref(false)
+const search = ref('')
+const directoryUsers = ref([])
+const matches = values => values.some(value => String(value ?? '').toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase()))
 let pendingLoad = false
 const resources = ['FLOW', 'EXECUTION', 'NAMESPACE', 'LOG', 'METRIC', 'TRIGGER', 'KVSTORE', 'SECRET', 'NAMESPACE_FILE', 'DASHBOARD', 'BLUEPRINT', 'MCP_SERVER', 'AI']
 const actions = ['READ', 'LIST', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE', 'ACCESS_OUTPUTS']
@@ -33,7 +39,10 @@ const detail = computed(() => path.value.split('/')[1])
 const readOnly = computed(() => policy.value?.readOnly !== false || conflicted.value)
 const protectedUser = computed(() => policy.value?.protectedSubjects?.includes(user.value?.subject))
 const roles = computed(() => policy.value?.policy.roles ?? [])
+const filteredRoles = computed(() => roles.value.filter(item => matches([item.id, item.name, item.description])))
+const filteredUsers = computed(() => directoryUsers.value.filter(item => matches([item.subject, item.name, item.email])))
 const bindings = computed(() => [false, true].flatMap(mapping => Object.entries(mapping ? policy.value?.policy.roleMapping ?? {} : policy.value?.policy.subjects ?? {}).map(([key, identifiers]) => ({key, identifiers, mapping}))))
+const filteredBindings = computed(() => bindings.value.filter(item => matches([item.key, ...item.identifiers, ...item.identifiers.map(id => roles.value.find(role => role.id === id)?.name)])))
 const copy = value => JSON.parse(JSON.stringify(value))
 const encodeSubject = value => btoa(String.fromCharCode(...new TextEncoder().encode(value))).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
 const decodeSubject = value => new TextDecoder('utf-8', {fatal: true}).decode(Uint8Array.from(atob(value.replaceAll('-', '+').replaceAll('_', '/')), character => character.charCodeAt(0)))
@@ -73,7 +82,16 @@ async function load() {
     if (requestedSection === 'users') {
       if (requestedDetail === 'new') nextUser = {username: '', name: '', email: '', password: ''}
       else if (requestedDetail) nextUser = await api.user(decodeSubject(requestedDetail))
-      else nextUsers = await api.users(users.value.page)
+      else {
+        const first = await api.users(1, 100)
+        const items = [...first.items]
+        for (let page = 2; items.length < first.total; page++) {
+          const next = await api.users(page, 100)
+          if (next.total !== first.total || !next.items.length) throw {status: 409}
+          items.push(...next.items)
+        }
+        nextUsers = items
+      }
     }
     if (path.value !== requestedPath) { pendingLoad = true; return }
     capabilities.value = nextCapabilities
@@ -90,7 +108,7 @@ async function load() {
       if (requestedDetail && !role.value) throw {status: 404}
     } else if (requestedSection === 'users') {
       user.value = nextUser
-      if (nextUsers) users.value = nextUsers
+      if (nextUsers) { directoryUsers.value = nextUsers; users.value.page = 1 }
     }
   })
 }
@@ -140,15 +158,17 @@ async function saveBinding() {
   })
 }
 
-watch(path, () => {role.value = null; user.value = null; password.value = ''; load()}, {immediate: true})
+watch(search, () => {users.value.page = 1})
+watch(path, () => {role.value = null; user.value = null; password.value = ''; search.value = ''; load()}, {immediate: true})
 </script>
 
 <template>
   <main :aria-busy="busy">
     <header><h1>{{ t('title') }}</h1><KsButton :disabled="busy" @click="load">{{ t('reload') }}</KsButton></header>
-    <nav :aria-label="t('title')">
-      <button v-for="tab in ['roles', 'users', 'bindings']" :key="tab" :aria-current="section === tab ? 'page' : undefined" @click="navigate(tab)">{{ t(tab) }}</button>
-    </nav>
+    <KsTabs type="box" :model-value="section" :aria-label="t('title')" @update:model-value="navigate">
+      <KsTabPane v-for="tab in ['roles', 'users', 'bindings']" :key="tab" :name="tab" :label="t(tab)" />
+    </KsTabs>
+    <KsSearch v-if="!detail" v-model="search" name="management-search" :placeholder="t('search')" :aria-label="t('search')" clearable />
     <p v-if="busy" role="status">{{ t('loading') }}</p>
     <p v-if="error" class="message error" role="alert">{{ error }}</p>
     <p v-if="notice" class="message" role="status">{{ notice }}</p>
@@ -157,7 +177,7 @@ watch(path, () => {role.value = null; user.value = null; password.value = ''; lo
       <p v-if="readOnly" class="message">{{ t('readOnly') }}</p>
       <template v-if="section === 'roles' && !detail">
         <KsButton data-test="create-role" :disabled="readOnly || busy" @click="navigate('roles/new')">{{ t('create') }}</KsButton>
-        <div class="table-wrap"><KsTable :data="roles" :empty-text="t('noRows')" row-key="id">
+        <div class="table-wrap"><KsTable :data="filteredRoles" :empty-text="t('noRows')" row-key="id">
           <template #empty><p>{{ t('noRows') }}</p></template>
           <KsTableColumn prop="name" :label="t('name')" min-width="180" />
           <KsTableColumn prop="description" :label="t('description')" min-width="240" />
@@ -185,13 +205,13 @@ watch(path, () => {role.value = null; user.value = null; password.value = ''; lo
       </form>
       <template v-else-if="section === 'users' && !detail">
         <KsButton data-test="create-user" :disabled="busy || readOnly || !capabilities.userDirectory" @click="navigate('users/new')">{{ t('create') }}</KsButton>
-        <div class="table-wrap"><KsTable :data="users.items" :empty-text="t('noRows')" row-key="subject">
+        <div class="table-wrap"><KsTable :data="filteredUsers.slice((users.page - 1) * users.size, users.page * users.size)" :empty-text="t('noRows')" row-key="subject">
           <template #empty><p>{{ t('noRows') }}</p></template>
           <KsTableColumn prop="subject" :label="t('subject')" min-width="180" /><KsTableColumn prop="name" :label="t('name')" min-width="180" /><KsTableColumn prop="email" :label="t('email')" min-width="220" />
           <KsTableColumn :label="t('active')" min-width="100"><template #default="{row}">{{ t(row.active ? 'active' : 'inactive') }}</template></KsTableColumn>
           <KsTableColumn :label="t('actions')" min-width="120"><template #default="{row}"><KsButton @click="navigate('users/' + encodeSubject(row.subject))">{{ t('edit') }}</KsButton></template></KsTableColumn>
         </KsTable></div>
-        <div class="buttons"><KsButton :disabled="busy || users.page <= 1" @click="perform(async () => users = await api.users(users.page - 1))">{{ t('previous') }}</KsButton><span>{{ users.page }} · {{ users.total }}</span><KsButton :disabled="busy || users.page * users.size >= users.total" @click="perform(async () => users = await api.users(users.page + 1))">{{ t('next') }}</KsButton></div>
+        <div class="buttons"><KsButton :disabled="busy || users.page <= 1" @click="users.page--">{{ t('previous') }}</KsButton><span>{{ users.page }} · {{ filteredUsers.length }}</span><KsButton :disabled="busy || users.page * users.size >= filteredUsers.length" @click="users.page++">{{ t('next') }}</KsButton></div>
       </template>
       <template v-else-if="section === 'users' && user">
         <KsButton @click="navigate('users')">{{ t('back') }}</KsButton>
@@ -209,7 +229,7 @@ watch(path, () => {role.value = null; user.value = null; password.value = ''; lo
         </template>
       </template>
       <template v-else-if="section === 'bindings'">
-        <div class="table-wrap"><KsTable :data="bindings" :empty-text="t('noRows')">
+        <div class="table-wrap"><KsTable :data="filteredBindings" :empty-text="t('noRows')">
           <template #empty><p>{{ t('noRows') }}</p></template>
           <KsTableColumn :label="t('subject') + ' / ' + t('trustedRole')" min-width="220"><template #default="{row}">{{ t(row.mapping ? 'trustedRole' : 'subject') }}: {{ row.key }}</template></KsTableColumn>
           <KsTableColumn :label="t('roleIds')" min-width="220"><template #default="{row}">{{ row.identifiers.join(', ') }}</template></KsTableColumn>
