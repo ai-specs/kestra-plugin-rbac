@@ -98,7 +98,8 @@ java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar'
 评估不持有连接或事务。新请求读取新版本，数据库不可用时拒绝，不复用旧允许结果。
 这不是任务 worker 的权限沙箱，已经提交到队列的任务不承诺因后续改权而撤回。
 
-管理页面入口为宿主 Plugins 菜单中的 RBAC 管理页，根路径为
+管理页面入口为宿主 Extensions（扩展）分组中的 RBAC 管理页；Resources 下的 Plugins
+是任务插件目录，不列出 RBAC 管理页面。根路径为
 `/ui/main/extensions/rbac`。角色使用稳定 ID；授权通过逐条权限表单配置。用户创建后
 没有普通授权，必须另行绑定角色。启停与密码重置会使旧认证会话和 token 失效；重新启用
 账号不会恢复旧会话。资料修改、角色绑定与密码修改分别保存。
