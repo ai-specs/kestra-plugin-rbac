@@ -38,6 +38,6 @@ export default defineConfig({
     emptyOutDir: true,
     cssCodeSplit: false,
     lib: { entry: resolve(root, 'src/index.js'), formats: ['es'], fileName: () => 'entry.js' },
-    rollupOptions: { external: [] }
+    rollupOptions: { external: [], treeshake: {moduleSideEffects: identifier => identifier.endsWith('.css')} }
   }
 })

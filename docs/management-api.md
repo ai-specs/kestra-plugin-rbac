@@ -54,16 +54,24 @@ SYSTEM、INSTANCE和管理员配置；ids与allIds互斥，不支持通配符。
 ## 页面与请求
 
 扩展页组件样式、主题和筛选必须与上游同构页一致。验收以所消费正式宿主的 MCP Servers
-详情 tabs 和按钮、Namespaces 表格和搜索为参照。不能以组件导入成功或 CSS 文件存在代替
+详情顶部 tabs 和按钮、KV Store／Flows 数据表及条件筛选为参照。Namespaces 只作搜索控件参照，
+其树形结构不得当作表格。不能以组件导入成功或 CSS 文件存在代替
 实际样式验证。组件必须消费 `.integration/ui-sdk` 指定版本与 integrity 的公开组件包，
 Element Plus 必须在扩展自己的 Vue 上下文中配置 `kel` 命名空间，不借用宿主 Vue 实例。
-tab 使用公开 KsTabs/KsTabPane，搜索使用 KsSearch，按钮与表格使用 KsButton/KsTable。
-这些组件来自同一公开包；tabs/search 属本次新增消费，须通过明暗主题实测后记录兼容结果。
+tab 使用公开 KsTabs/KsTabPane，条件筛选使用 KsFilter，数据表使用 KsDataTable 与 KsTable。
+顶部 tabs 直接衔接宿主导航，不重复显示大标题。Create 使用主按钮并置于右侧工具栏。
+这些组件来自 SDK 指定的同一公开 npm 包；并不表示 SDK 承诺所有弹出层自动兼容。
+插件用 Vue 公开 renderer 将 Teleport 的 body 目标解析到自有 ShadowRoot 容器，
+KsPopover／KsTooltip 禁止传送到 document。上游 KsDataTable 的分页固定英文，因此插件
+用同一 Element Plus 分页组件传入当前语言，保留组件包样式。禁止修改 vendor 源码。
+筛选条件存入按 tenant、已认证 subject 和 tab 隔离的 sessionStorage，刷新恢复；不是授权来源。
 
 浏览器必须在 light 和 dark 分别断言：按钮不是浏览器默认边框和圆角；tab 的字号、字重、
 pill 形态与圆角和参考页一致；表头及行分隔线正确；背景、文字、按钮、输入与表格随主题
 翻转；搜索确实改变角色、用户和绑定列表，清空恢复。账号筛选必须覆盖全部分页，而非只
 过滤当前页；筛选后的总数和分页必须对应可见结果。刷新、切换页面、空结果及窄屏同时检查。
+条件编辑、关闭按钮、清空、Contains／Equals、组合 AND／OR 和页大小切换必须实际操作。
+计算样式之外，必须保留同视口截图并检查布局、工具栏、留白和 tab 相对宿主导航的位置。
 
 页面根内路径为roles、roles/new、roles/{id}、users、users/new、users/{encodedSubject}、
 bindings。subject的路径片段使用UTF-8的base64url，避免路径穿越与百分号歧义；实际API

@@ -1,9 +1,10 @@
-:host { display: block; color: var(--ks-text-primary); font-family: inherit; }
-.rbac-page { min-height: 100%; padding: 24px; background: var(--ks-bg-base); }
+:host { display: block; color: var(--ks-text-primary); font-family: inherit; --ks-z-dropdown: 1000; --ks-z-overlay: 1030; }
+.rbac-page { min-height: 100%; padding: 0 32px 32px; background: var(--ks-bg-base); }
 main { max-width: 1400px; margin: auto; }
 header, .buttons { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-header { justify-content: space-between; margin-bottom: 20px; }
-h1 { font-size: 24px; font-weight: 600; margin: 0; }
+.management-toolbar { justify-content: flex-end; min-height: 48px; padding: 0; }
+main > .kel-tabs { margin: 0 -32px; background: var(--ks-bg-surface); border-bottom: 1px solid var(--ks-border-default); }
+.toolbar-status { display: flex; gap: 16px; margin-right: auto; color: var(--ks-text-secondary); font-size: 12px; }
 fieldset { border: 0; padding: 0; margin: 16px 0; min-width: 0; }
 label { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; max-width: 720px; }
 label.checkbox { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; margin: 8px 20px 8px 0; }
@@ -11,9 +12,15 @@ input:not(.kel-input__inner), select { font: inherit; color: var(--ks-text-prima
 input[type=checkbox] { accent-color: var(--ks-text-link); }
 :focus-visible { outline: 2px solid var(--ks-text-link); outline-offset: 3px; }
 .grant { border: 1px solid var(--ks-border-default); border-radius: 8px; padding: 16px; margin: 16px 0; }
-.table-wrap { overflow-x: auto; margin: 20px 0; }
+.table-wrap { overflow-x: auto; margin: 16px 0; background: var(--ks-bg-base); }
+.table-wrap .ks-data-table-wrapper { --ks-data-table-gutter: 0px; }
+.management-data-table > .kel-pagination { display: flex; margin: 12px 0; }
+.management-data-table > .kel-pagination .kel-pagination__sizes { margin-right: auto; }
 .rbac-page .kel-table td.kel-table__cell, .rbac-page .kel-table th.kel-table__cell { border-bottom: 1px solid var(--ks-border-default); }
+.extension-portals .edit-overlay { z-index: var(--ks-z-dropdown); pointer-events: auto; }
+.rbac-page .kel-table th.kel-table__cell { height: 40px; font-size: 12px; font-weight: 600; background: var(--ks-bg-surface); }
+.rbac-page .kel-table td.kel-table__cell { height: 48px; font-size: 12px; }
 .muted { color: var(--ks-text-secondary); }
 .message { padding: 12px 16px; border: 1px solid var(--ks-border-default); border-radius: 4px; }
 .error { color: var(--ks-text-error); }
-@media (max-width: 640px) { .rbac-page { padding: 16px; } th, td { padding: 10px; } h1 { font-size: 20px; } }
+@media (max-width: 640px) { .rbac-page { padding: 0 16px 16px; } main > .kel-tabs { margin: 0 -16px; } .toolbar-status { flex-direction: column; gap: 2px; } }

@@ -5,14 +5,20 @@ import KsButton from '@kestra-io/design-system/components/Basic/KsButton/KsButto
 import KsInput from '@kestra-io/design-system/components/Form/KsInput'
 import KsTable from '@kestra-io/design-system/components/Data/KsTable/KsTable'
 import KsTableColumn from '@kestra-io/design-system/components/Data/KsTable/KsTableColumn'
+import KsDataTable from './ManagementTable.vue'
 import KsTabs from '@kestra-io/design-system/components/Navigation/KsTabs/KsTabs'
 import KsTabPane from '@kestra-io/design-system/components/Navigation/KsTabs/KsTabPane'
-import KsSearch from '@kestra-io/design-system/components/Form/KsSearch'
+import KsFilter from '@kestra-io/design-system/components/Data/KsDataTable/KsFilter'
+import {useRoute, useRouter} from 'vue-router'
+import {matchesQuery} from './list-filters.js'
+import {decodeSearchParams} from '@kestra-io/design-system'
 import {createClient} from './client.js'
 
 const props = defineProps({context: {type: Object, required: true}})
 const {t} = useI18n()
 const api = createClient(() => props.context)
+const filterRoute = useRoute()
+const filterRouter = useRouter()
 const policy = ref(null)
 const capabilities = ref(null)
 const users = ref({items: [], total: 0, page: 1, size: 20})
@@ -28,6 +34,13 @@ const notice = ref('')
 const confirmDelete = ref(false)
 const conflicted = ref(false)
 const search = ref('')
+const filters = ref([])
+let filtersReady = false
+const filterStorageKey = subject => 'rbac-management-filters:' + props.context.tenant + ':' + subject + ':' + section.value
+const filterConfiguration = computed(() => ({title: t(section.value), searchPlaceholder: t('search'), keys: fields.value.map(field => ({key: field, label: t(field), valueType: 'text', comparators: ['*=', '='], searchable: true}))}))
+const fields = computed(() => section.value === 'roles' ? ['name', 'description'] : section.value === 'users' ? ['subject', 'name', 'email', 'active'] : ['subject', 'trustedRole', 'roleIds'])
+const fieldValue = (item, field) => field === 'subject' && 'mapping' in item ? item.mapping ? '' : item.key : field === 'trustedRole' ? item.mapping ? item.key : '' : field === 'roleIds' ? item.identifiers.join(', ') : field === 'active' ? t(item.active ? 'active' : 'inactive') : item[field]
+const included = item => matchesQuery(item, decodeSearchParams(filterRoute.query), fieldValue)
 const directoryUsers = ref([])
 const matches = values => values.some(value => String(value ?? '').toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase()))
 let pendingLoad = false
@@ -39,10 +52,14 @@ const detail = computed(() => path.value.split('/')[1])
 const readOnly = computed(() => policy.value?.readOnly !== false || conflicted.value)
 const protectedUser = computed(() => policy.value?.protectedSubjects?.includes(user.value?.subject))
 const roles = computed(() => policy.value?.policy.roles ?? [])
-const filteredRoles = computed(() => roles.value.filter(item => matches([item.id, item.name, item.description])))
-const filteredUsers = computed(() => directoryUsers.value.filter(item => matches([item.subject, item.name, item.email])))
+const filteredRoles = computed(() => roles.value.filter(item => included(item) && matches([item.id, item.name, item.description])))
+const filteredUsers = computed(() => directoryUsers.value.filter(item => included(item) && matches([item.subject, item.name, item.email])))
 const bindings = computed(() => [false, true].flatMap(mapping => Object.entries(mapping ? policy.value?.policy.roleMapping ?? {} : policy.value?.policy.subjects ?? {}).map(([key, identifiers]) => ({key, identifiers, mapping}))))
-const filteredBindings = computed(() => bindings.value.filter(item => matches([item.key, ...item.identifiers, ...item.identifiers.map(id => roles.value.find(role => role.id === id)?.name)])))
+const filteredBindings = computed(() => bindings.value.filter(item => included(item) && matches([item.key, ...item.identifiers, ...item.identifiers.map(id => roles.value.find(role => role.id === id)?.name)])))
+const rolePage = ref(1)
+const bindingPage = ref(1)
+const pageSize = ref(25)
+const pageRows = (items, page) => items.slice((page - 1) * pageSize.value, page * pageSize.value)
 const copy = value => JSON.parse(JSON.stringify(value))
 const encodeSubject = value => btoa(String.fromCharCode(...new TextEncoder().encode(value))).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
 const decodeSubject = value => new TextDecoder('utf-8', {fatal: true}).decode(Uint8Array.from(atob(value.replaceAll('-', '+').replaceAll('_', '/')), character => character.charCodeAt(0)))
@@ -75,6 +92,13 @@ async function load() {
       capabilities.value = nextCapabilities
       policy.value = null
       throw {status: 403}
+    }
+    if (!filtersReady) {
+      let query = {}
+      try { query = JSON.parse(sessionStorage.getItem(filterStorageKey(nextCapabilities.subject)) ?? '{}') } catch {}
+      if (!query || typeof query !== 'object' || Array.isArray(query)) query = {}
+      await filterRouter.replace({path: '/' + requestedPath, query})
+      filtersReady = true
     }
     const nextPolicy = await api.policy()
     let nextUser = null
@@ -158,31 +182,35 @@ async function saveBinding() {
   })
 }
 
-watch(search, () => {users.value.page = 1})
-watch(path, () => {role.value = null; user.value = null; password.value = ''; search.value = ''; load()}, {immediate: true})
+watch([search, filters], () => {users.value.page = 1; rolePage.value = 1; bindingPage.value = 1}, {deep: true})
+watch(() => filterRoute.query, query => {
+  if (!filtersReady || !capabilities.value?.subject) return
+  try { sessionStorage.setItem(filterStorageKey(capabilities.value.subject), JSON.stringify(query)) } catch {}
+})
+watch(path, () => {filtersReady = false; role.value = null; user.value = null; password.value = ''; search.value = ''; filters.value = []; void filterRouter.replace({path: '/' + path.value, query: {}}); load()}, {immediate: true})
 </script>
 
 <template>
   <main :aria-busy="busy">
-    <header><h1>{{ t('title') }}</h1><KsButton :disabled="busy" @click="load">{{ t('reload') }}</KsButton></header>
     <KsTabs type="box" :model-value="section" :aria-label="t('title')" @update:model-value="navigate">
       <KsTabPane v-for="tab in ['roles', 'users', 'bindings']" :key="tab" :name="tab" :label="t(tab)" />
     </KsTabs>
-    <KsSearch v-if="!detail" v-model="search" name="management-search" :placeholder="t('search')" :aria-label="t('search')" clearable />
+    <header class="management-toolbar"><div class="toolbar-status"><span>{{ t('policyMode') }}: {{ policy?.mode }}</span><span>{{ t('revision') }}: {{ policy?.revision }}</span></div><KsButton v-if="section === 'roles' && !detail" type="primary" data-test="create-role" :disabled="readOnly || busy" @click="navigate('roles/new')">{{ t('create') }}</KsButton><KsButton v-if="section === 'users' && !detail" type="primary" data-test="create-user" :disabled="readOnly || busy || !capabilities?.userDirectory" @click="navigate('users/new')">{{ t('create') }}</KsButton></header>
+    <KsFilter v-if="!detail" :key="section" :configuration="filterConfiguration" :default-scope="false" :default-time-range="false" :buttons="{savedFilters: {shown: false}, tableOptions: {shown: false}}" :table-options="{refresh: {shown: true}, columns: {shown: false}}" @search="search = $event" @filter="filters = $event" @refresh="load" />
     <p v-if="busy" role="status">{{ t('loading') }}</p>
     <p v-if="error" class="message error" role="alert">{{ error }}</p>
     <p v-if="notice" class="message" role="status">{{ notice }}</p>
     <template v-if="capabilities?.allowed && policy">
-      <p class="muted">{{ t('policyMode') }}: {{ policy.mode }} · {{ t('revision') }}: {{ policy.revision }}</p>
       <p v-if="readOnly" class="message">{{ t('readOnly') }}</p>
       <template v-if="section === 'roles' && !detail">
-        <KsButton data-test="create-role" :disabled="readOnly || busy" @click="navigate('roles/new')">{{ t('create') }}</KsButton>
-        <div class="table-wrap"><KsTable :data="filteredRoles" :empty-text="t('noRows')" row-key="id">
+        <div class="table-wrap"><KsDataTable :data="pageRows(filteredRoles, rolePage)" :total="filteredRoles.length" :current-page="rolePage" v-model:page-size="pageSize" :no-data-text="t('noRows')" row-key="id" @update:current-page="rolePage = $event">
+          <template #table><KsTable :data="pageRows(filteredRoles, rolePage)" :empty-text="t('noRows')" row-key="id">
           <template #empty><p>{{ t('noRows') }}</p></template>
           <KsTableColumn prop="name" :label="t('name')" min-width="180" />
           <KsTableColumn prop="description" :label="t('description')" min-width="240" />
           <KsTableColumn :label="t('actions')" min-width="120"><template #default="{row}"><KsButton :data-role-id="row.id" @click="navigate('roles/' + row.id)">{{ t('edit') }}</KsButton></template></KsTableColumn>
-        </KsTable></div>
+          </KsTable></template>
+        </KsDataTable></div>
       </template>
       <form v-else-if="section === 'roles' && role" @submit.prevent="saveRole">
         <KsButton native-type="button" @click="navigate('roles')">{{ t('back') }}</KsButton>
@@ -204,14 +232,14 @@ watch(path, () => {role.value = null; user.value = null; password.value = ''; se
         </fieldset>
       </form>
       <template v-else-if="section === 'users' && !detail">
-        <KsButton data-test="create-user" :disabled="busy || readOnly || !capabilities.userDirectory" @click="navigate('users/new')">{{ t('create') }}</KsButton>
-        <div class="table-wrap"><KsTable :data="filteredUsers.slice((users.page - 1) * users.size, users.page * users.size)" :empty-text="t('noRows')" row-key="subject">
+        <div class="table-wrap"><KsDataTable :data="filteredUsers.slice((users.page - 1) * users.size, users.page * users.size)" :total="filteredUsers.length" :current-page="users.page" v-model:page-size="users.size" :no-data-text="t('noRows')" row-key="subject" @update:current-page="users.page = $event">
+          <template #table><KsTable :data="filteredUsers.slice((users.page - 1) * users.size, users.page * users.size)" :empty-text="t('noRows')" row-key="subject">
           <template #empty><p>{{ t('noRows') }}</p></template>
           <KsTableColumn prop="subject" :label="t('subject')" min-width="180" /><KsTableColumn prop="name" :label="t('name')" min-width="180" /><KsTableColumn prop="email" :label="t('email')" min-width="220" />
           <KsTableColumn :label="t('active')" min-width="100"><template #default="{row}">{{ t(row.active ? 'active' : 'inactive') }}</template></KsTableColumn>
           <KsTableColumn :label="t('actions')" min-width="120"><template #default="{row}"><KsButton @click="navigate('users/' + encodeSubject(row.subject))">{{ t('edit') }}</KsButton></template></KsTableColumn>
-        </KsTable></div>
-        <div class="buttons"><KsButton :disabled="busy || users.page <= 1" @click="users.page--">{{ t('previous') }}</KsButton><span>{{ users.page }} · {{ filteredUsers.length }}</span><KsButton :disabled="busy || users.page * users.size >= filteredUsers.length" @click="users.page++">{{ t('next') }}</KsButton></div>
+          </KsTable></template>
+        </KsDataTable></div>
       </template>
       <template v-else-if="section === 'users' && user">
         <KsButton @click="navigate('users')">{{ t('back') }}</KsButton>
@@ -229,12 +257,14 @@ watch(path, () => {role.value = null; user.value = null; password.value = ''; se
         </template>
       </template>
       <template v-else-if="section === 'bindings'">
-        <div class="table-wrap"><KsTable :data="filteredBindings" :empty-text="t('noRows')">
+        <div class="table-wrap"><KsDataTable :data="pageRows(filteredBindings, bindingPage)" :total="filteredBindings.length" :current-page="bindingPage" v-model:page-size="pageSize" :no-data-text="t('noRows')" row-key="key" @update:current-page="bindingPage = $event">
+          <template #table><KsTable :data="pageRows(filteredBindings, bindingPage)" :empty-text="t('noRows')">
           <template #empty><p>{{ t('noRows') }}</p></template>
           <KsTableColumn :label="t('subject') + ' / ' + t('trustedRole')" min-width="220"><template #default="{row}">{{ t(row.mapping ? 'trustedRole' : 'subject') }}: {{ row.key }}</template></KsTableColumn>
           <KsTableColumn :label="t('roleIds')" min-width="220"><template #default="{row}">{{ row.identifiers.join(', ') }}</template></KsTableColumn>
           <KsTableColumn :label="t('actions')" min-width="120"><template #default="{row}"><KsButton @click="chooseBinding(row.key, row.identifiers, row.mapping)">{{ t('edit') }}</KsButton></template></KsTableColumn>
-        </KsTable></div>
+          </KsTable></template>
+        </KsDataTable></div>
         <form @submit.prevent="saveBinding"><fieldset :disabled="busy || readOnly">
           <label>{{ t('subject') }}<KsInput v-model="subject" name="binding-subject" :disabled="Boolean(trustedRole)" /></label><label>{{ t('trustedRole') }}<KsInput v-model="trustedRole" name="binding-role" :disabled="Boolean(subject)" /></label>
           <fieldset><legend>{{ t('roleIds') }}</legend><label v-for="item in roles" :key="item.id" class="checkbox"><input v-model="selected" name="binding-selection" type="checkbox" :value="item.id">{{ item.name }}</label></fieldset>
