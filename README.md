@@ -1,6 +1,6 @@
 # kestra-plugin-rbac
 
-Independent, configuration-driven authorization extension for the Kestra OSS overlay. The business policy lives in this repository. Output: **`build/libs/kestra-rbac-authorizer.jar`**. The jar is thin, includes Micronaut generated bean indexes, and contains no Kestra, Micronaut, Jackson or other dependency classes.
+Independent, database-backed authorization extension for the Kestra OSS overlay. The business policy lives in this repository. Output: **`build/libs/kestra-rbac-authorizer.jar`**. The jar is thin, includes Micronaut generated bean indexes, and contains no Kestra, Micronaut, Jackson or other dependency classes.
 
 The earlier runtime authorization implementation passed independent CI and real monorepo Compose
 acceptance; that historical result does not validate the instance-admin change. See [validation evidence](docs/validation.md) for the tested scope. Build dependencies
@@ -106,108 +106,27 @@ java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar'
 
 管理 API 要求宿主认证、CSRF 与当前管理权限。策略写入使用全局策略 revision，账号
 更新使用该账号 revision；过时版本返回 412，页面要求重新加载，不覆盖并发修改。
-删除已被引用的角色返回冲突。完整接口、只读模式和错误语义见
-[管理接口实施契约](docs/management-api.md)。默认策略来源仍为 configuration，管理开关
-默认关闭；配置模式的管理页面只读，不允许账号或策略写入。
+删除已被引用的角色返回冲突。完整接口和错误语义见
+[管理接口实施契约](docs/management-api.md)。策略来源固定为 database，管理开关
+默认关闭；不再提供 configuration 模式。配置为 configuration 时启动失败，数据库不可用时拒绝请求。
 
 ## Configure and deploy
 
 Consume an independently accepted overlay image whose published manifest classpath includes `libs/kestra-rbac-authorizer.jar` and whose unified SPI/execution gates match the contract pin. Mount the jar **read-only at `/app/libs/kestra-rbac-authorizer.jar`**. `/app/plugins` is for Kestra task/trigger plugins and does not discover this extension's web beans. Restart the container JVM after replacing the jar. Apply policy configuration changes with Compose to update the container.
 
-Merge [examples/rbac.yml](examples/rbac.yml) into deployment `KESTRA_CONFIGURATION`. [examples/integration.yml](examples/integration.yml) is the controlled local acceptance policy for `rbac.allowed` and `rbac.denied`; infrastructure/authentication configuration is owned by the deployment. The accepted host authenticates requests, validates tokens and supplies an immutable principal. This jar never verifies JWTs, reads raw identity headers, or treats OAuth scopes/client IDs as roles.
+部署只接受 `policy-source: database`。普通角色、subject 绑定与可信身份角色映射均保存在
+数据库策略 JSON 中，schemaVersion 为 1，使用 `roles`、`subjects` 和 `roleMapping` 字段。
+使用 [examples/management-policy.json](examples/management-policy.json) 初始化空库，之后通过
+管理页面修改。历史 YAML 角色配置不再作为运行配置接受；遗留 roles、subjects、role-mapping
+或 instance-admin-roles 会导致启用 RBAC 时启动失败。不得静默忽略或合并两套策略。
 
-Policy rules:
+管理员只能通过 `management-admin-subjects` 指定精确已认证 subject。可信角色名 admin、
+OAuth scope、client ID 或同名普通角色不能升级为管理员。数据库角色禁止 SYSTEM／INSTANCE
+管理授权。多个普通角色权限按原有资源范围求并集；READ 与 LIST 可以来自不同角色，查询域
+为两者范围的交集。缺少组件、无身份、未知操作、数据库错误都失败关闭。
 
-- `roles` maps local role names to grants. `subjects` binds exact trusted subjects to local roles. `role-mapping` maps exact **authenticated host role values** to local roles. Both REST and MCP call the same authorizer with the same subject/roles semantics. Unknown presented roles grant nothing; configured bindings to undefined local roles fail startup.
-- `instance-admin-roles` is an explicit list of **local** roles, empty by default. Each listed role must exist in `roles` (an empty grant list is valid). Only `subjects` or `role-mapping` can assign these roles. A presented role named `deployment-admin` does not confer instance authority unless explicitly mapped. Invalid administrator-role configuration fails startup when RBAC is enabled.
-- Every grant requires `scope`, `resource`, and `actions`. `INSTANCE` has no tenant/namespace; `TENANT` requires tenant and no namespace; `NAMESPACE` requires both. Scope matches exactly and does not promote a namespace grant to tenant/instance. Resource and execution authorization targets OSS `main`; other tenant resources deny. Instance administrators cover every matched REST route at the instance level, without interpreting its business path.
-- Namespace names are dot-separated segments. `descendants: true` grants `rbac.allowed.child`, never `rbac.allowed2`. Without it, only the exact namespace matches. No wildcard syntax is supported.
-- Concrete IDs require `ids: [id1, id2]` or explicit `all-ids: true`. Missing/empty `ids` grant **zero IDs**. Combining nonempty IDs with `all-ids` is invalid. Random execution creation requires `all-ids: true`. Collection/domain requirements with null ID also require `all-ids`.
-- LIST requires LIST and READ for a complete query domain with unrestricted IDs. An ID-restricted role cannot list and infer counts. The host applies the returned namespace scope before pagination and totals.
-- Default is deny. Invalid/unresolved routes, plans, principals or dependencies fail closed. The overlay gate owns absent/throwing bean behavior, authentication 401/redirect, 403 problem+json, and independent MCP scope AND checks.
-
-## Typed resource policy
-
-Set both `kestra.rbac.enabled: true` and `kestra.rbac.typed.enabled: true`. This jar implements
-`TypedAuthorizationResolver`; it does not implement the legacy REST route resolver. The host
-owns route matching, YAML identity, execution ownership, query filters, dashboard datasource
-validation, query ACL and the final runtime execution gate. The plugin never parses URLs,
-controller names, handler names, frontend routes or chart definitions.
-
-Single operations require the configured resource/action grant at the actual tenant and namespace.
-Complete queries require both READ and LIST with unrestricted IDs. All matching roles contribute
-the union of exact namespaces and namespace subtrees; the returned scope intersects the request
-domain. READ and LIST can come from different roles; only namespaces authorized for both actions
-enter the query scope. Empty restricted scope means no rows. A namespace grant does not promote to tenant or
-instance authority. Prefix collisions and exact namespace children remain excluded.
-ID-restricted roles cannot query collections, counts or aggregates.
-
-The host declares shared metadata as METADATA/READ. A subject with a configured READ grant can
-read those declarations. Metadata permission does not allow plugin installation or other writes.
-Unclassified operations require SYSTEM instance authority and deny for ordinary users.
-Mapped instance administrators may authorize all valid host operations; missing identity,
-unknown contract version and policy exceptions deny.
-
-FLOW, EXECUTION, NAMESPACE, LOG, METRIC, TRIGGER, KVSTORE and NAMESPACE_FILE grants are
-independent. Configure READ/LIST for every resource a reader must view, and explicit
-CREATE/UPDATE/DELETE/EXECUTE/ACCESS_OUTPUTS for required writer operations. The host supplies
-the operation and enforces the scope before pagination, totals and aggregates. Supported host
-operations and unavailable OSS pages are described by the host release; this policy does not
-invent EE features. UI menu/button behavior is owned by the host.
-
-Real authenticated UI and Compose acceptance remain a deployment gate. Unit tests prove policy
-semantics and bean discovery, and do not prove every rendered page or deployed operation.
-
-## Explicit instance administrator
-
-The first user created by the host bootstrap has the authenticated presented role `admin`.
-To retain access to all current host UI pages, menus and operations after enabling RBAC,
-merge this explicit deployment policy with the ordinary namespace roles:
-
-```yaml
-kestra:
-  rbac:
-    enabled: true
-    typed:
-      enabled: true
-    instance-admin-roles: [deployment-admin]
-    roles:
-      deployment-admin: []
-    role-mapping:
-      admin: [deployment-admin]
-```
-
-This maps **every trusted principal carrying the host role `admin`** to instance authority.
-Use an exact trusted `subjects` binding instead if only one account should receive that authority;
-use the host's immutable authenticated subject, not a display name or an assumed login name.
-Never map roles from untrusted headers or client input. The default configuration grants no
-instance administrator rights. An authenticated role with the same name as a local role is
-not automatically mapped.
-
-For a mapped administrator, typed policy permits the host's valid `SYSTEM` / `EXECUTE`
-operation with `COMPLETE_BATCH` coverage for unclassified matched business routes.
-Instance authority covers the full query domain and all mutations; no business-route whitelist,
-namespace filter or execution-repository lookup is required. This includes global configuration,
-execution search, bulk operations, plugin management and all other current host UI operations.
-Missing route metadata or invalid identity still denies. The authorizer permits valid resource
-requirements for administrators, including the final runtime execution checks.
-
-With `kestra.rbac.enabled: false`, the host disables the RBAC gate and the extension beans
-are absent; existing host UI behavior is retained. Enabling instance authority changes resource
-authorization only: host authentication, CSRF, MCP capability scopes and missing/throwing
-component fail-closed checks still apply. This extension does not enable host-disabled features,
-create missing plugins or implement unavailable host UI pages.
-
-Administrators receive an **explicit empty extra-dependency list** for a valid runtime flow,
-including dynamic input/default/output/variable expressions. Runtime YAML must still parse
-without duplicate keys and match invocation namespace, flow ID and OSS tenant. Ordinary users
-retain the conservative dependency policy below. Instance authority includes secret/KV/file
-reads; this is an intentional full-instance privilege, not a task sandbox.
-
-Independent tests and CI validate plugin behavior and bean injection. The monorepo owner must
-still execute real authenticated UI/Compose acceptance before claiming production delivery,
-including RBAC on/off, CSRF, MCP scope denials, missing components and refusal side effects.
-Ordinary namespace users require explicit resource grants and deployment UI acceptance.
+CI 的角色矩阵通过公开初始化工具写入隔离数据库，不编译或读取相邻宿主源码，不修改生产
+账号。配置关闭 RBAC 时保留宿主默认行为；这不是另一种策略来源。
 
 ## Input/output dependency policy
 

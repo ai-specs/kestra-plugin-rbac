@@ -9,7 +9,8 @@ import jakarta.inject.Singleton;
 public final class PolicyStoreFactory {
     @Singleton
     @Requires(property = "kestra.rbac.enabled", value = "true")
-    @Requires(property = "kestra.rbac.policy-source", value = "database")
+    @Requires(beans = DataSource.class)
+    @Requires(property = "kestra.rbac.policy-source", value = "database", defaultValue = "database")
     public JdbcPolicyStore policyStore(DataSource source) {
         var store = new JdbcPolicyStore(io.micronaut.data.connection.jdbc.advice.DelegatingDataSource.unwrapDataSource(source),
             new PolicyDocumentValidator());

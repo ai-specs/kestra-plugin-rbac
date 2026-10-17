@@ -8,7 +8,7 @@ import java.util.concurrent.*;
 @Requires(property = "kestra.rbac.enabled", value = "true")
 public final class ConfiguredRbacAuthorizer implements RbacAuthorizer {
     private final RuntimePolicies policies;
-    public ConfiguredRbacAuthorizer(PolicyEngine engine) { this.policies = RuntimePolicies.configurationOnly(engine); }
+    ConfiguredRbacAuthorizer(PolicyEngine engine) { this.policies = RuntimePolicies.compiledPolicy(engine); }
     @jakarta.inject.Inject
     public ConfiguredRbacAuthorizer(RuntimePolicies policies) { this.policies = policies; }
     @Override public CompletionStage<Boolean> authorize(RbacAuthorizer.Principal principal, Resource resource, Action action) {

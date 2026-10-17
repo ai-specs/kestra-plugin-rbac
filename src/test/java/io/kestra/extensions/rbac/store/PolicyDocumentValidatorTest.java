@@ -114,6 +114,6 @@ class PolicyDocumentValidatorTest {
         assertThrows(UnsupportedOperationException.class, () -> database.managementAdminSubjects().clear());
         var json = validator.validate(policy("")).canonicalJson();
         assertFalse(json.contains("deployment-owner"));
-        new PolicySourceSelection(PolicySourceSelection.Source.CONFIGURATION, Set.of()).validateConfiguration(configuration);
+        assertThrows(IllegalArgumentException.class, () -> database.validateConfiguration(configuration));
     }
 }

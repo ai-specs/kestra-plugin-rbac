@@ -13,8 +13,8 @@ import jakarta.inject.Singleton;
 public final class ConfiguredTypedAuthorization implements TypedAuthorizationResolver {
     private final RuntimePolicies policies;
 
-    public ConfiguredTypedAuthorization(PolicyEngine engine) {
-        this.policies = RuntimePolicies.configurationOnly(engine);
+    ConfiguredTypedAuthorization(PolicyEngine engine) {
+        this.policies = RuntimePolicies.compiledPolicy(engine);
     }
     @jakarta.inject.Inject
     public ConfiguredTypedAuthorization(RuntimePolicies policies) { this.policies = policies; }

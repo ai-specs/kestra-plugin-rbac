@@ -1,5 +1,9 @@
 # OAuth2/OIDC 到 RBAC 的运行机制
 
+当前运行时策略来源固定为 PostgreSQL，管理身份来自精确 management-admin-subjects。
+本文中的旧 YAML 角色名和 instance-admin-roles 描述保留为历史机制说明，不是当前部署入口；
+旧配置模式已移除。数据库 roleMapping 映射可信身份角色到普通角色，不得授予实例管理身份。
+
 本文解释一次请求从登录到业务执行如何经过 OAuth2/OIDC、宿主授权上下文、MCP 能力 scope
 和 RBAC policy。本文描述运行时机制和边界，不是安装步骤、配置参考或测试清单。
 

@@ -120,17 +120,10 @@ public final class ManagementController {
         try {
             var result = new LinkedHashMap<String, Object>();
             long current;
-            if (policies.database()) {
-                var snapshot = policies.store().readCurrent(); current = snapshot.revision();
-                result.put("policy", mapper.readTree(snapshot.canonicalJson()));
-            } else {
-                current = 0;
-                result.put("policy", Map.of("schemaVersion", 1, "roles", configuration.getRoles().entrySet().stream()
-                    .map(entry -> Map.of("id", entry.getKey(), "name", entry.getKey(), "description", "", "grants", entry.getValue())).toList(),
-                    "subjects", configuration.getSubjects(), "roleMapping", configuration.getRoleMapping()));
-            }
-            result.put("revision", current); result.put("mode", policies.database() ? "database" : "configuration");
-            result.put("readOnly", !policies.database()); result.put("protectedSubjects", policies.protectedSubjects());
+            var snapshot = policies.store().readCurrent(); current = snapshot.revision();
+            result.put("policy", mapper.readTree(snapshot.canonicalJson()));
+            result.put("revision", current); result.put("mode", "database");
+            result.put("readOnly", false); result.put("protectedSubjects", policies.protectedSubjects());
             return HttpResponse.ok(result).header("ETag", "\"" + current + "\"").header("Cache-Control", "no-store");
         } catch (java.io.IOException failure) { throw new IllegalStateException("Invalid stored policy"); }
     }
@@ -138,7 +131,7 @@ public final class ManagementController {
     public HttpResponse<?> capabilities(String tenant, Authentication identity) {
         if (identity != null && "main".equals(tenant) && !policies.isAdministrator(principal(identity))) return HttpResponse.ok(Map.of("allowed", false)).header("Cache-Control", "no-store");
         return guard(tenant, identity, () -> HttpResponse.ok(Map.of("allowed", true, "subject", identity.getName(),
-            "mode", policies.database() ? "database" : "configuration", "readOnly", !policies.database(), "userDirectory", directories.isUnique()))
+            "mode", "database", "readOnly", false, "userDirectory", directories.isUnique()))
             .header("Cache-Control", "no-store"));
     }
     @Get("/policy")

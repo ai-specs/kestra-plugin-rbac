@@ -32,14 +32,14 @@ public final class RuntimePolicies {
         @Value("${kestra.rbac.typed.enabled:false}") boolean typed) {
         this.configured = configured;
         boolean database = "database".equals(configuration.getPolicySource());
-        if (!database && !"configuration".equals(configuration.getPolicySource())) throw new IllegalArgumentException("Unknown policy source");
-        var selection = new PolicySourceSelection(database ? PolicySourceSelection.Source.DATABASE : PolicySourceSelection.Source.CONFIGURATION,
+        if (!database) throw new IllegalArgumentException("Only database policy source is supported");
+        var selection = new PolicySourceSelection(PolicySourceSelection.Source.DATABASE,
             Set.copyOf(configuration.getManagementAdminSubjects()));
         selection.validateConfiguration(configuration);
-        administrators = database ? selection.managementAdminSubjects() : Set.of();
-        if (database && (!evaluation || !typed || !stores.isUnique())) throw new IllegalArgumentException("Database policy requires typed evaluation and one policy store");
-        store = database ? stores.get() : null;
-        administratorPolicy = database ? administrativePolicy(administrators) : configured;
+        administrators = selection.managementAdminSubjects();
+        if (!evaluation || !typed || !stores.isUnique()) throw new IllegalArgumentException("Database policy requires typed evaluation and one policy store");
+        store = stores.get();
+        administratorPolicy = administrativePolicy(administrators);
         if (store != null) store.readCurrent();
     }
     private RuntimePolicies(PolicyEngine configured) {
@@ -48,7 +48,7 @@ public final class RuntimePolicies {
         administrators = Set.of();
         store = null;
     }
-    static RuntimePolicies configurationOnly(PolicyEngine engine) { return new RuntimePolicies(engine); }
+    static RuntimePolicies compiledPolicy(PolicyEngine engine) { return new RuntimePolicies(engine); }
     private static PolicyEngine administrativePolicy(Set<String> subjects) {
         var configuration = new RbacConfiguration();
         configuration.setRoles(Map.of("internal-management-root", List.of()));
@@ -76,7 +76,7 @@ public final class RuntimePolicies {
         private Snapshot(long revision, PolicyEngine engine) { this.revision = revision; this.engine = engine; }
         public long revision() { return revision; }
         private PolicyEngine policy(RbacAuthorizer.Principal principal) {
-            return store != null && isAdministrator(principal) ? administratorPolicy : engine;
+            return isAdministrator(principal) ? administratorPolicy : engine;
         }
         public TypedAuthorization.Decision authorize(RbacAuthorizer.Principal principal, TypedAuthorization.Operation operation) {
             return policy(principal).authorizeTyped(principal, operation);

@@ -2,7 +2,7 @@
 
 状态：实施输入，尚未发布。本文由本项目持有，供管理控制器、前端和独立测试共同消费；
 宿主机制仍须先通过自己的正式发布门。管理功能默认关闭，所有业务接口都要求当前管理
-身份。数据库策略不会授予管理身份。首期配置模式只读，数据库模式才允许管理写入。
+身份。数据库策略不会授予管理身份。策略来源只有 database，configuration 配置启动失败。
 
 根路径为 `/api/v1/main/extensions/rbac`。前端必须从宿主context.apiBase拼接后缀，不能
 写死部署前缀。JSON请求严格校验字段、枚举和引用，不支持通过header或请求体指定调用人。
@@ -12,12 +12,12 @@ API错误形如`{"code":"revision_conflict"}`，宿主认证／CSRF错误仍使�
 ## 发现与策略
 
 - GET `/capabilities`：非管理人仅返回`{"allowed":false}`；管理人返回allowed、subject、
-  mode（configuration/database）、readOnly与userDirectory。资源可读和菜单可见不代替授权。
+  mode（固定 database）、readOnly（false）与userDirectory。资源可读和菜单可见不代替授权。
 - GET `/policy`：返回`{mode,revision,readOnly,policy,protectedSubjects}`。policy为schemaVersion1
   规范策略，roles元素为`{id,name,description,grants}`；subjects与roleMapping是精确身份到
-  角色ID数组的映射。配置模式revision为0，只读。数据库模式revision为正数。
-- policy响应含ETag；策略写入必须使用`If-Match: "<revision>"`。缺失428，过时412；配置
-  模式写入409 policy_read_only。接口不提供HTTP首次导入或任意策略SQL。
+  角色ID数组的映射。数据库 revision 为正数。
+- policy响应含ETag；策略写入必须使用`If-Match: "<revision>"`。缺失428，过时412。
+  接口不提供HTTP首次导入或任意策略SQL。
 
 ## 角色与授权
 

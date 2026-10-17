@@ -70,11 +70,11 @@ Compose 和执行集成验收。主控跨仓调查不改变文档与实现归属
 操作：前者成功、后者失败时账号保持零授权，分别报告结果，不假造跨仓事务。
 
 候选 `kestra.rbac.management.enabled` 默认 false，启用要求 RBAC 与 typed 均开启，
-不要求数据库模式，因此配置模式也能显示只读页面。数据库模式且管理开启才提供写入。
+只支持数据库策略来源；管理开关控制页面与管理写入，不改变运行时策略来源。
 管理关闭或 RBAC 关闭时控制器不装载；capability 若保留，只返回 disabled，不返回业务
 数据。资源可读与菜单可见不代替服务端授权。
 
-业务读取和写入仅允许当前实例管理员。配置模式沿用已有管理身份；数据库模式采用下述
+业务读取和写入仅允许当前实例管理员。数据库模式采用下述
 独立规则。宿主如何分类外部控制器须先公开确认，插件仍必须自己检查管理身份。不能依赖
 @Secured、菜单或内部 default 分支。
 
@@ -82,7 +82,7 @@ Compose 和执行集成验收。主控跨仓调查不改变文档与实现归属
 |---|---|
 | 宿主认证、CSRF、统一授权门 | 沿用发布契约：匿名 API 401；CSRF／策略拒绝和授权组件异常为 403，不承诺插件业务 code |
 | 控制器已进入，管理身份不足 | 403；插件稳定 code，不暴露账号详情 |
-| 配置模式写入 | 409 policy_read_only，不落库 |
+| configuration 策略来源 | 启动失败，不回退到旧 YAML 策略 |
 | 不存在、名称或引用冲突 | 404 或 409，不静默覆盖 |
 | 缺 If-Match、revision 不符 | 428 或 412，整个策略变更回滚 |
 | 非法输入、控制器内存储失败 | 400 或 503，不包含密码、哈希和 SQL |
@@ -103,9 +103,9 @@ Compose 和执行集成验收。主控跨仓调查不改变文档与实现归属
 
 ## 4. 策略事实来源与初始化
 
-候选 `kestra.rbac.policy-source: configuration|database` 默认 configuration。
-配置模式保留现有 roles、subjects、role-mapping、instance-admin-roles 校验和行为，页面
-只读。配置变更通过部署更新并重启 JVM 生效，不由管理 API 改 Compose。
+`kestra.rbac.policy-source` 固定为 `database`。插件不再支持 configuration 策略来源，
+不再把 roles、subjects、role-mapping 或 instance-admin-roles 作为部署运行时输入。
+角色和绑定全部来自 PostgreSQL 策略库；数据库初始化命令和管理页面使用同一策略来源。
 
 数据库模式只从插件 PostgreSQL 表读取普通策略。出现旧 YAML 普通策略明确报错，不在
 启动时覆盖数据库。表包含策略头、schemaVersion、单调 revision 和不可变规范策略内容；
@@ -177,7 +177,7 @@ revision。生产授权接入与正式发布仍未完成，纯存储／工具测
 
 ## 7. 验证条件
 
-插件独立验证：配置只读、模式开关、schema 升级、初始化重入／冲突、非法引用回滚、
+插件独立验证：拒绝 configuration 来源、管理开关、schema 升级、初始化重入／冲突、非法引用回滚、
 管理员字段及间接引用拒绝、If-Match、事务再授权、数据库失败、版本切换、缓存上限及
 多角色并集。旧版本只允许 A、新版本只允许 B 时，必须拒绝要求 A+B 的完整计划。
 使用公开契约替身，不 checkout 或编译相邻宿主。

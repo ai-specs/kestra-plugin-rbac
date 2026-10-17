@@ -6,7 +6,7 @@ import java.util.Map;
 
 @ConfigurationProperties("kestra.rbac")
 public class RbacConfiguration {
-    private String policySource = "configuration";
+    private String policySource = "database";
     private List<String> managementAdminSubjects = List.of();
     public String getPolicySource() { return policySource; }
     public void setPolicySource(String value) { policySource = value; }

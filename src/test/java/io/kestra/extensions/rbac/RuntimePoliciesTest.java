@@ -69,6 +69,9 @@ class RuntimePoliciesTest {
         var store = store();
         var configuration = configuration();
         var engine = new PolicyEngine(configuration);
+        configuration.setPolicySource("configuration");
+        assertThrows(IllegalArgumentException.class, () -> new RuntimePolicies(configuration, engine, provider(store), true, true));
+        configuration.setPolicySource("database");
         assertThrows(IllegalArgumentException.class, () -> new RuntimePolicies(configuration, engine, provider(store), false, true));
         assertThrows(IllegalArgumentException.class, () -> new RuntimePolicies(configuration, engine, provider(null), true, true));
         configuration.setRoles(java.util.Map.of("old-role", List.of()));

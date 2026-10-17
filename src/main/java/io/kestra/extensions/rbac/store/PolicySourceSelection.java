@@ -4,7 +4,7 @@ import java.util.Set;
 import io.kestra.extensions.rbac.RbacConfiguration;
 
 public record PolicySourceSelection(Source source, Set<String> managementAdminSubjects) {
-    public enum Source { CONFIGURATION, DATABASE }
+    public enum Source { DATABASE }
 
     public PolicySourceSelection {
         PolicyDocumentValidator.require(source != null, "必须选择唯一策略来源。");
