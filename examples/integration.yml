@@ -1,4 +1,5 @@
-# Controlled local acceptance only; merge this RBAC section into the deployment configuration.
+# Historical acceptance input; do not merge into current deployment configuration.
+# Current CI converts test roles to schemaVersion 1 database policy before initialization.
 # Users are created by OidcRbacFixtureTest, not by this policy file.
 kestra:
   rbac:

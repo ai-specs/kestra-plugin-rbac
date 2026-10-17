@@ -1,3 +1,5 @@
+# 历史配置策略样例，仅用于理解旧策略和离线迁移；不得合并到当前部署配置。
+# 当前部署只接受 policy-source: database，导入格式见 management-policy.json。
 kestra:
   rbac:
     enabled: true
