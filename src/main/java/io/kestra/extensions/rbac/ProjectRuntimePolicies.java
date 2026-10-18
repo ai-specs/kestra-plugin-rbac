@@ -38,7 +38,7 @@ public final class ProjectRuntimePolicies {
     public Context open(TrustedIdentityV1.Identity identity,String tenant) {
         if(identity==null || identity.contractVersion()!=1 || !"main".equals(tenant)
             || !tenant.equals(identity.tenant()) || identity.subject().isBlank() || identity.clientId().isBlank()
-            || identity.authenticationVersion()<=0)throw new Rejected(Failure.INVALID_IDENTITY);
+            || identity.authenticationVersion()<0)throw new Rejected(Failure.INVALID_IDENTITY);
         List<ApplicationDirectoryV1.PolicyBoundary> boundaries;
         try { boundaries=List.copyOf(directory.policyBoundaries()); }
         catch(RuntimeException error){throw new Rejected(Failure.DIRECTORY_UNAVAILABLE);}

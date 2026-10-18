@@ -73,7 +73,7 @@ class ProjectRuntimeDirectoryTest {
         org.mockito.Mockito.when(directory.policyBoundaries()).thenReturn(List.of(console,empty));
         var identities=org.mockito.Mockito.mock(io.kestra.webserver.oidc.TrustedIdentityV1.class);
         var identity=new io.kestra.webserver.oidc.TrustedIdentityV1.Identity(1,"https://issuer.example","operator","ui-client",Set.of("ui"),
-            "main","p",Set.of(),Set.of("manager"),1,97,3);
+            "main","p",Set.of(),Set.of("manager"),0,97,3);
         var runtime=new ProjectRuntimePolicies(store,directory,identities);
         try(var context=runtime.open(identity,"main")){
             assertTrue(context.authorizeManagement(io.kestra.extensions.rbac.project.ProjectPolicy.ManagementDomain.IDENTITY,
