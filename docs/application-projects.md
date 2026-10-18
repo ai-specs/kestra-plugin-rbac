@@ -1,6 +1,6 @@
 # 应用项目授权模型
 
-状态：目标规范，供后续实现、审查和验收使用。
+状态：当前目标规范。schema2、运行时、迁移工具与管理页面已实现并通过本地独立检查；插件正式 CI、产物发布与 Compose 组合验收尚待核对。
 
 本文定义 `policy-source: database` 下的应用项目授权模型。本文是新增需求来源，
 不修改也不覆盖 `docs/rbac-management-plan.md`、`docs/authorization-flow.md` 和
@@ -591,7 +591,7 @@ HTTP client 时使用正式授权流程，不能用测试 header 伪造 scope。
 - Compose 真实验收通过，并核对最终镜像 digest、插件 jar hash 和最终提交。
 
 
-## 候选调查记录（未冻结、未发布）
+## 实施契约与发布边界（已冻结，插件发布待验证）
 
 候选 schemaVersion 2 使用 `applicationProjects` 映射。每个项目包含 `issuer`、精确 `audiences` 集合、`enabled`、正整数 `directoryRevision` 和 `scopes` 映射；每个 scope 包含 `description`、`enabled` 和非空完整 `grants`。UI 与 MCP 可使用不同 audience，但必须通过显式 client 目录绑定到项目，不接受通配或按名称推断。IdP 提供项目目录与角色授权意图上界；插件只保存本地收窄和只读投影，不构造第二事实源。目录版本不匹配时必须拒绝，直到本地重新确认；策略全局 `revision` 与 `directoryRevision` 独立。
 
@@ -668,3 +668,14 @@ issuer、精确 audiences、目录修订与启用状态，逐 scope 检查全部
 而跳过保存校验。运行时请求仅解析 token 中的 scopes，完整保存校验则检查候选所有绑定。
 该纯模型不认证身份，不读取 IdP 表，也不能单独证明最后管理员保护；正式 SPI adapter
 必须提供可信一致目录快照和真实管理员可达性检查。当前尚未接入公开产物。
+
+
+### 本地实施检查与后续发布门（2026-10-18）
+
+本轮已实现可信项目 scope 直接授权、同 scope READ/LIST 交集、关联 namespace/ID 查询域、
+管理 API、身份目录代理、完整绑定恢复和应用项目管理页面。运行时不注册旧 schema1 store，
+不使用 subject/roles/roleMapping 或永久 subject 管理员；旧数据只作为离线审批来源。
+宿主固定输入来自已正式发布的 4b017f6。完整独立 check 包含 136 项 Java 测试、35 项
+前端逻辑测试、13 语言检查、生产 UI 构建和 thin jar 检查，均通过且无跳过；PostgreSQL 18
+存储矩阵 37 项通过且无跳过。以上是本地检查，不替代插件 CI、正式产物或真实组合验收。
+身份授予、本地保存、撤权、迁移与实际浏览器仍按本文既定完成标准验证。

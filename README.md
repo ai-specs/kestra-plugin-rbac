@@ -154,7 +154,7 @@ Consume an independently accepted overlay image whose published manifest classpa
 
 ## 真实组合验收
 
-历史 OidcRbacFixtureTest 的 roles 账号只用于旧实现调查，不能证明新项目 scope 已签发。
+旧 OidcRbacFixtureTest 已删除，其 roles 账号不能证明新项目 scope 已签发。
 新部署矩阵必须通过公开身份目录准备真实项目、scope、成员 client 和测试账号，使用生产
 UI 与 MCP 登录流程取得可信身份。测试密码仅为隔离环境常量，不得写入生产配置。
 

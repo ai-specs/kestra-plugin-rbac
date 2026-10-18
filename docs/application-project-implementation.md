@@ -1,13 +1,11 @@
 # 应用项目后端实施设计
 
-状态：候选、未发布。业务设计归本插件。本文件不接收或发布宿主契约，不表示 HTTP
-API 已实现。当前 RuntimePolicies、ManagementController 仍运行 schema1 与 subject
-管理员；新 SPI 未正式发布前不得编译或装载候选 adapter。不得同时启用两套普通授权。
+状态：schema2 实现已接入正式宿主公开契约；本地独立检查通过，插件 CI、正式发布和组合验收尚待核对。本文记录设计职责与迁移清理依据。
 
 ## 1. 正式产物接收门
 
 主控须提供成功宿主 CI、正式镜像 digest、公开契约说明及产物可获取证据，再按独立
-README 入口提取依赖。当前 host-contract.properties 不变。所需公开能力包括：
+README 入口提取依赖。当前 host-contract.properties 固定已发布的应用项目宿主。所需公开能力包括：
 
 - 验证后的 subject、issuer、适用 audience、tenant、project、client 绑定、项目 scopes
   与协议 scopes 分类、身份认证版本和目录修订；不读取任意 Authentication attributes
@@ -102,7 +100,7 @@ revision 归属必须对正式宿主契约核对后才可实现，不能记录�
 
 ## 4. 旧消费者清理清单与保留理由
 
-本表是正式切换时的定点变更清单；当前未删除，以免未发布 SPI 下形成不可运行状态。
+本表是正式切换时的定点变更清单；旧运行入口已按下表替换；schema1 解析仅保留离线迁移用途。
 
 | 文件/消费者 | 切换动作与验收 |
 |---|---|
