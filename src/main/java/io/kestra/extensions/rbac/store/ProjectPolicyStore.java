@@ -29,6 +29,11 @@ public final class ProjectPolicyStore {
     }
     public void initializeSchema() {
         transaction(connection -> {
+            initializeSchema(connection);
+            return null;
+        });
+    }
+    private void initializeSchema(Connection connection) throws SQLException {
             if ("PostgreSQL".equals(connection.getMetaData().getDatabaseProductName()))
                 try (var statement=prepare(connection,"SELECT pg_advisory_xact_lock(1380073796)")) { statement.execute(); }
             try (var statement=connection.createStatement()) {
@@ -37,8 +42,6 @@ public final class ProjectPolicyStore {
                 statement.execute("CREATE TABLE IF NOT EXISTS rbac_project_policy_snapshot (revision BIGINT PRIMARY KEY, previous_revision BIGINT NOT NULL, actor_subject VARCHAR(1024) NOT NULL, created_at TIMESTAMP NOT NULL, document_json TEXT NOT NULL)");
             }
             try (var statement=prepare(connection,"INSERT INTO rbac_project_policy_head(policy_id,schema_version,revision) VALUES(1,2,0) ON CONFLICT DO NOTHING")) { statement.executeUpdate(); }
-            return null;
-        });
     }
     public Snapshot readCurrent() {
         return transaction(connection -> {
@@ -75,8 +78,6 @@ public final class ProjectPolicyStore {
         ProjectPolicy policy=parser.parse(target);
         return transaction(connection -> {
             lockLegacyInitialization(connection);
-            long current=head(connection,true);
-            if (current!=0) throw new Conflict();
             long old=legacyRevision(connection,true);
             if (old<=0) throw new IllegalStateException("No initialized legacy policy");
             byte[] oldJson;
@@ -95,6 +96,9 @@ public final class ProjectPolicyStore {
                 if (!mapper.readTree(parser.canonicalJson(policy)).equals(approved)) throw new Conflict();
             } catch (java.io.IOException failure) { throw new IllegalArgumentException("Invalid approved review",failure); }
             if (!review.operator().equals(actor)) throw new IllegalArgumentException("Migration operator changed");
+            initializeSchema(connection);
+            long current=head(connection,true);
+            if (current!=0) throw new Conflict();
             return insert(connection,current,policy,actor,old,approvedHash);
         });
     }

@@ -47,7 +47,7 @@ public final class ProjectPolicyCommand {
             var service=new ProjectMigrationReview();var review=service.readReview(file(args[2],ProjectMigrationReview.MAX_REPORT_BYTES));
             byte[] target=file(args[1],1024*1024);
             if(!review.approvalHash().equals(args[3]))throw new IllegalArgumentException("Explicit review hash required");
-            store.initializeSchema();var snapshot=store.migrateApproved(review,args[3],target,actor);
+            var snapshot=store.migrateApproved(review,args[3],target,actor);
             System.out.println("Migrated schemaVersion=2 revision="+snapshot.revision()+" sourceRevision="+review.sourceRevision());return;
         }
         throw new IllegalArgumentException("Usage: validate|initialize <target>; preview-migration <target> <role-decisions> <new-review>; migrate <target> <review> <approved-hash>");

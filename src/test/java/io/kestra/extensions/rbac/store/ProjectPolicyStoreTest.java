@@ -55,15 +55,22 @@ class ProjectPolicyStoreTest {
         assertEquals(old.revision(),legacy.readCurrent().revision(),"Legacy backup is not rewritten or pruned");
         assertThrows(ProjectPolicyStore.Conflict.class,()->store.migrateApproved(review,review.approvalHash(),bytes(TARGET),"operator"));
     }
-    @Test void staleReviewDoesNotLeavePartialTargetPolicy() {
+    @Test void staleReviewDoesNotLeavePartialTargetPolicy() throws Exception {
         var source=JdbcPolicyStoreTest.database();var legacy=JdbcPolicyStoreTest.store(source);legacy.initializeSchema();
         legacy.importInitial(bytes(LEGACY),"old-operator");
         var review=new ProjectMigrationReview().preview(1,bytes(LEGACY),bytes(TARGET),bytes(DROP),"operator");
         legacy.replace(1,bytes(LEGACY.replace("alice","bob")),"concurrent-editor");
-        var store=new ProjectPolicyStore(source,new ProjectPolicyParser());store.initializeSchema();
+        var store=new ProjectPolicyStore(source,new ProjectPolicyParser());
         assertThrows(IllegalArgumentException.class,()->store.migrateApproved(review,review.approvalHash(),bytes(TARGET),"operator"));
-        assertThrows(IllegalStateException.class,store::readCurrent);
+        try(var connection=source.getConnection();var tables=connection.getMetaData().getTables(null,connection.getSchema(),null,new String[]{"TABLE"})) {
+            while(tables.next())assertFalse(tables.getString("TABLE_NAME").toLowerCase(java.util.Locale.ROOT).startsWith("rbac_project_policy"),"Rejected migration must not create target tables");
+        }
         assertEquals(2,legacy.readCurrent().revision());
+        var current=legacy.readCurrent();
+        var fresh=new ProjectMigrationReview().preview(current.revision(),bytes(current.canonicalJson()),bytes(TARGET),bytes(DROP),"operator");
+        var migrated=store.migrateApproved(fresh,fresh.approvalHash(),bytes(TARGET),"operator");
+        assertEquals(1,migrated.revision());
+        assertEquals(current.canonicalJson(),legacy.readCurrent().canonicalJson());
     }
     @Test void corruptedStoredDocumentAndDatabaseFailureDoNotReuseOldAllows() throws Exception {
         var source=JdbcPolicyStoreTest.database();var store=new ProjectPolicyStore(source,new ProjectPolicyParser());store.initializeSchema();
