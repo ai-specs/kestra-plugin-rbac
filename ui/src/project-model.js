@@ -37,14 +37,21 @@ export function selectGrantResource(grant) {
 }
 // Filtering is local because the frozen HTTP API specifies page/size only. Read all
 // pages before filtering, and reject a moving or incomplete directory.
-export async function collectPages(fetchPage, signal) {
+export async function collectPages(fetchPage, signal, expectedDirectoryRevision) {
   const items = []
   let total
+  let directoryRevision = expectedDirectoryRevision
   for (let page = 1; ; page++) {
     if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
     const result = await fetchPage(page, 100)
     if (!Array.isArray(result.items) || !Number.isSafeInteger(result.total) || result.total < 0 || result.page !== page || result.size !== 100 || (total !== undefined && total !== result.total) || (!result.items.length && items.length < result.total)) {
       throw Object.assign(new Error('directory_changed'), {code: 'directory_changed', status: 409})
+    }
+    if (directoryRevision !== undefined || result.directoryRevision !== undefined) {
+      if (!Number.isSafeInteger(result.directoryRevision) || result.directoryRevision < 1 || (directoryRevision !== undefined && result.directoryRevision !== directoryRevision)) {
+        throw Object.assign(new Error('directory_changed'), {code: 'directory_changed', status: 409})
+      }
+      directoryRevision = result.directoryRevision
     }
     total = result.total
     items.push(...result.items)

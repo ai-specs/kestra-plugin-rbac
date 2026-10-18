@@ -206,3 +206,10 @@ test('binding projection rejects other targets, inconsistent snapshot revision, 
   for(const override of [{policyRevision:0},{policyRevision:'37'},{directoryRevision:99},{directoryRevision:0},{upperBound:{...source.upperBound,scopes:[...source.upperBound.scopes,source.upperBound.scopes[0]]}},{upperBound:{...source.upperBound,scopes:[{scope:'s',active:'true'}]}}]) assert.throws(()=>bindingOptionsModel({...source,...override},'target'),error=>error.code==='invalid_binding_options')
   assert.equal(bindingOptionsModel({...source,upperBound:{...source.upperBound,project:{...source.upperBound.project,authorizationVersion:1000}}},'target').directoryRevision,7)
 })
+
+test('project directory pagination rejects same-total revision changes and missing revisions', async () => {
+  const pageResult = (page, size, directoryRevision) => ({items: Array(page === 1 ? 100 : 1).fill({}), total:101, page, size, directoryRevision})
+  await assert.rejects(collectPages(async (page,size) => pageResult(page,size,page === 1 ? 7 : 8), undefined,7), error => error.code === 'directory_changed')
+  await assert.rejects(collectPages(async (page,size) => pageResult(page,size,undefined), undefined,7), error => error.code === 'directory_changed')
+  assert.equal((await collectPages(async (page,size) => pageResult(page,size,7),undefined,7)).length,101)
+})

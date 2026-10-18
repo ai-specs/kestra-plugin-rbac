@@ -189,7 +189,7 @@ async function load() {
     if (nextView && nextView.policy?.schemaVersion !== 2) throw new Error('invalid_policy_schema')
     if (current !== generation || disposed) return
     view.value = nextView
-    const all = fetcher => collectPages(fetcher, props.context.signal)
+    const all = (fetcher, revision) => collectPages(fetcher, props.context.signal, revision)
     if (isUsers.value) {
       if (!nextCaps.userDirectory || !nextCaps.identityManagement) throw {status: 403}
       if (!detail.value) items.value = await all((page, size) => api.users(page, size))
@@ -208,7 +208,7 @@ async function load() {
       localProject.value = stored ? {...copy(stored), id: projectId.value} : project.value ? {id: projectId.value, issuer: project.value.issuer, audiences: [], enabled: false, directoryRevision: project.value.revision} : null
       if (!project.value && !stored) throw {status: 404}
       if (tab.value === 'scopes') {
-        const directory = nextCaps.identityManagement && project.value ? await all((page, size) => api.identityScopes(projectId.value, page, size)) : []
+        const directory = nextCaps.identityManagement && project.value ? await all((page, size) => api.identityScopes(projectId.value, page, size), project.value.revision) : []
         scopeChoices.value = directory
         if (!detail.value) items.value = scopeRows(directory, stored?.scopes)
         else {
@@ -221,8 +221,8 @@ async function load() {
         }
       } else if (tab.value === 'clients' || tab.value === 'assignments') {
         if (!nextCaps.identityManagement || !project.value) throw {status: 403}
-        scopeChoices.value = await all((page, size) => api.identityScopes(projectId.value, page, size))
-        if (!detail.value) items.value = await all((page, size) => api[tab.value](projectId.value, page, size))
+        scopeChoices.value = await all((page, size) => api.identityScopes(projectId.value, page, size), project.value.revision)
+        if (!detail.value) items.value = await all((page, size) => api[tab.value](projectId.value, page, size), project.value.revision)
         else if (tab.value === 'clients') member.value = isNew.value ? {clientId: '', approved: false, firstPartyUi: false, audiences: [], allowedProjectScopes: []} : await api.client(projectId.value, decodeKey(detail.value))
         else assignment.value = isNew.value ? {issuer: project.value.issuer, subject: '', projectScopes: []} : await api.assignment(projectId.value, decodeKey(detail.value))
       } else if (tab.value !== 'overview') throw {status: 404}
