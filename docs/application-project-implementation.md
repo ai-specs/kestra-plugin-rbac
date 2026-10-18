@@ -17,14 +17,14 @@ README 入口提取依赖。当前 host-contract.properties 固定已发布的�
 
 以上名称是能力需求，不预设未发布 Java 类名、方法签名或 HTTP 实现。
 
-主控已核对候选宿主的字段语义：Snapshot.directoryRevision 等于 Project.revision，
+已发布宿主的字段语义：Snapshot.directoryRevision 等于 Project.revision，
 TrustedIdentityV1 传播该目录快照 revision。authorizationVersion 是独立 token/session
 撤权 epoch，不是目录修订；即使正常 mutate 时二者同时加一，也不得互换。
-候选公开 PolicyBoundary 提供 project(revision,authorizationVersion)，adapter 必须取
+公开 PolicyBoundary 提供 project(revision,authorizationVersion)，adapter 必须取
 revision 写入本地 Project.directoryRevision 和 Identity.directoryRevision，并核对快照
 一致。authorizationVersion 只由宿主认证/撤权机制校验，不能拿它确认本地绑定。
 纯模型测试使用目录修订 3 与 epoch 97，验证身份、本地和上界任何一处误用 epoch 都拒绝。
-该测试没有引入或编译候选宿主类型，不能替代正式 adapter 的字段映射测试。
+公开 adapter 另以目录 revision 19、epoch 7 验证字段映射；纯模型测试与 adapter 测试职责独立。
 
 ## 2. Adapter 与评估边界
 
@@ -46,16 +46,16 @@ issuer。READ 不授予 MANAGE，不能借用其他 scope 的管理动作或目�
 保存先校验强 If-Match、严格 JSON 和不可变路径标识，再校验权限、当前目录上界和
 真实最后管理员可达性，最后 CAS 保存。跨系统不能宣称单数据库事务；目录在校验与
 本地提交间变化时需要正式服务的版本保护或等价接收机制，否则拒绝并要求重试。
-现有 DirectoryBoundary 回调尚不能自行证明这一点。身份写入不顺带创建本地 grants，
+当前公开目录不提供与本地数据库共用的提交锁；新请求仍须重新检查最新目录修订与上界，不能据此声称跨系统条件提交原子性。身份写入不顺带创建本地 grants，
 本地保存不顺带授予用户 scope。部分成功明确返回并重新读取，不能补授权。
 
-候选错误语义：401 未认证或身份过期；403 无权；400 输入无效；404 无可见目标；
+管理错误语义：401 未认证或身份过期；403 无权；400 输入无效；404 无可见目标；
 409 已存在/目录变化；412 修订冲突；428 缺 If-Match；503 依赖不可用。响应保留
 `{code}`，不输出 token、密码或存储异常细节；成功 GET 与策略响应 no-store。
 
 ## 3. UI client 路径和请求体核对
 
-以下逐项核对隔离树 ui/src/client.js、project-model.js 和 App.vue，仅只读。
+以下为 ui/src/client.js、project-model.js、App.vue 与管理控制器的当前接口。
 公共前缀为宿主 SDK 的 apiBase（含 /api/v1/main）加 /extensions/rbac。
 P 表示项目 ID；K 表示 UTF-8 base64url 无 padding、强制 `~` 前缀的规范标识。
 后端必须严格解码并回编码核对 K，拒绝非规范编码、非法 UTF-8 和路径/请求体不一致。
@@ -63,17 +63,17 @@ P 表示项目 ID；K 表示 UTF-8 base64url 无 padding、强制 `~` 前缀的�
 
 | client 方法 | HTTP 与相对路径 | 输入/修订、目标对应 |
 |---|---|---|
-| capabilities | GET /capabilities | 目标返回 allowed、identityManagement、localPolicyManagement、needsReconciliation；旧控制器缺后三字段，当前不兼容 |
-| policy | GET /policy | 目标 `{policy:schema2,revision,mode,readOnly}`；仅可见目标投影，不泄露其他项目；旧控制器返回 schema1，当前不兼容 |
+| capabilities | GET /capabilities | 返回 allowed、identityManagement、localPolicyManagement、needsReconciliation；不读取旧永久管理员名单 |
+| policy | GET /policy | `{policy:schema2,revision,mode,readOnly}`；只投影获准目标，不返回 schema1 |
 | createProject | POST /projects | `{id,issuer,audiences,enabled,directoryRevision}`，本地全局 revision；对应 createProject，不接受 scopes |
 | updateProject | PUT /projects/P | 同上，id 不变；目录修订必须不变；对应 updateProject |
 | reconciliation | GET /projects/P/reconciliation | `{project,policyRevision,directoryRevision,upperBound:{project,scopes}}`；只给获准目标 |
 | reconcileProject | PUT /projects/P/reconciliation | 完整项目含 id 与全部 scopes；If-Match 为 policyRevision；对应 reconcileProject，返回完整可见 policy view |
-| scopes / scope | GET /projects/P/scopes；GET /projects/P/scopes/K | 尚无 HTTP 实现；不得用 identity scopes 代替本地绑定 |
+| scopes / scope | GET /projects/P/scopes；GET /projects/P/scopes/K | 读取本地绑定；不得用 identity scopes 代替本地绑定 |
 | createScope | POST /projects/P/scopes | `{name,description,enabled,grants,managementGrants}`；本地全局 revision；对应 createScope |
 | updateScope / deleteScope | PUT /projects/P/scopes/K；DELETE 同路径 | PUT 同上且 name 不变；DELETE 无 body；本地全局 revision；对应 replaceScope/deleteScope |
 | identityProjects / identityProject | GET /identity/projects；GET /identity/projects/P | 前者 page/size；宿主共享目录公开服务，插件只做代理和管理域授权 |
-| createIdentityProject | POST /identity/projects | `{id,tenant:"main",displayName}`，无 If-Match（创建）；需正式宿主契约确认 |
+| createIdentityProject | POST /identity/projects | `{id,tenant:"main",displayName}`，无 If-Match（创建）；通过公开目录创建 |
 | updateIdentityProject | PUT /identity/projects/P | `{displayName,active}`；项目 revision |
 | identityScopes / identityScope | GET /identity/projects/P/scopes；GET /identity/projects/P/scopes/K | 前者 page/size；共享意图，不是本地 grants |
 | createIdentityScope / updateIdentityScope | POST /identity/projects/P/scopes；PUT /identity/projects/P/scopes/K | `{scope,description,active,resourceIntents,managementIntents}`；创建用项目 revision，更新用 scope revision |
@@ -81,22 +81,20 @@ P 表示项目 ID；K 表示 UTF-8 base64url 无 padding、强制 `~` 前缀的�
 | createClient / updateClient / deleteClient | POST /identity/projects/P/clients；PUT/DELETE /identity/projects/P/clients/K | `{clientId,approved,firstPartyUi,audiences,allowedProjectScopes}`；创建用项目 revision，更新/删除用成员 revision；DELETE 无 body |
 | assignments / assignment | GET /identity/projects/P/assignments；GET /identity/projects/P/assignments/detail?subject=... | 前者 page/size；subject 为 encodeURIComponent 查询值，不能按 base64 解码 |
 | createAssignment / updateAssignment / deleteAssignment | POST /identity/projects/P/assignments；PUT/DELETE /identity/projects/P/assignments/detail?subject=... | `{issuer,subject,projectScopes}`；创建用项目 revision，更新/删除用 assignment revision；DELETE 无 body |
-| users / user | GET /users；GET /users/detail?subject=... | 前者 page/size；需改为 IDENTITY 授权，不能复用永久 subject 旁路 |
+| users / user | GET /users；GET /users/detail?subject=... | 前者 page/size；要求 IDENTITY 授权，无永久 subject 旁路 |
 | createUser | POST /users | `{username,name,email,password}`；无 If-Match（创建） |
 | updateProfile | PUT /users/profile | `{subject,name,email}`；用户 revision |
 | updateState / resetPassword | PUT /users/state；PUT /users/password | `{subject,active}` / `{subject,password}`；用户 revision；宿主处理认证撤销和真实管理员保护 |
 
 除两个创建资源请求外，client 所有写请求均要求 revision 并发送强引号 If-Match；
 没有提供 revision 的本地调用会先报错。分页期望 `{items,total,page,size}`，本地收集器
-会检查完整性。相同 total 不证明目录快照一致，正式契约还须确定目录变化的修订保护。
+会检查完整性。项目内 scope/client/assignment 页含 directoryRevision；收集器要求逐页修订与已加载项目一致，相同 total 下的修订变化也拒绝。项目清单与用户目录没有全局修订，不提供跨请求快照保证。
 client 不自行发送 CSRF token，必须由正式 SDK request 提供已验证保护；不能因此删除
 服务端 CSRF 门。项目 ID 为受限字母数字编码，scope/client ID 为 K，subject 为查询值。
 
-核对结论：本地项目/完整恢复/完整 grants 的请求体与候选服务一致，但只有 Java 服务，
-没有 HTTP 路由、读取投影和权限接线。身份目录路径全部尚无插件控制器；其字段和各类
-revision 归属必须对正式宿主契约核对后才可实现，不能记录为已经一致或可以联调。
-旧 /users 路由形状相同但权限模型不合目标。capabilities、policy 当前明确不兼容。
-禁止为迁就页面把身份业务、client 或 assignment 写入插件表。
+本地项目、完整恢复、完整 grants、共享目录代理及账号路由均已接入 schema2 管理控制器。
+源码和本地检查不能代替真实联调；生产 UI、目录修订、拒绝副作用与浏览器操作仍由部署仓验收。
+共享身份业务和数据仍归宿主，插件不保存 client、assignment 或账号凭据。
 
 ## 4. 旧消费者清理清单与保留理由
 
@@ -117,7 +115,7 @@ revision 归属必须对正式宿主契约核对后才可实现，不能记录�
 | store/PolicyImportCommand | 移除旧生产初始化入口；文档改为正式审查后的 schema2 命令，不提供 schema1 回退授权 |
 | examples/management-policy.json、README、management-api.md、authorization-flow.md | 新默认示例和命令改 schema2；旧调查保留历史标记，不把旧永久 subject 管理员写成当前建议 |
 | 旧 RuntimePolicies/InstanceAdmin/PolicyEngine/TypedPolicy/ManagementController/BeanDiscovery 等测试 | 替换生产断言，不通过直接删除安全断言获得绿灯；必要旧测试限离线迁移语义 |
-| UI 旧页面、翻译和根部署脚本 | 由 app-ui 与主控分别负责，本范围只提供消费者证据，不修改 |
+| UI 旧页面、翻译和根部署脚本 | UI 由插件维护；组合配置和最终浏览器验收由部署仓维护 |
 
 ## 5. 迁移审批核查与未覆盖项
 
@@ -147,15 +145,14 @@ legacyNonNamespaceGrantsRequiringReview，明确 automaticNamespaceMappingAllowe
 最后管理员保护。离线命令当前没有这些可信输入，不能作为独立生产切换批准门。
 不得用手工签名 Identity DTO 或 reachableManagementScopes 集合替代真实登录证明。
 
-现有纯模型可以验证 grant、规范 hash、审批、存储 CAS、上界和目标关联。必须等正式
-宿主产物才能实施：可信身份 adapter、真实目录上界转换、目录并发保护、HTTP 管理与
-用户服务、管理员安装/切换、旧凭据撤销、运行时旧链删除、真实 REST/UI/MCP 验收。
-届时仍需 PostgreSQL 检查、独立插件 check/CI/发布、Compose 与拒绝无副作用验收。
-当前定向纯模型测试通过不能写成整个插件交付。
+纯模型与正式公开契约 adapter 已实现 grant、审批、存储 CAS、上界和目标关联，
+以及可信身份转换、HTTP 管理与旧运行链移除。本地独立 check 和 PostgreSQL 检查
+已执行；插件远端 CI、正式产物和真实 Compose/UI/REST/MCP 结果须独立核对。
+管理员切换、旧凭据撤销与恢复演练不能从上述本地结果推定。
 
 ## 6. 主控裁决：部署管理员迁移与 BUSINESS_INSTANCE 映射
 
-状态：已接收的实施设计，接线、发布与真实验收均未完成。此节具体化第 2 节的显式
+状态：已接收并接入 ProjectTypedPolicy，独立测试已覆盖；正式插件发布与真实组合验收尚待核对。此节具体化第 2 节的显式
 typed 映射，不将 BUSINESS_INSTANCE 解释为任意操作通行旁路。
 
 旧真实部署的永久 subject 管理员必须转为由身份端实际授予的显式项目 scope，且由
@@ -207,28 +204,13 @@ SYSTEM 在此是明确 typed 资源，不授权把所有未知操作降成 SYSTE
   “已接收的非命名空间资源范围”要求它不得成为普通业务资源的通行旁路。本节把该表
   具体化，不将 authorizeManagement 的布尔结果应用到任意路由。
 
-现有纯模型只提供管理域判定，尚未实现上述 typed 操作映射。不得把已接收设计写成
-当前能力。共享 application-projects.md 本轮不修改，由主控协调同步这一具体资源表。
+ProjectTypedPolicy 使用以上固定表映射 typed 操作；未知项拒绝。该源码能力不证明
+实际业务路由、执行、输出和管理隔离均已通过组合验收。
 
-### 旧 revision 3 备份的迁移输入
+### 部署迁移的职责
 
-以下由主控报告，本轮未访问或改写真实备份与原卷：旧 policy revision=3 包含
-examples-reader、examples-writer 的精确 examples grants，普通测试账号 mgmt-test
-绑定两者；admin 权限来自部署 subject 名单。原卷未修改。
-
-迁移必须分开记录两种来源：数据库中普通 roles/subjects 的明确对应，以及配置中的
-admin 永久 subject 旁路。后者不在旧 policy JSON 中，现有 ProjectMigrationReview
-的 roleDecisions 和 grantDifferences 无法自动覆盖，不能因报告通过而漏掉管理员迁移。
-必须单列经操作者批准的部署授权来源、移除项、新项目 scope、完整管理域和动作、身份
-端实际授予、client 与 audience、重新登录及旧凭据失效证据；不能只改旧 JSON。
-
-examples-reader/writer 必须保持精确 examples 边界，不能迁成 namespace 子树或实例
-管理范围。须依据实际 grant 动作判断同 scope READ/LIST 完整性，不能仅按角色名猜测。
-mgmt-test 必须改为由身份端批准授予真实项目 scopes，旧 subject 双角色绑定不再生效；
-需对照原实际动作验证迁移增减，不能默认它与 admin 一起获得 BUSINESS_INSTANCE。
-admin 的新 BUSINESS_INSTANCE scope 只承接上表明确语义；是否另授 IDENTITY 与
-LOCAL_POLICY 必须分别明确批准，不能从旧管理员身份自动推导三域权限。
-
-该输入不包含已核对的备份文件路径/hash、完整 grant 内容或部署配置 hash，因此本节
-不是可执行迁移计划，也不生成批准目标。主控后续必须核对实际源文件、配置与 hash，
-在维护窗口按匹配正式产物完成真实管理员切换、普通账号对照与恢复演练。
+插件维护离线迁移的输入格式、审批 hash 与存储保护。真实部署中旧策略和管理员配置
+的来源 hash、备份、实际身份授予、允许/拒绝差异及回退证据归部署仓。
+永久 subject 管理员不在旧策略 JSON 中，迁移计划必须单列该配置来源、移除项、
+明确批准的三域 scope、client/audience 和重新登录证据。不得从旧管理员名称推导三域
+权限，也不得把普通精确 namespace grants 扩大为子树或 BUSINESS_INSTANCE。
