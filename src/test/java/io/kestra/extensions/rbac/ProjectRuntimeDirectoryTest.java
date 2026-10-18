@@ -75,6 +75,10 @@ class ProjectRuntimeDirectoryTest {
         var identity=new io.kestra.webserver.oidc.TrustedIdentityV1.Identity(1,"https://issuer.example","operator","ui-client",Set.of("ui"),
             "main","p",Set.of(),Set.of("manager"),0,97,3);
         var runtime=new ProjectRuntimePolicies(store,directory,identities);
+        var negativeVersion=new io.kestra.webserver.oidc.TrustedIdentityV1.Identity(1,"https://issuer.example","operator","ui-client",Set.of("ui"),
+            "main","p",Set.of(),Set.of("manager"),-1,97,3);
+        assertEquals(ProjectRuntimePolicies.Failure.INVALID_IDENTITY,
+            assertThrows(ProjectRuntimePolicies.Rejected.class,()->runtime.open(negativeVersion,"main")).failure());
         try(var context=runtime.open(identity,"main")){
             assertTrue(context.authorizeManagement(io.kestra.extensions.rbac.project.ProjectPolicy.ManagementDomain.IDENTITY,
                 io.kestra.extensions.rbac.project.ProjectPolicy.ManagementAction.MANAGE,"new-project"));
