@@ -8,6 +8,12 @@ import static io.kestra.webserver.oidc.ApplicationDirectoryV1.*;
 
 /** Tests the plugin adapter, independently of the host directory implementation. */
 class ProjectRuntimeDirectoryTest {
+    @Test void runtimeFactoryDoesNotBorrowConnectionsOrCreatePolicySchema() throws Exception {
+        var source=org.mockito.Mockito.mock(javax.sql.DataSource.class);
+        assertNotNull(new ProjectRuntimeConfiguration().projectPolicyStore(source));
+        org.mockito.Mockito.verify(source,org.mockito.Mockito.never()).getConnection();
+        org.mockito.Mockito.verify(source,org.mockito.Mockito.never()).getConnection(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString());
+    }
     private ResourceIntent intent(String vocabulary,String resource,Set<String> actions,DomainKind kind){
         return new ResourceIntent(vocabulary,resource,new NamespaceDomain(kind,kind==DomainKind.ALL?Set.of():Set.of("a"),Set.of()),
             new ResourceIdDomain(DomainKind.ALL,Set.of()),actions);

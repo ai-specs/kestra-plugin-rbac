@@ -15,6 +15,6 @@ public final class ProjectRuntimeConfiguration {
     @Requires(beans=DataSource.class)
     public ProjectPolicyStore projectPolicyStore(DataSource source){
         var store=new ProjectPolicyStore(io.micronaut.data.connection.jdbc.advice.DelegatingDataSource.unwrapDataSource(source),new ProjectPolicyParser());
-        store.initializeSchema();return store;
+        return store;
     }
 }
