@@ -34,7 +34,7 @@ export default defineConfig({
   plugins: [vue(), shadowStyles],
   define: { 'process.env.NODE_ENV': JSON.stringify('production'), 'import.meta.env.NODE_ENV': JSON.stringify('production') },
   build: {
-    outDir: resolve(root, '../build/generated-ui/ui-extensions/rbac'),
+    outDir: process.env.UI_OUTPUT_DIR ? resolve(process.env.UI_OUTPUT_DIR) : resolve(root, '../build/generated-ui/ui-extensions/rbac'),
     emptyOutDir: true,
     cssCodeSplit: false,
     lib: { entry: resolve(root, 'src/index.js'), formats: ['es'], fileName: () => 'entry.js' },

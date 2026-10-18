@@ -5,6 +5,7 @@ import {ElConfigProvider} from 'element-plus'
 import {createMemoryHistory, createRouter} from 'vue-router'
 import {registerDesignSystemI18n, KsButton, KsInput, KsSearch, KsPopover, KsTooltip, KsIcon, KsSelect, KsOption, KsDatePicker, KsTag, KsSegmented} from '@kestra-io/design-system'
 import App from './App.vue'
+import {resolveLocale} from '../../.integration/ui-sdk/locales.mjs'
 
 const documents = import.meta.glob('./translations/*.json', {eager: true, import: 'default'})
 const messages = Object.assign({}, ...Object.values(documents))
@@ -19,7 +20,7 @@ export async function mountPage(container, initial) {
   portals.className = 'extension-body extension-portals'
   target.className = 'extension-body rbac-page'
   const state = shallowReactive({context: initial})
-  const locale = value => messages[value] ? value : 'en'
+  const locale = value => resolveLocale(value)
   const i18n = createI18n({legacy: false, locale: locale(initial.locale), fallbackLocale: 'en', messages})
   let app
   let disposed = false

@@ -18,10 +18,10 @@ path,image,output,sdk_output=sys.argv[1:]
 sdk_hashes={}
 with zipfile.ZipFile(path) as jar:
     names=set(jar.namelist())
-    for name in ['RbacAuthorizer','RestAuthorizationResolver','McpAuthorizationResolver','TypedAuthorization','TypedAuthorizationResolver','AuthorizationEvaluationV1','AuthorizationEvaluationProviderV1']:
+    for name in ['RbacAuthorizer','RestAuthorizationResolver','McpAuthorizationResolver','TypedAuthorization','TypedAuthorizationResolver','AuthorizationEvaluationV1','AuthorizationEvaluationProviderV1','AuthorizationEvaluationProviderV2']:
         assert f'io/kestra/webserver/rbac/{name}.class' in names, f'Missing host SPI: {name}'
     assert 'io/kestra/core/models/executions/Execution.class' in names
-    for name in ['io/kestra/webserver/oidc/UserDirectoryV1.class','io/kestra/webserver/ui/UiExtensionProviderV1.class','io/kestra/webserver/ui/UiExtensionDescriptorV1.class']:
+    for name in ['io/kestra/webserver/oidc/UserDirectoryV1.class','io/kestra/webserver/oidc/ApplicationDirectoryV1.class','io/kestra/webserver/oidc/TrustedIdentityV1.class','io/kestra/webserver/ui/UiExtensionProviderV1.class','io/kestra/webserver/ui/UiExtensionDescriptorV1.class']:
         assert name in names, f'Missing management contract: {name}'
     prefix='META-INF/kestra/ui-sdk/v1/'
     required={'index.d.ts','contract.json','locales.mjs','check-translations.mjs','shadow-styles.mjs','README.md'}

@@ -9,7 +9,17 @@ const sdk = await import(sdkPath)
 if (typeof sdk.checkTranslations !== 'function') throw new Error('正式 UI SDK 缺少 checkTranslations(directory)')
 const files = (await readdir(directory)).filter(name => name.endsWith('.json')).sort()
 if (files.length !== 13) throw new Error('翻译文件数量必须为 13，实际为 ' + files.length)
-const required = ['title', 'roles', 'users', 'bindings', 'search', 'name', 'description', 'save', 'create', 'delete', 'cancel', 'back', 'subject', 'password', 'email', 'active', 'inactive', 'reset', 'roleIds', 'trustedRole', 'resource', 'actions', 'namespace', 'children', 'allIds', 'ids', 'revision', 'loading', 'error', 'saved', 'confirm', 'readOnly', 'denied', 'noRows', 'protected', 'edit', 'reload', 'conflict', 'policyMode', 'next', 'previous', 'addGrant', 'removeGrant', 'bindingSubject', 'bindingRole']
+const required = ["title", "projects", "users", "scopes", "clients", "assignments", "overview", "scope", "saveIdentity", "saveLocal", "independentSaves", "stateDisclaimer", "completeGrants", "directoryStale", "search", "reload", "conflict"]
+// Check literal UI lookups too: matching locale key sets alone can miss a key
+// absent from every language. Dynamic status/column keys remain in the catalogue.
+const sourceDirectory = resolve(import.meta.dirname, '../src')
+for (const file of await readdir(sourceDirectory)) {
+  if (!/\.(vue|js)$/.test(file)) continue
+  const source = await readFile(resolve(sourceDirectory, file), 'utf8')
+  for (const match of source.matchAll(/\bt\(['"]([A-Za-z][A-Za-z0-9_]*)['"]/g)) {
+    if (!required.includes(match[1])) required.push(match[1])
+  }
+}
 const titles = {}
 for (const file of files) {
   const data = JSON.parse(await readFile(resolve(directory, file), 'utf8'))

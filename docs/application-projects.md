@@ -589,3 +589,82 @@ HTTP client 时使用正式授权流程，不能用测试 header 伪造 scope。
 - 独立插件 CI 通过；
 - overlay patch-verify、构建、MCP 黑盒和镜像发布通过；
 - Compose 真实验收通过，并核对最终镜像 digest、插件 jar hash 和最终提交。
+
+
+## 候选调查记录（未冻结、未发布）
+
+候选 schemaVersion 2 使用 `applicationProjects` 映射。每个项目包含 `issuer`、精确 `audiences` 集合、`enabled`、正整数 `directoryRevision` 和 `scopes` 映射；每个 scope 包含 `description`、`enabled` 和非空完整 `grants`。UI 与 MCP 可使用不同 audience，但必须通过显式 client 目录绑定到项目，不接受通配或按名称推断。IdP 提供项目目录与角色授权意图上界；插件只保存本地收窄和只读投影，不构造第二事实源。目录版本不匹配时必须拒绝，直到本地重新确认；策略全局 `revision` 与 `directoryRevision` 独立。
+
+普通请求只接受宿主公开契约验证的 subject、issuer、audience、project、client binding、scopes。`roles`、`subjects`、`roleMapping` 不参与。单动作必须由一个完整 grant 覆盖全部 tenant、namespace、resource、action 和 ID 条件。列表使用 `union(intersect(READ(scope), LIST(scope)))`，先 scope 内相交再跨 scope 求并集；纯模型的 `authorizeList` 保留每项命名空间与 ID 的关联，先在同一 scope 内求 READ/LIST 的完整交集，再合并关联项；不得分别合并 namespace 与 ID。旧的仅命名空间 `authorize` 列表入口仍明确拒绝受限 ID。新的宿主查询消费适配尚未发布、尚未接入，不能把纯模型测试记为生产受限 ID 列表已经通过。未知、disabled、空 grants、身份错误和目录版本不匹配均失败关闭。
+
+候选管理 API：`GET/POST /api/v1/{tenant}/extensions/rbac/projects`、`GET/POST /.../projects/{id}/scopes`、`PUT/DELETE /.../projects/{id}/scopes/{scope}`。写入需要显式项目管理 scope、CSRF 和强 `If-Match`；项目成员、client、subject 授予和撤权属于 IdP API。管理员不得使用永久 subject 旁路。
+
+
+管理模型冻结补充：scope 可以包含 `managementGrants:[{domain:IDENTITY|LOCAL_POLICY|BUSINESS_INSTANCE,actions:[READ|MANAGE]}]`。LOCAL_POLICY 的空 projectIds 仅覆盖所属 project，非空集合只覆盖精确列出的项目；BUSINESS_INSTANCE 仅覆盖所属项目，IDENTITY 覆盖精确 issuer；租户固定 main，三个域互不包含，READ 不授予 MANAGE。JSON 省略 managementGrants 等于空；business grants 与 managementGrants 不得同时为空。管理授权必须同时满足可信目录同 scope 的管理意图上界与本地管理 grants。`authorizeManagement(identity,directory,domain,action)` 不形成业务全实例旁路，BUSINESS_INSTANCE 后续只经显式 typed 资源表集成。当前目录 DTO 用 ScopeDefinition.managementGrants 表达可信 managementIntents 投影，不消费未发布宿主 SPI。
+
+共享元数据例外：仅接受 `scope:TENANT,tenant:main,resource:METADATA,namespace:null,descendants:false,actions:[READ|LIST],ids:[],allIds:true` 的完整 grant。必须有可信目录同 scope 的显式上界；任意 namespace READ 不授予此权限。该资源仅用于宿主公开 METADATA 非业务共享元数据操作，不能用于其他 TENANT 业务、SYSTEM、INSTANCE 或管理授权。纯模型已定义本地 Resource.METADATA，宿主 adapter 尚未集成。
+
+目录版本重新确认例外：`authorizeReconciliation(identity,directory)` 仅用于修正/重新确认本地绑定，不授业务、身份目录或账号/client/assignment CRUD。身份必须为可信当前目录版本，issuer、audience、project 全匹配；仅允许忽略本地 directoryRevision 过期。逐 token scope 校验已知、启用和完整本地绑定，并要求实际目标上本地与当前共享同 scope 同时具有 LOCAL_POLICY.MANAGE；不检查未出现于 token 的无关 local scope。普通业务与普通管理仍严格校验本地版本，保存候选仍必须完整校验当前目录与最后管理员保护。Identity DTO 显式保存 tenant，仅 main 允许；七参数纯 DTO 构造明确默认 main，宿主 adapter 必须传入已验证 tenant。
+
+
+### 已接收的非命名空间资源范围（2026-10-17，实施中、未发布）
+
+本节按实际宿主类型化操作裁决范围，不表示已通过组合验收。普通业务 grant 必须使用
+明确 `NAMESPACE` 范围。以下例外仍须由同一个项目 scope 独立、显式声明，并受身份
+目录同 scope 的完整资源意图上界约束；任意普通 READ 不隐式获得这些权限。
+
+- `METADATA`：`TENANT/main`，无 namespace，仅 READ/LIST，必须 allIds。只消费宿主
+  类型化 METADATA 的配置、插件目录及其他非业务共享元数据。图表实际业务查询仍单独授权。
+- `MCP_SERVER`：`TENANT/main`，无 namespace，配置资源的 READ/LIST/CREATE/UPDATE/DELETE。
+  宿主 `McpServerController` 的 listMcps/getMcp/createMcp/updateMcp/toggleMcp/deleteMcp
+  实际操作不属于某个 flow namespace，必须独立授权。工具关联 Flow 列表继续使用 FLOW
+  命名空间权限；查看配置不授予执行工具或修改配置。资源 ID 限制保持完整，未适配 ID
+  查询域的入口必须拒绝，不得返回全量列表或虚假的 total。
+- 管理域 `IDENTITY` 是精确 issuer 下的共享身份目录；LOCAL_POLICY、BUSINESS_INSTANCE
+  属于应用项目和 main tenant。三个域互不包含。管理 scope 使用显式 managementGrants，
+  不从名称、旧 roles 或 subject 推断。BUSINESS_INSTANCE 不成为普通业务资源的通行旁路。
+
+目录修订不匹配时，普通业务仍拒绝。唯一恢复例外是重新确认本地绑定：当前真实身份
+必须持有仍被最新目录同 scope 上界允许的 LOCAL_POLICY.MANAGE，本地管理绑定必须仍
+启用，未知/禁用项目 scope 混合仍拒绝。此入口只能修正、校验并显式确认本地绑定，不
+开放身份目录 CRUD、账号管理或业务操作。保存前完整验证最新目录边界及最后管理员保护。
+
+
+### 本地管理目标和完整绑定恢复（主控冻结，实施中、未发布）
+
+共享 `managementIntents` 与本地 `managementGrants` 均使用 `projectIds` 精确项目 ID 集合。
+只有 `LOCAL_POLICY` 可以使用非空集合；空集合只覆盖 scope 所属项目，非空集合只覆盖
+列出的项目，不额外包含所属项目。不支持通配。`IDENTITY` 仍覆盖精确 issuer 的身份目录，
+`BUSINESS_INSTANCE` 仍只覆盖所属项目/main；这两个域的 projectIds 必须为空。
+本地动作和目标项目必须由同一 scope 的完整 management grant 提供，并被该 scope
+的共享管理意图同时覆盖。不得从一个 scope 借管理动作，再从另一个 scope 借目标项目。
+管理控制器必须传入请求的实际目标项目，不能只检查登录项目。
+
+`GET /projects/{id}/reconciliation` 返回：
+`{project,policyRevision,directoryRevision,upperBound:{project,scopes}}`。
+外层 project 是包含 id 的完整 schema2 本地项目；policyRevision 是全局本地策略修订；
+directoryRevision 是目标共享目录当前修订。upperBound 只含公开共享项目与 scope 定义，
+不包含 client、assignment 或用户目录。此读取仅服务当前获准目标的本地绑定恢复，
+不开放一般身份目录读取或 CRUD。
+
+`PUT /projects/{id}/reconciliation` 输入包含 id、issuer、audiences、enabled、
+directoryRevision 和全部 scopes 的完整本地项目，If-Match 使用 policyRevision，
+返回现有完整 policy view。操作者必须显式审查全部 scope，必要时同时修正多个越界绑定，
+再一次原子保存。服务端对全部候选重新验证当前共享上界和最后本地管理员保护；拒绝时
+不得先更新 directoryRevision 或保存部分 scopes。普通 scope 保存和项目元数据保存
+不得静默确认目录修订。恢复权限仍须由当前可信 LOCAL_POLICY.MANAGE 完整授权。
+
+当前仅纯模型、存储服务和页面在实施；公开宿主、HTTP adapter 与实际浏览器尚未通过，
+此节不得用作当前已部署能力或正式产物证据。
+
+恢复授权只判断实际目标上仍同时存在的同 scope LOCAL_POLICY.MANAGE。若共享上界撤回
+同一管理 grant 的其他目标，普通授权继续拒绝，但保留目标的管理者可以用完整恢复入口
+删除已撤回目标。不得因此允许管理被撤回的目标；候选保存仍完整验证全部上界。
+
+
+本地保存的完整上界检查由纯模型 `ProjectPolicyBoundary.validate` 提供：逐项目核对
+issuer、精确 audiences、目录修订与启用状态，逐 scope 检查全部业务 grants 和管理
+目标，未知共享目标拒绝。不允许跨 scope 借上界，也不因为未出现在当前 token 的绑定
+而跳过保存校验。运行时请求仅解析 token 中的 scopes，完整保存校验则检查候选所有绑定。
+该纯模型不认证身份，不读取 IdP 表，也不能单独证明最后管理员保护；正式 SPI adapter
+必须提供可信一致目录快照和真实管理员可达性检查。当前尚未接入公开产物。

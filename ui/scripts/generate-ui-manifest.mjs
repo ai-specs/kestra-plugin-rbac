@@ -10,7 +10,7 @@ if (!existsSync(sdkStyles)) throw new Error('正式 UI SDK 缺失：' + sdkStyle
 const check = spawnSync(process.execPath, [resolve(import.meta.dirname, 'check-translations.mjs')], { encoding: 'utf8' })
 if (check.status !== 0) { process.stderr.write(check.stderr); process.exit(check.status || 1) }
 const translation = JSON.parse(check.stdout)
-const output = resolve(root, '../build/generated-ui/ui-extensions/rbac')
+const output = process.env.UI_OUTPUT_DIR ? resolve(process.env.UI_OUTPUT_DIR) : resolve(root, '../build/generated-ui/ui-extensions/rbac')
 async function walk(directory, prefix = '') {
   const entries = await readdir(directory, { withFileTypes: true })
   const result = []

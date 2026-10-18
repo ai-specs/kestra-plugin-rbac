@@ -38,6 +38,7 @@ jobs:
         working-directory: rbac
         run: |
           ./gradlew clean check --console=plain
+          python3 scripts/check-application-project-tests.py build/test-results/test
           mkdir -p .evidence/unit
           cp -R build/reports/tests/test .evidence/unit/report
           cp -R build/test-results/test .evidence/unit/results

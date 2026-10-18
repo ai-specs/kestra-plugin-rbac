@@ -8,7 +8,7 @@ main > .kel-tabs { margin: 0 -32px; background: var(--ks-bg-surface); border-bot
 fieldset { border: 0; padding: 0; margin: 16px 0; min-width: 0; }
 label { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; max-width: 720px; }
 label.checkbox { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; margin: 8px 20px 8px 0; }
-input:not(.kel-input__inner), select { font: inherit; color: var(--ks-text-primary); background: var(--ks-bg-input); border: 1px solid var(--ks-border-default); border-radius: 4px; padding: 8px 12px; }
+input:not(.kel-input__inner), select, textarea { font: inherit; color: var(--ks-text-primary); background: var(--ks-bg-input); border: 1px solid var(--ks-border-default); border-radius: 4px; padding: 8px 12px; }
 input[type=checkbox] { accent-color: var(--ks-text-link); }
 :focus-visible { outline: 2px solid var(--ks-text-link); outline-offset: 3px; }
 .grant { border: 1px solid var(--ks-border-default); border-radius: 8px; padding: 16px; margin: 16px 0; }
@@ -24,3 +24,15 @@ input[type=checkbox] { accent-color: var(--ks-text-link); }
 .message { padding: 12px 16px; border: 1px solid var(--ks-border-default); border-radius: 4px; }
 .error { color: var(--ks-text-error); }
 @media (max-width: 640px) { .rbac-page { padding: 0 16px 16px; } main > .kel-tabs { margin: 0 -16px; } .toolbar-status { flex-direction: column; gap: 2px; } }
+
+textarea { min-height: 80px; resize: vertical; width: 100%; box-sizing: border-box; }
+h2 { font-size: 16px; margin: 24px 0 12px; }
+small { color: var(--ks-text-secondary); }
+output, .message, .toolbar-status { overflow-wrap: anywhere; }
+fieldset:disabled { opacity: .75; }
+
+[data-test="reconciliation-upper"] { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; background: var(--ks-bg-surface); padding: 12px; }
+
+[data-test="saved-result"] pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+[data-test="binding-options-upper"] { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }

@@ -2,18 +2,10 @@ package io.kestra.extensions.rbac.store;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
-import javax.sql.DataSource;
 
+/** Offline legacy validation only. Production initialization is schema 2. */
 public final class PolicyImportCommand {
     private PolicyImportCommand() {}
-    private static String environment(String name) {
-        String value = System.getenv(name);
-        if (value == null || value.isBlank()) throw new IllegalArgumentException("Required environment: " + name);
-        return value;
-    }
     public static void main(String[] arguments) {
         try { execute(arguments); }
         catch (Exception failure) {
@@ -35,24 +27,6 @@ public final class PolicyImportCommand {
             System.out.println("Valid policy schemaVersion=1 roles=" + validated.document().roles().size());
             return;
         }
-        String url = environment("RBAC_POLICY_JDBC_URL");
-        String username = environment("RBAC_POLICY_JDBC_USER");
-        String password = environment("RBAC_POLICY_JDBC_PASSWORD");
-        String actor = environment("RBAC_POLICY_OPERATOR_SUBJECT");
-        DataSource source = new DataSource() {
-            public Connection getConnection() throws SQLException { return DriverManager.getConnection(url, username, password); }
-            public Connection getConnection(String user, String secret) throws SQLException { return getConnection(); }
-            public java.io.PrintWriter getLogWriter() { return null; }
-            public void setLogWriter(java.io.PrintWriter writer) {}
-            public int getLoginTimeout() { return DriverManager.getLoginTimeout(); }
-            public void setLoginTimeout(int seconds) { DriverManager.setLoginTimeout(seconds); }
-            public java.util.logging.Logger getParentLogger() { return java.util.logging.Logger.getGlobal(); }
-            public <Target> Target unwrap(Class<Target> type) throws SQLException { throw new SQLException("unsupported"); }
-            public boolean isWrapperFor(Class<?> type) { return false; }
-        };
-        var store = new JdbcPolicyStore(source, validator);
-        store.initializeSchema();
-        var snapshot = store.importInitial(document, actor);
-        System.out.println("Policy initialized revision=" + snapshot.revision() + " schemaVersion=1");
+        throw new IllegalArgumentException("Schema 1 initialization is retired; use approved schema 2 maintenance");
     }
 }

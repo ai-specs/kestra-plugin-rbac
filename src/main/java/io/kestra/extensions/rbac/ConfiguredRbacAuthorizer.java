@@ -2,18 +2,11 @@ package io.kestra.extensions.rbac;
 import io.kestra.webserver.rbac.RbacAuthorizer;
 import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Singleton;
-import java.util.Set;
 import java.util.concurrent.*;
 @Singleton
-@Requires(property = "kestra.rbac.enabled", value = "true")
+@Requires(property="kestra.rbac.enabled",value="true")
+/** Compatibility entry point: never supplies permission without a trusted V2 evaluation. */
 public final class ConfiguredRbacAuthorizer implements RbacAuthorizer {
-    private final RuntimePolicies policies;
-    ConfiguredRbacAuthorizer(PolicyEngine engine) { this.policies = RuntimePolicies.compiledPolicy(engine); }
-    @jakarta.inject.Inject
-    public ConfiguredRbacAuthorizer(RuntimePolicies policies) { this.policies = policies; }
-    @Override public CompletionStage<Boolean> authorize(RbacAuthorizer.Principal principal, Resource resource, Action action) {
-        if (principal == null || resource == null || action == null) return CompletableFuture.completedFuture(false);
-        try { return CompletableFuture.completedFuture(policies.snapshot().authorize(principal, resource, action)); }
-        catch (Exception failure) { return CompletableFuture.completedFuture(false); }
-    }
+    public ConfiguredRbacAuthorizer(){}
+    @Override public CompletionStage<Boolean> authorize(Principal principal,Resource resource,Action action){return CompletableFuture.completedFuture(false);}
 }

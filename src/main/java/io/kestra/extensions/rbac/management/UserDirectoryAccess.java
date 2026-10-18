@@ -8,7 +8,7 @@ public interface UserDirectoryAccess {
     record Page(List<User> items, long total, int page, int size) {
         public Page { items = List.copyOf(items); }
     }
-    enum Failure { INVALID, NOT_FOUND, CONFLICT, UNAVAILABLE }
+    enum Failure { INVALID, NOT_FOUND, CONFLICT, FORBIDDEN, LAST_ADMIN, UNAVAILABLE }
     final class DirectoryFailure extends RuntimeException {
         private final Failure failure;
         public DirectoryFailure(Failure failure) { super("Directory operation failed"); this.failure = failure; }

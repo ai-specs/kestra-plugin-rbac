@@ -6,24 +6,26 @@ import java.util.Map;
 
 @ConfigurationProperties("kestra.rbac")
 public class RbacConfiguration {
+    private boolean legacyFieldsConfigured;
+    public boolean hasLegacyFieldsConfigured() { return legacyFieldsConfigured; }
     private String policySource = "database";
     private List<String> managementAdminSubjects = List.of();
     public String getPolicySource() { return policySource; }
     public void setPolicySource(String value) { policySource = value; }
     public List<String> getManagementAdminSubjects() { return managementAdminSubjects; }
-    public void setManagementAdminSubjects(List<String> value) { managementAdminSubjects = List.copyOf(value); }
+    public void setManagementAdminSubjects(List<String> value) { legacyFieldsConfigured = true; managementAdminSubjects = List.copyOf(value); }
     private List<String> instanceAdminRoles = List.of();
     public List<String> getInstanceAdminRoles() { return instanceAdminRoles; }
-    public void setInstanceAdminRoles(List<String> value) { instanceAdminRoles = List.copyOf(value); }
+    public void setInstanceAdminRoles(List<String> value) { legacyFieldsConfigured = true; instanceAdminRoles = List.copyOf(value); }
     private Map<String, List<Grant>> roles = Map.of();
     private Map<String, List<String>> subjects = Map.of();
     private Map<String, List<String>> roleMapping = Map.of();
     public Map<String, List<Grant>> getRoles() { return roles; }
-    public void setRoles(Map<String, List<Grant>> value) { roles = Map.copyOf(value); }
+    public void setRoles(Map<String, List<Grant>> value) { legacyFieldsConfigured = true; roles = Map.copyOf(value); }
     public Map<String, List<String>> getSubjects() { return subjects; }
-    public void setSubjects(Map<String, List<String>> value) { subjects = Map.copyOf(value); }
+    public void setSubjects(Map<String, List<String>> value) { legacyFieldsConfigured = true; subjects = Map.copyOf(value); }
     public Map<String, List<String>> getRoleMapping() { return roleMapping; }
-    public void setRoleMapping(Map<String, List<String>> value) { roleMapping = Map.copyOf(value); }
+    public void setRoleMapping(Map<String, List<String>> value) { legacyFieldsConfigured = true; roleMapping = Map.copyOf(value); }
 
     @io.micronaut.core.annotation.Introspected
     public static class Grant {

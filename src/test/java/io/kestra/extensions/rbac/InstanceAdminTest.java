@@ -36,11 +36,11 @@ class InstanceAdminTest {
         invalid.setInstanceAdminRoles(List.of("missing"));
         assertThrows(IllegalArgumentException.class, () -> new PolicyEngine(invalid));
     }
-    @Test void administratorAllowsEveryValidResourceAndActionButRejectsInvalidResources() {
-        var authorizer = new ConfiguredRbacAuthorizer(engine);
+    @Test void legacyAdministratorNeverAuthorizesRuntimeResources() {
+        var authorizer = new ConfiguredRbacAuthorizer();
         for (Kind kind : Kind.values()) for (Action action : Action.values()) {
             var resource = new Resource(kind, Scope.NAMESPACE, "main", "prod.team", "id");
-            assertTrue(authorizer.authorize(principal("user", "admin"), resource, action).toCompletableFuture().join());
+            assertFalse(authorizer.authorize(principal("user", "admin"), resource, action).toCompletableFuture().join());
             assertFalse(authorizer.authorize(principal("user", "deployment-admin"), resource, action).toCompletableFuture().join());
         }
         for (var resource : List.of(new Resource(Kind.SYSTEM, Scope.INSTANCE, "main", null, null),
@@ -52,11 +52,11 @@ class InstanceAdminTest {
             assertFalse(authorizer.authorize(principal("user", "admin"), resource, Action.READ).toCompletableFuture().join());
         assertFalse(authorizer.authorize(principal("", "admin"), new Resource(Kind.SYSTEM, Scope.INSTANCE, null, null, null), Action.EXECUTE).toCompletableFuture().join());
     }
-    @Test void dynamicDependenciesAreExplicitlyEmptyOnlyForMappedAdministrator() {
-        var resolver = new SafeFlowDependencies(engine);
+    @Test void legacyAdministratorCannotBypassSafeDependencies() {
+        var resolver = new SafeFlowDependencies();
         var invocation = new McpAuthorizationResolver.Invocation("main", "prod", "flow", "execution",
             "id: flow\nnamespace: prod\nvariables:\n  value: \"{{ kv('key') }}\"\noutputs:\n  - value: \"{{ secret('secret') }}\"\n");
-        assertEquals(List.of(), resolver.resolve(principal("user", "admin"), invocation).toCompletableFuture().join());
+        assertNull(resolver.resolve(principal("user", "admin"), invocation).toCompletableFuture().join());
         assertNull(resolver.resolve(principal("user", "deployment-admin"), invocation).toCompletableFuture().join());
         assertNull(resolver.resolve(principal("user", "reader"), invocation).toCompletableFuture().join());
         assertNull(resolver.resolve(principal("", "admin"), invocation).toCompletableFuture().join());

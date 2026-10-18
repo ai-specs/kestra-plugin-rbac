@@ -12,21 +12,16 @@ are extracted from the immutable published image, independently of any overlay s
 [RBAC 管理功能方案](docs/rbac-management-plan.md)。该方案属于本插件，相关宿主机制
 需求向 overlay 独立提案；管理 API、页面和数据库策略正在实施，尚未完成发布与组合验收。
 
-策略存储、运行时快照、管理控制器与页面已加入源码，新宿主契约与插件仍须分别通过
-正式发布门，再执行组合验收。`examples/management-policy.json` 展示 schemaVersion 1 的输入，
-不包含账号或管理员授权。初始化工具只允许在空策略库创建首个版本，重复相同输入幂等，
-已有不同策略拒绝；管理身份与普通数据库策略分开配置。
+应用项目目标见 [应用项目授权模型](docs/application-projects.md)，HTTP 和修订语义见
+[管理接口实施契约](docs/management-api.md)。schema2 以应用项目 scope 直接绑定完整本地
+grants，不再使用本地 roles、subject 绑定或 roleMapping。共享目录与账号由宿主公开
+ApplicationDirectoryV1/UserDirectoryV1 提供；插件只保存本地绑定，不查询宿主身份表。
+宿主公开契约必须先通过正式发布门，再运行下方 prepare-host 取得固定编译输入；源码
+或候选 jar 不能作为正式构建依赖。插件本轮 CI、发布及 Compose 状态以实际报告为准。
 
-工具入口为 `io.kestra.extensions.rbac.store.PolicyImportCommand`，运行 classpath 必须是
-兼容的已发布宿主 executable 与独立插件 jar，不能使用相邻源码或开发树。`validate`
-仅检查 JSON；`initialize` 使用 `RBAC_POLICY_JDBC_URL`、`RBAC_POLICY_JDBC_USER`、
-`RBAC_POLICY_JDBC_PASSWORD` 和 `RBAC_POLICY_OPERATOR_SUBJECT`。正式版本完整使用命令
-须在管理契约发布后核对，这里不把未发布入口作为部署要求。
-
-独立存储测试默认使用 H2；设置 `RBAC_STORE_TEST_JDBC` 可对隔离 PostgreSQL 执行同一
-套检查。该变量仅用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
-每个用例使用独立 schema；不得指向生产数据库。CI 运行 H2 完整检查和 PostgreSQL
-存储矩阵，要求存储测试无失败、无跳过，不执行其他仓库的构建或部署。
+独立存储测试默认使用 H2；设置 RBAC_STORE_TEST_JDBC 可对隔离 PostgreSQL 执行相同
+检查。该变量只用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
+每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。
 
 ## Build independently
 
@@ -57,8 +52,9 @@ with packages:read; no personal token or cross-repository source deploy key is r
 
 ## 数据库管理模式
 
-以下是管理版本的配置与实施契约。正式使用前必须选择已通过完整发布门的兼容宿主与
-插件，并完成部署仓组合验收。不得仅根据源码或单元测试启用生产管理功能。
+正式使用要求：选择已通过宿主完整发布门的固定镜像，独立插件 CI/产物发布通过，并完成
+部署仓 Compose 验收。公开契约的正式输入由 host-contract.properties 和提取 provenance
+确定；不能仅根据本 README、源码或单元测试启用生产管理功能。
 
 ```yaml
 kestra:
@@ -70,73 +66,104 @@ kestra:
       enabled: true
     management:
       enabled: true
+    application-projects:
+      enabled: true
     policy-source: database
-    management-admin-subjects: [your-exact-authenticated-subject]
 ```
 
-数据库模式必须完整移除原配置中的 `roles`、`subjects`、`role-mapping` 和
-`instance-admin-roles`。本插件拒绝把配置策略与数据库策略混合。部署管理员由精确的
-已认证 subject 列表定义；普通数据库角色、可信角色映射和 OAuth scope 均不能赋予管理权。
-部署管理员具有完整实例权限，名单必须由部署负责人维护。管理账号不能通过页面停用或
-重置密码；资料修改不改变其身份。
+该片段须合并到宿主已发布 README 的完整 OIDC/PostgreSQL 配置，不替代 issuer、client、
+audience、回调、静态资源和首次安装要求。数据库是唯一运行策略来源。必须移除旧 roles、
+subjects、role-mapping、instance-admin-roles 和 management-admin-subjects；它们不能提供
+普通或管理员权限。无项目 scope 的账号零授权，协议 scopes 与旧 roles claim 也不补授权。
 
-首次启用前，使用兼容已发布宿主和插件的 classpath 初始化策略。连接变量必须由操作者
-提供，并指向部署 PostgreSQL；不要在命令历史写入密码：
+共享项目/scope、client 成员批准和 subject 授予通过宿主公开目录维护；本地项目及完整
+grants 在 `/ui/main/extensions/rbac` 维护。两种保存互不替代。先建立共享语义、批准真实
+client 与 audience、授予真实账号并重新登录，再配置获准目标的本地绑定。新账号创建
+不附加授权。scope 名称不透明，不能按名称猜测动作或管理员身份。
+
+IDENTITY、LOCAL_POLICY 和 BUSINESS_INSTANCE 三域独立。READ 与 MANAGE 不互含。
+本地管理检查每次请求实际目标；LOCAL_POLICY 空 projectIds 只指所属项目，非空集合只指
+精确列出项目。BUSINESS_INSTANCE 不提供身份目录或本地策略管理权限。
+
+每次请求固定一份 schema2 策略和一致目录投影。数据库或身份服务故障失败关闭，不使用
+旧允许缓存或 schema1 回退。DirectoryRevision 是共享 Project.revision；authorizationVersion
+是独立撤权 epoch，不能替代本地确认版本。目录变更后普通请求拒绝，仍有最新目录同
+scope LOCAL_POLICY.MANAGE 的管理员可审查全部绑定并执行完整恢复；未知 scope 混入仍拒绝。
+普通项目保存不得改变 directoryRevision，恢复不得部分保存或静默裁掉越界 grants。
+
+本地写入用全局策略 revision，目录创建/更新和账号更新使用各自对象 revision，均按
+[管理接口实施契约](docs/management-api.md) 发送强 If-Match。保存响应只包含实际目标
+与新 revision，不因 MANAGE 泄露其他项目。身份目录修改可能令当前会话需重新登录。
+
+公开目录没有与本地策略共用的条件提交锁；本地单事务不等于跨系统原子提交。候选提交
+前后若目录并发变化，后续请求必须按最新版本拒绝。严格“目录校验后变化绝不提交”的
+并发门仍须独立公开机制及验收，不能以单元测试通过代替。目标共享 scope/client/assignment 列表的每页返回
+目录 revision；跨页消费者必须核对各页同版本，当前 UI 只核对 total，不能据此宣称快照一致。
+项目清单与账号列表没有公开全局修订，不提供跨请求快照保证。
+
+## 离线 schema2 维护与显式迁移
+
+以下工具仅在兼容正式宿主 executable 与本插件 jar 的 classpath 使用，不是生产 HTTP
+首次引导接口，也不自动创建登录账号或授予 scope。凭据必须放入环境变量或被忽略的
+.env，不写入命令历史。首次初始化只允许空库；已有 schema1 必须显式审批迁移，不双读。
 
 ```bash
 export RBAC_POLICY_JDBC_URL RBAC_POLICY_JDBC_USER RBAC_POLICY_JDBC_PASSWORD
 export RBAC_POLICY_OPERATOR_SUBJECT
 java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar' \
-  io.kestra.extensions.rbac.store.PolicyImportCommand validate examples/management-policy.json
+  io.kestra.extensions.rbac.store.ProjectPolicyCommand validate <schema2-policy.json>
 java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar' \
-  io.kestra.extensions.rbac.store.PolicyImportCommand initialize examples/management-policy.json
+  io.kestra.extensions.rbac.store.ProjectPolicyCommand initialize <schema2-policy.json>
+java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar' \
+  io.kestra.extensions.rbac.store.ProjectPolicyCommand preview-migration \
+  <schema2-policy.json> <role-decisions.json> <new-review.json>
+java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar' \
+  io.kestra.extensions.rbac.store.ProjectPolicyCommand migrate \
+  <schema2-policy.json> <review.json> <explicitly-approved-review-sha256>
 ```
 
-初始化只允许空库首建，重复相同内容幂等，已有不同内容拒绝。它不创建登录账号，不
-授予管理身份，不覆盖已有策略。策略表使用宿主配置的同一 PostgreSQL 数据源，保留当前
-版本及最多 100 个历史版本。运行时每个授权评估读取当前数据库版本，并固定不可变快照；
-评估不持有连接或事务。新请求读取新版本，数据库不可用时拒绝，不复用旧允许结果。
-这不是任务 worker 的权限沙箱，已经提交到队列的任务不承诺因后续改权而撤回。
+role-decisions 必须逐旧角色明确 MAP 或 DROP、目标项目/scope 与原因；每个目标 scope 必须
+存在。review 保留旧角色、subjects、roleMapping、完整旧/新 grants 和定义增减，标记旧
+跨角色 READ/LIST 组合的不等价。操作者必须审查并显式批准完整报告 SHA-256；执行再次锁定
+源 revision、源规范 hash、批准目标与操作者，任何变化拒绝，不覆写旧快照。
+旧 PolicyImportCommand 的 schema1 initialize 已拒绝，schema1 validator 只用于离线源解析。
+历史 examples/management-policy.json 是 schema1 调查输入，不得当成新运行策略初始化。
 
-管理页面入口为宿主 Extensions（扩展）分组中的 RBAC 管理页；Resources 下的 Plugins
-是任务插件目录，不列出 RBAC 管理页面。根路径为
-`/ui/main/extensions/rbac`。角色使用稳定 ID；授权通过逐条权限表单配置。用户创建后
-没有普通授权，必须另行绑定角色。启停与密码重置会使旧认证会话和 token 失效；重新启用
-账号不会恢复旧会话。资料修改、角色绑定与密码修改分别保存。
+离线审批仅批准本地存储变换，不证明真实授予、管理员登录或撤权已经发生。旧部署 subject
+管理员旁路来自配置，不在旧 JSON 中，必须单列其来源配置 hash、明确移除项、批准的新
+scope、完整管理域/动作、client/audience、身份端实际授予及管理员重新登录证据。不得根据
+旧 admin 名称推导 IDENTITY、LOCAL_POLICY 或 BUSINESS_INSTANCE，不得用警告代替撤权。
 
-管理 API 要求宿主认证、CSRF 与当前管理权限。策略写入使用全局策略 revision，账号
-更新使用该账号 revision；过时版本返回 412，页面要求重新加载，不覆盖并发修改。
-删除已被引用的角色返回冲突。完整接口和错误语义见
-[管理接口实施契约](docs/management-api.md)。策略来源固定为 database，管理开关
-默认关闭；不再提供 configuration 模式。配置为 configuration 时启动失败，数据库不可用时拒绝请求。
+维护窗口必须备份本地策略、身份目录与安装凭据，停止旧写入口，执行已批准身份授予，
+移除部署旁路并切换正式产物。必须真实验证旧 cookie、code、access/refresh/UI/IdP/MCP
+凭据失效、新管理员可达、普通账号前后允许/拒绝矩阵和完整恢复。只重启 JVM 不证明撤权。
+部分成功必须保持拒绝并记录实际状态；回退须恢复匹配的备份、身份授予与旧产物，不能只换 jar。
 
 ## Configure and deploy
 
 Consume an independently accepted overlay image whose published manifest classpath includes `libs/kestra-rbac-authorizer.jar` and whose unified SPI/execution gates match the contract pin. Mount the jar **read-only at `/app/libs/kestra-rbac-authorizer.jar`**. `/app/plugins` is for Kestra task/trigger plugins and does not discover this extension's web beans. Restart the container JVM after replacing the jar. Apply policy configuration changes with Compose to update the container.
 
-部署只接受 `policy-source: database`。普通角色、subject 绑定与可信身份角色映射均保存在
-数据库策略 JSON 中，schemaVersion 为 1，使用 `roles`、`subjects` 和 `roleMapping` 字段。
-使用 [examples/management-policy.json](examples/management-policy.json) 初始化空库，之后通过
-管理页面修改。历史 YAML 角色配置不再作为运行配置接受；遗留 roles、subjects、role-mapping
-或 instance-admin-roles 会导致启用 RBAC 时启动失败。不得静默忽略或合并两套策略。
-
-管理员只能通过 `management-admin-subjects` 指定精确已认证 subject。可信角色名 admin、
-OAuth scope、client ID 或同名普通角色不能升级为管理员。数据库角色禁止 SYSTEM／INSTANCE
-管理授权。多个普通角色权限按原有资源范围求并集；READ 与 LIST 可以来自不同角色，查询域
-为两者范围的交集。缺少组件、无身份、未知操作、数据库错误都失败关闭。
-
-CI 的角色矩阵通过公开初始化工具写入隔离数据库，不编译或读取相邻宿主源码，不修改生产
-账号。配置关闭 RBAC 时保留宿主默认行为；这不是另一种策略来源。
+部署只接受 schemaVersion=2 的 applicationProjects 策略。schema1 数据仅作为离线迁移
+来源保留，生产启动不注册或读取旧策略 store。首次引导、维护授权与最后管理员保护按宿主
+已发布契约执行，不保留永久 subject 超级权限。允许/拒绝、查询域、执行输出、账号撤权、
+组件缺失和关闭功能仍须通过部署仓真实验收，单个仓库的绿灯不能替代组合检查。
 
 ## Input/output dependency policy
 
 `SafeFlowDependencies` implements the host `McpAuthorizationResolver` consumed by both actual execution gates. It inspects the **runtime ProcessedFlow declaration**, not an uploaded/latest raw flow. Runtime `tenantId` may be absent/null or equal `main`; another tenant denies. Inputs, variables, checks and labels allow literals only; output expressions allow only an entire `{{ outputs.task.field }}` reference (plain dotted names), or literals. Secret/KV/namespace/file functions, filters, dynamic indexing, interpolation, unknown expression syntax and malformed YAML deny before execution. A safe declaration returns an explicit empty extra-read plan. This policy does not sandbox tasks or reinterpret their later engine privileges.
 
-## Controlled fixture and acceptance
+## 真实组合验收
 
-`OidcRbacFixtureTest` consumes production `OidcUserService` and `OIDC_FIXTURE_JDBC` against the isolated test database. `OIDC_FIXTURE_USER`/`OIDC_FIXTURE_PASSWORD` override local defaults `kestra`/`local-ci-only`. It creates `rbac-reader` / `ReaderPass123!` / `[reader]`, `rbac-writer` / `WriterPass123!` / `[writer]`, `rbac-multi` / `MultiPass123!` / `[multi-reader, multi-writer]`, and `rbac-blocked` / `BlockedPass123!` / `[blocked]`. These passwords are local acceptance constants only. The multi-role fixture deliberately combines roles from different namespace domains so read and write scope merging is observable. It validates credentials and verifies stored roles; existing conflicting users fail rather than silently supplying the wrong fixture. Without JDBC the test is skipped; the monorepo integration harness must assert it ran and did not skip.
+历史 OidcRbacFixtureTest 的 roles 账号只用于旧实现调查，不能证明新项目 scope 已签发。
+新部署矩阵必须通过公开身份目录准备真实项目、scope、成员 client 和测试账号，使用生产
+UI 与 MCP 登录流程取得可信身份。测试密码仅为隔离环境常量，不得写入生产配置。
 
-The monorepo consumes fixed image digest, separately built jar/hash, and matching host artifact through Compose. Required remaining evidence includes real jar startup discovery, actual authenticated roles parity, scope/RBAC double denials with zero persistence/queue effects, namespace and query/count isolation, 403 rendering, CSRF order, missing jar, async/composite coverage and disabled deployment regression. Unit test green does not replace those gates. There is no IAM CRUD/UI, audit, EE token service or custom authentication in this extension.
+部署仓消费固定镜像 digest、独立插件 jar/hash 和匹配的公开宿主输入，执行 Compose。
+必须覆盖真实 bean 装载、单/多 scope、精确 namespace 与资源 ID、scope 内 READ/LIST
+交集、允许写入与执行/输出、零授权退出换号、未知 scope 混合、issuer/audience/tenant
+错误、CSRF、撤权、最后管理员保护、目录恢复、旧端点 410、组件缺失及关闭功能回归。
+拒绝必须比较持久化、存储、队列与延迟副作用；菜单可见、HTTP 200、mock 身份或单元
+测试绿灯都不能代替真实操作。UI 必须覆盖发布宿主支持的语言、主题与窄屏。
 
 Build/test results, artifact hash and image acceptance are recorded in [validation evidence](docs/validation.md).
 

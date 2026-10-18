@@ -6,9 +6,6 @@ import java.util.*;
 import io.kestra.webserver.rbac.RbacAuthorizer.*;
 import io.kestra.webserver.rbac.TypedAuthorization;
 
-@Singleton
-@io.micronaut.context.annotation.Context
-@Requires(property = "kestra.rbac.enabled", value = "true")
 public final class PolicyEngine {
     private record Grant(String tenant, String namespace, boolean descendants,
                          Kind resource, Set<Action> actions, Set<String> ids, Scope scope, boolean allIds) {}

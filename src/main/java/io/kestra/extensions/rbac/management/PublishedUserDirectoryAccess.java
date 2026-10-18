@@ -1,6 +1,7 @@
 package io.kestra.extensions.rbac.management;
 
 import io.kestra.webserver.oidc.UserDirectoryV1;
+import io.kestra.webserver.oidc.ApplicationDirectoryV1;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Singleton;
@@ -30,6 +31,16 @@ public final class PublishedUserDirectoryAccess implements UserDirectoryAccess {
                 case CONFLICT -> Failure.CONFLICT;
                 case UNAVAILABLE -> Failure.UNAVAILABLE;
             });
+        } catch (ApplicationDirectoryV1.DirectoryException failure) {
+            throw new DirectoryFailure(switch (failure.failure()) {
+                case INVALID -> Failure.INVALID;
+                case NOT_FOUND -> Failure.NOT_FOUND;
+                case CONFLICT -> Failure.CONFLICT;
+                case FORBIDDEN -> Failure.FORBIDDEN;
+                case LAST_ADMIN -> Failure.LAST_ADMIN;
+                case UNAVAILABLE, UNSUPPORTED -> Failure.UNAVAILABLE;
+            });
+        } catch (DirectoryFailure failure) { throw failure;
         } catch (RuntimeException failure) {
             throw new DirectoryFailure(Failure.UNAVAILABLE);
         }
