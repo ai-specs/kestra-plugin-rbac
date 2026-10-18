@@ -11,6 +11,10 @@ const documents = import.meta.glob('./translations/*.json', {eager: true, import
 const messages = Object.assign({}, ...Object.values(documents))
 const mounted = new WeakSet()
 
+export function createPortalSelect(component, portals) {
+  return {inheritAttrs: false, setup: (_, {attrs, slots}) => () => h(component, {...attrs, appendTo: portals, teleported: true}, slots)}
+}
+
 export async function mountPage(container, initial) {
   if (initial.contractVersion !== 1 || mounted.has(container) || initial.signal.aborted) throw new Error('Invalid management page lifecycle')
   mounted.add(container)
@@ -71,7 +75,8 @@ export async function mountPage(container, initial) {
     app.use(router)
     await registerDesignSystemI18n(i18n)
     if (disposed) throw new Error('Management page mount cancelled')
-    for (const [name, component] of Object.entries({KsButton, KsInput, KsSearch, KsIcon, KsSelect, KsOption, KsDatePicker, KsTag, KsSegmented})) app.component(name, component)
+    for (const [name, component] of Object.entries({KsButton, KsInput, KsSearch, KsIcon, KsOption, KsDatePicker, KsTag, KsSegmented})) app.component(name, component)
+    app.component('KsSelect', createPortalSelect(KsSelect, portals))
     app.component('KsPopover', {inheritAttrs: false, setup: (_, {attrs, slots}) => () => h(KsPopover, {...attrs, teleported: false}, slots)})
     app.component('KsTooltip', {inheritAttrs: false, setup: (_, {attrs, slots}) => () => h(KsTooltip, {...attrs, teleported: false}, slots)})
     app.mount(target)

@@ -16,7 +16,8 @@ input[type=checkbox] { accent-color: var(--ks-text-link); }
 .table-wrap .ks-data-table-wrapper { --ks-data-table-gutter: 0px; }
 .management-data-table > .kel-pagination { display: flex; margin: 12px 0; }
 .management-data-table > .kel-pagination .kel-pagination__sizes { margin-right: auto; }
-.rbac-page .kel-table td.kel-table__cell, .rbac-page .kel-table th.kel-table__cell { border-bottom: 1px solid var(--ks-border-default); }
+.rbac-page .kel-table td.kel-table__cell { border-bottom: none; }
+.rbac-page .kel-table th.kel-table__cell { border-bottom: 1px solid var(--ks-border-default); }
 .extension-portals .edit-overlay { z-index: var(--ks-z-dropdown); pointer-events: auto; }
 .rbac-page .kel-table th.kel-table__cell { height: 40px; font-size: 12px; font-weight: 600; background: var(--ks-bg-surface); }
 .rbac-page .kel-table td.kel-table__cell { height: 48px; font-size: 12px; }
