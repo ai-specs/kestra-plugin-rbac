@@ -14,7 +14,7 @@ const text = value => Array.isArray(value) ? value.join('\n') : value
 function addScope() {
   const name = newScope.value.trim()
   if (!name || Object.hasOwn(props.project.scopes,name)) return
-  Object.defineProperty(props.project.scopes,name,{value:{description:'',enabled:false,grants:[],managementGrants:[]},enumerable:true,configurable:true,writable:true})
+  props.project.scopes = {...props.project.scopes,[name]:{description:'',enabled:false,grants:[],managementGrants:[]}}
   newScope.value = ''
   approved.value = false
 }
