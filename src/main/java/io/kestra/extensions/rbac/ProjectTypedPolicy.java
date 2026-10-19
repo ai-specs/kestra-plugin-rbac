@@ -21,7 +21,7 @@ final class ProjectTypedPolicy {
             if(resource.equals("EXTENSION")){
                 if(!"rbac".equals(op.resourceId()) || !Set.of("READ","UPDATE").contains(action))return deny();
                 boolean allowed=false;
-                for(String target:context.directories().keySet()){
+                for(String target:context.managementTargets()){
                     allowed|=context.authorizeReconciliation(target);
                     for(var domain:List.of(ProjectPolicy.ManagementDomain.IDENTITY,ProjectPolicy.ManagementDomain.LOCAL_POLICY)){
                         allowed|=context.authorizeManagement(domain,ProjectPolicy.ManagementAction.MANAGE,target);

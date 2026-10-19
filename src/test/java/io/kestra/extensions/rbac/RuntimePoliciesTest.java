@@ -126,6 +126,35 @@ class RuntimePoliciesTest {
         when(f.directory.policyBoundaries()).thenReturn(List.of(console));
         assertThrows(ProjectRuntimePolicies.Rejected.class,()->f.runtime.open(f.identity("manage"),"main"));
     }
+    @Test void splitManagementOnlyTargetsActivateExtensionAndCapabilitiesWithoutCombiningAuthorization(){
+        var read=new ProjectPolicy.ScopeDefinition("A read",true,List.of(),List.of(new ProjectPolicy.ManagementGrant(ProjectPolicy.ManagementDomain.LOCAL_POLICY,Set.of(ProjectPolicy.ManagementAction.READ),Set.of("a"))));
+        var manage=new ProjectPolicy.ScopeDefinition("B manage",true,List.of(),List.of(new ProjectPolicy.ManagementGrant(ProjectPolicy.ManagementDomain.LOCAL_POLICY,Set.of(ProjectPolicy.ManagementAction.MANAGE),Set.of("b"))));
+        var fixture=new Fixture(Map.of("read",read,"manage",manage));
+        var console=fixture.directory.policyBoundaries().getFirst();
+        var targets=new ArrayList<ApplicationDirectoryV1.PolicyBoundary>();targets.add(console);
+        for(String target:List.of("a","b"))targets.add(new ApplicationDirectoryV1.PolicyBoundary(new ApplicationDirectoryV1.Project(target,"main","https://issuer.example",target,true,1,1),List.of(),Set.of(),Set.of(),List.of()));
+        when(fixture.directory.policyBoundaries()).thenReturn(targets);
+        when(fixture.identities.current()).thenReturn(fixture.identity("read","manage"));
+        try(var context=fixture.runtime.open(fixture.identity("read","manage"),"main")){
+            assertEquals(Set.of("p","a","b"),context.managementTargets());
+            assertThrows(UnsupportedOperationException.class,()->context.managementTargets().add("outside"));
+            assertTrue(context.authorizeManagement(ProjectPolicy.ManagementDomain.LOCAL_POLICY,ProjectPolicy.ManagementAction.READ,"a"));
+            assertFalse(context.authorizeManagement(ProjectPolicy.ManagementDomain.LOCAL_POLICY,ProjectPolicy.ManagementAction.MANAGE,"a"));
+            assertTrue(context.authorizeManagement(ProjectPolicy.ManagementDomain.LOCAL_POLICY,ProjectPolicy.ManagementAction.MANAGE,"b"));
+            assertFalse(context.authorizeManagement(ProjectPolicy.ManagementDomain.LOCAL_POLICY,ProjectPolicy.ManagementAction.READ,"b"));
+            assertFalse(context.authorizeManagement(ProjectPolicy.ManagementDomain.LOCAL_POLICY,ProjectPolicy.ManagementAction.MANAGE,"outside"));
+            assertTrue(context.authorize(op(Resource.EXTENSION,Action.READ,null,"rbac",false)).allowed());
+            assertTrue(context.authorize(op(Resource.EXTENSION,Action.UPDATE,null,"rbac",false)).allowed());
+            assertFalse(context.authorize(op(Resource.FLOW,Action.READ,"a","flow",false)).allowed());
+        }
+        io.micronaut.context.BeanProvider<io.kestra.extensions.rbac.management.UserDirectoryAccess> users=mock(io.micronaut.context.BeanProvider.class);
+        io.micronaut.context.BeanProvider<io.kestra.extensions.rbac.management.ApplicationDirectoryAccess> applications=mock(io.micronaut.context.BeanProvider.class);
+        var controller=new io.kestra.extensions.rbac.management.ManagementController(fixture.runtime,fixture.store,users,applications);
+        var response=controller.capabilities("main",io.micronaut.security.authentication.Authentication.build("s"));
+        assertEquals(200,response.code());
+        var caps=new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(response.body());
+        assertTrue(caps.path("allowed").asBoolean());assertTrue(caps.path("localPolicyRead").asBoolean());assertTrue(caps.path("localPolicyManage").asBoolean());
+    }
     @Test void typedTenantMetadataAndMcpListsHaveRealAllowPaths(){
         var metadata=new ProjectPolicy.ScopeDefinition("Metadata",true,List.of(new ProjectPolicy.Grant("TENANT","main",null,false,"METADATA",Set.of("READ","LIST"),Set.of(),true)));
         var servers=new ProjectPolicy.ScopeDefinition("Servers",true,List.of(new ProjectPolicy.Grant("TENANT","main",null,false,"MCP_SERVER",Set.of("READ","LIST"),Set.of("server-a"),false)));

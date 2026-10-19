@@ -109,8 +109,7 @@ public final class ManagementController {
         return request(tenant,authentication,context -> {
             String target=context.identity().projectId();
             boolean ir=context.authorizeManagement(IDENTITY,READ,target), im=context.authorizeManagement(IDENTITY,MANAGE,target);
-            var targets=new java.util.HashSet<>(context.directories().keySet());
-            targets.addAll(context.snapshot().policy().applicationProjects().keySet());targets.add(target);
+            var targets=context.managementTargets();
             boolean lr=targets.stream().anyMatch(id->context.authorizeManagement(LOCAL_POLICY,READ,id));
             boolean lm=targets.stream().anyMatch(id->context.authorizeManagement(LOCAL_POLICY,MANAGE,id));
             boolean recovery=targets.stream().anyMatch(context::authorizeReconciliation);

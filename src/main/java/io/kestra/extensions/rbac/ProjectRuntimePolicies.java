@@ -60,11 +60,12 @@ public final class ProjectRuntimePolicies {
         private final Map<String,ApplicationDirectoryV1.PolicyBoundary> boundaries;
         private final Map<String,ProjectAuthorization.Directory> directories;
         private final Map<String,ProjectManagementSafety.DirectoryState> states;
+        private final Set<String> managementTargets;
         private boolean closed;
         private Context(TrustedIdentityV1.Identity identity,ProjectPolicyStore.Snapshot snapshot,
             Map<String,ApplicationDirectoryV1.PolicyBoundary> boundaries) {
             this.identity=identity;this.snapshot=snapshot;this.boundaries=boundaries;
-            managementTargets(snapshot.policy(),boundaries);
+            managementTargets=ProjectRuntimePolicies.managementTargets(snapshot.policy(),boundaries);
             directories=project(boundaries,requiredProjects(snapshot.policy(),identity.projectId()));
             var values=new TreeMap<String,ProjectManagementSafety.DirectoryState>();
             directories.forEach((id,bound)->values.put(id,new ProjectManagementSafety.DirectoryState(bound,boundaries.get(id).reachableManagementScopes())));
@@ -74,6 +75,7 @@ public final class ProjectRuntimePolicies {
         public TrustedIdentityV1.Identity identity(){check();return identity;}
         public ProjectPolicyStore.Snapshot snapshot(){check();return snapshot;}
         public Map<String,ProjectAuthorization.Directory> directories(){check();return directories;}
+        public Set<String> managementTargets(){check();return managementTargets;}
         public Map<String,ProjectManagementSafety.DirectoryState> directoryStates(){check();return states;}
         public ApplicationDirectoryV1.PolicyBoundary upperBound(String target){check();var value=boundaries.get(target);if(value==null)throw new Rejected(Failure.FORBIDDEN);return value;}
         /** Binding options require a usable target audience; identity-directory reads use upperBound instead. */
@@ -115,7 +117,7 @@ public final class ProjectRuntimePolicies {
             result.putObject("applicationProjects").set(target,mapper.valueToTree(value));return result;
         }
         public void validateCandidate(ProjectPolicy candidate){
-            check();var targets=managementTargets(candidate,boundaries);var projected=project(boundaries,requiredProjects(candidate,identity.projectId()));
+            check();var targets=ProjectRuntimePolicies.managementTargets(candidate,boundaries);var projected=project(boundaries,requiredProjects(candidate,identity.projectId()));
             try{ProjectPolicyBoundary.validate(candidate,projected,targets);}catch(IllegalArgumentException error){throw new Rejected(Failure.INVALID_CANDIDATE);}
             var currentStates=new TreeMap<String,ProjectManagementSafety.DirectoryState>();
             projected.forEach((id,bound)->currentStates.put(id,new ProjectManagementSafety.DirectoryState(bound,boundaries.get(id).reachableManagementScopes())));
