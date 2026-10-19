@@ -64,6 +64,7 @@ public final class ProjectRuntimePolicies {
         private Context(TrustedIdentityV1.Identity identity,ProjectPolicyStore.Snapshot snapshot,
             Map<String,ApplicationDirectoryV1.PolicyBoundary> boundaries) {
             this.identity=identity;this.snapshot=snapshot;this.boundaries=boundaries;
+            managementTargets(snapshot.policy(),boundaries);
             directories=project(boundaries,requiredProjects(snapshot.policy(),identity.projectId()));
             var values=new TreeMap<String,ProjectManagementSafety.DirectoryState>();
             directories.forEach((id,bound)->values.put(id,new ProjectManagementSafety.DirectoryState(bound,boundaries.get(id).reachableManagementScopes())));
@@ -114,11 +115,11 @@ public final class ProjectRuntimePolicies {
             result.putObject("applicationProjects").set(target,mapper.valueToTree(value));return result;
         }
         public void validateCandidate(ProjectPolicy candidate){
-            check();var projected=project(boundaries,requiredProjects(candidate,identity.projectId()));
-            try{ProjectPolicyBoundary.validate(candidate,projected);}catch(IllegalArgumentException error){throw new Rejected(Failure.INVALID_CANDIDATE);}
+            check();var targets=managementTargets(candidate,boundaries);var projected=project(boundaries,requiredProjects(candidate,identity.projectId()));
+            try{ProjectPolicyBoundary.validate(candidate,projected,targets);}catch(IllegalArgumentException error){throw new Rejected(Failure.INVALID_CANDIDATE);}
             var currentStates=new TreeMap<String,ProjectManagementSafety.DirectoryState>();
             projected.forEach((id,bound)->currentStates.put(id,new ProjectManagementSafety.DirectoryState(bound,boundaries.get(id).reachableManagementScopes())));
-            try{ProjectManagementSafety.validate(candidate,currentStates);}catch(IllegalArgumentException error){throw new Rejected(Failure.LAST_ADMIN);}
+            try{ProjectManagementSafety.validate(candidate,currentStates,targets);}catch(IllegalArgumentException error){throw new Rejected(Failure.LAST_ADMIN);}
         }
         public io.kestra.webserver.rbac.TypedAuthorization.Decision authorize(io.kestra.webserver.rbac.TypedAuthorization.Operation operation){
             check();return ProjectTypedPolicy.authorize(this,operation);
@@ -127,9 +128,18 @@ public final class ProjectRuntimePolicies {
     }
     private static Set<String> requiredProjects(ProjectPolicy policy,String loginProject){
         var required=new HashSet<>(policy.applicationProjects().keySet());required.add(loginProject);
-        for(var owner:policy.applicationProjects().values())for(var scope:owner.scopes().values())
-            for(var grant:scope.managementGrants())required.addAll(grant.projectIds());
         return Set.copyOf(required);
+    }
+    private static Set<String> managementTargets(ProjectPolicy policy,Map<String,ApplicationDirectoryV1.PolicyBoundary> boundaries){
+        var targets=new HashSet<>(policy.applicationProjects().keySet());
+        for(var owner:policy.applicationProjects().values())for(var scope:owner.scopes().values())for(var grant:scope.managementGrants())for(String target:grant.projectIds()){
+            var boundary=boundaries.get(target);if(boundary==null)throw new Rejected(Failure.INVALID_DIRECTORY);
+            var shared=boundary.project();
+            if(!target.equals(shared.id()) || !shared.active() || !"main".equals(shared.tenant()) || !owner.issuer().equals(shared.issuer())
+                || shared.revision()<=0 || shared.authorizationVersion()<=0)throw new Rejected(Failure.INVALID_DIRECTORY);
+            targets.add(target);
+        }
+        return Set.copyOf(targets);
     }
     /** Directory projection never consumes local grants or combines scope boundaries. */
     static Map<String,ProjectAuthorization.Directory> project(Map<String,ApplicationDirectoryV1.PolicyBoundary> raw){

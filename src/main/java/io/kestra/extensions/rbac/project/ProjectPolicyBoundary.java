@@ -10,6 +10,9 @@ import java.util.Objects;
 public final class ProjectPolicyBoundary {
     private ProjectPolicyBoundary() {}
     public static void validate(ProjectPolicy candidate, Map<String, ProjectAuthorization.Directory> directories) {
+        validate(candidate,directories,directories.keySet());
+    }
+    public static void validate(ProjectPolicy candidate, Map<String, ProjectAuthorization.Directory> directories, java.util.Set<String> managementTargets) {
         Objects.requireNonNull(candidate); directories=Map.copyOf(directories);
         for (var entry : candidate.applicationProjects().entrySet()) {
             String id=entry.getKey(); var local=entry.getValue(); var directory=directories.get(id);
@@ -27,7 +30,7 @@ public final class ProjectPolicyBoundary {
                     || scope.grants().stream().anyMatch(grant -> ceiling.grants().stream().noneMatch(bound -> ProjectAuthorization.covers(bound,grant))))
                     throw new IllegalArgumentException("Scope exceeds shared directory: "+id+"/"+scopeEntry.getKey());
                 for(var grant:scope.managementGrants()) for(String target:grant.projectIds())
-                    if(!directories.containsKey(target))throw new IllegalArgumentException("Unknown management target: "+target);
+                    if(!managementTargets.contains(target))throw new IllegalArgumentException("Unknown management target: "+target);
             }
         }
     }

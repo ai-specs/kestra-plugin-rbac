@@ -640,6 +640,11 @@ HTTP client 时使用正式授权流程，不能用测试 header 伪造 scope。
 的共享管理意图同时覆盖。不得从一个 scope 借管理动作，再从另一个 scope 借目标项目。
 管理控制器必须传入请求的实际目标项目，不能只检查登录项目。
 
+仅被 `LOCAL_POLICY.projectIds` 引用的目标可以尚无客户端成员和 audience。插件必须从
+同一次可信目录读取中核对该项目存在、启用、issuer 相同、tenant 为 main 且修订有效。
+该引用不创建登录或业务绑定权限。登录项目和实际本地绑定项目仍必须具有非空的精确
+audience；不存在、关闭或跨 issuer/tenant 的管理目标必须拒绝。
+
 `GET /projects/{id}/reconciliation` 返回：
 `{project,policyRevision,directoryRevision,upperBound:{project,scopes}}`。
 外层 project 是包含 id 的完整 schema2 本地项目；policyRevision 是全局本地策略修订；

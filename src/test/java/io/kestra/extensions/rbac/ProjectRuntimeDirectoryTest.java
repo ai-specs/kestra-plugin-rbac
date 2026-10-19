@@ -8,6 +8,40 @@ import static io.kestra.webserver.oidc.ApplicationDirectoryV1.*;
 
 /** Tests the plugin adapter, independently of the host directory implementation. */
 class ProjectRuntimeDirectoryTest {
+    private void managementTarget(boolean active,String issuer,String tenant,boolean present,boolean bound) {
+        var intent=new ManagementIntent(ManagementDomain.LOCAL_POLICY,Set.of("MANAGE"),Set.of("p","new-project"));
+        var manager=new ScopeDefinition("p","manager","Manager",true,List.of(),List.of(intent),1);
+        var console=new PolicyBoundary(new Project("p","main","https://issuer.example","P",true,3,97),List.of(manager),Set.of("ui"),Set.of("manager"),List.of());
+        var target=new PolicyBoundary(new Project("new-project",tenant,issuer,"New",active,1,1),List.of(),Set.of(),Set.of(),List.of());
+        var grant=new io.kestra.extensions.rbac.project.ProjectPolicy.ManagementGrant(io.kestra.extensions.rbac.project.ProjectPolicy.ManagementDomain.LOCAL_POLICY,
+            Set.of(io.kestra.extensions.rbac.project.ProjectPolicy.ManagementAction.MANAGE),Set.of("p","new-project"));
+        var scope=new io.kestra.extensions.rbac.project.ProjectPolicy.ScopeDefinition("Manager",true,List.of(),List.of(grant));
+        var projects=new HashMap<String,io.kestra.extensions.rbac.project.ProjectPolicy.Project>();
+        projects.put("p",new io.kestra.extensions.rbac.project.ProjectPolicy.Project("https://issuer.example",Set.of("ui"),true,3,Map.of("manager",scope)));
+        if(bound)projects.put("new-project",new io.kestra.extensions.rbac.project.ProjectPolicy.Project("https://issuer.example",Set.of("api"),true,1,Map.of()));
+        var policy=new io.kestra.extensions.rbac.project.ProjectPolicy(2,projects);
+        var store=org.mockito.Mockito.mock(io.kestra.extensions.rbac.store.ProjectPolicyStore.class);
+        org.mockito.Mockito.when(store.readCurrent()).thenReturn(new io.kestra.extensions.rbac.store.ProjectPolicyStore.Snapshot(1,0,"operator",java.time.Instant.EPOCH,policy,"{}"));
+        var directory=org.mockito.Mockito.mock(ApplicationDirectoryV1.class);
+        org.mockito.Mockito.when(directory.policyBoundaries()).thenReturn(present?List.of(console,target):List.of(console));
+        var identity=new io.kestra.webserver.oidc.TrustedIdentityV1.Identity(1,"https://issuer.example","operator","ui-client",Set.of("ui"),"main","p",Set.of(),Set.of("manager"),0,97,3);
+        var runtime=new ProjectRuntimePolicies(store,directory,org.mockito.Mockito.mock(io.kestra.webserver.oidc.TrustedIdentityV1.class));
+        if(!active || !issuer.equals("https://issuer.example") || !tenant.equals("main") || !present || bound){
+            assertEquals(ProjectRuntimePolicies.Failure.INVALID_DIRECTORY,assertThrows(ProjectRuntimePolicies.Rejected.class,()->runtime.open(identity,"main")).failure());
+        }else try(var context=runtime.open(identity,"main")){
+            assertFalse(context.directories().containsKey("new-project"));
+            assertTrue(context.authorizeManagement(io.kestra.extensions.rbac.project.ProjectPolicy.ManagementDomain.LOCAL_POLICY,io.kestra.extensions.rbac.project.ProjectPolicy.ManagementAction.MANAGE,"new-project"));
+            assertFalse(context.authorizeManagement(io.kestra.extensions.rbac.project.ProjectPolicy.ManagementDomain.LOCAL_POLICY,io.kestra.extensions.rbac.project.ProjectPolicy.ManagementAction.MANAGE,"unknown"));
+            context.validateCandidate(policy);
+            assertThrows(ProjectRuntimePolicies.Rejected.class,()->context.bindingBoundary("new-project"));
+        }
+    }
+    @Test void managementReferenceWithoutAudienceDoesNotCreateLoginOrBindingAuthority(){managementTarget(true,"https://issuer.example","main",true,false);}
+    @Test void missingManagementReferenceFailsClosed(){managementTarget(true,"https://issuer.example","main",false,false);}
+    @Test void disabledManagementReferenceFailsClosed(){managementTarget(false,"https://issuer.example","main",true,false);}
+    @Test void foreignIssuerManagementReferenceFailsClosed(){managementTarget(true,"https://other.example","main",true,false);}
+    @Test void foreignTenantManagementReferenceFailsClosed(){managementTarget(true,"https://issuer.example","other",true,false);}
+    @Test void actualLocalBindingStillRequiresAudience(){managementTarget(true,"https://issuer.example","main",true,true);}
     @Test void runtimeFactoryDoesNotBorrowConnectionsOrCreatePolicySchema() throws Exception {
         var source=org.mockito.Mockito.mock(javax.sql.DataSource.class);
         assertNotNull(new ProjectRuntimeConfiguration().projectPolicyStore(source));

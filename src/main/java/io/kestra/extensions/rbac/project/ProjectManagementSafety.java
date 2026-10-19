@@ -10,10 +10,13 @@ public final class ProjectManagementSafety {
         public DirectoryState { reachableManagementScopes=Set.copyOf(reachableManagementScopes); }
     }
     public static void validate(ProjectPolicy candidate, Map<String,DirectoryState> states) {
+        validate(candidate,states,states.keySet());
+    }
+    public static void validate(ProjectPolicy candidate, Map<String,DirectoryState> states, Set<String> managementTargets) {
         states=Map.copyOf(states);
         var boundaries=new java.util.HashMap<String,ProjectAuthorization.Directory>();
         states.forEach((id,state)->boundaries.put(id,state.boundary()));
-        ProjectPolicyBoundary.validate(candidate,boundaries);
+        ProjectPolicyBoundary.validate(candidate,boundaries,managementTargets);
         for(var target:candidate.applicationProjects().entrySet()) {
             if(!target.getValue().enabled())continue;
             boolean reachable=false;

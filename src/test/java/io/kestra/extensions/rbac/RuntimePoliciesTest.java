@@ -117,7 +117,8 @@ class RuntimePoliciesTest {
             List.of(),Set.of("non-ui-api"),Set.of(),List.of());
         when(f.directory.policyBoundaries()).thenReturn(List.of(console,target));
         try(var c=f.runtime.open(f.identity("manage"),"main")){
-            assertTrue(c.directories().containsKey("new-target"));
+            assertFalse(c.directories().containsKey("new-target"));
+            assertEquals("new-target",c.upperBound("new-target").project().id());
             assertFalse(c.snapshot().policy().applicationProjects().containsKey("new-target"));
             assertTrue(c.authorizeManagement(ProjectPolicy.ManagementDomain.LOCAL_POLICY,ProjectPolicy.ManagementAction.MANAGE,"new-target"));
             c.validateCandidate(f.policy);
