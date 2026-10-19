@@ -641,9 +641,11 @@ HTTP client 时使用正式授权流程，不能用测试 header 伪造 scope。
 管理控制器必须传入请求的实际目标项目，不能只检查登录项目。
 
 仅被 `LOCAL_POLICY.projectIds` 引用的目标可以尚无客户端成员和 audience。插件必须从
-同一次可信目录读取中核对该项目存在、启用、issuer 相同、tenant 为 main 且修订有效。
+同一次可信目录读取中核对该项目存在、issuer 相同、tenant 为 main 且修订有效。
 该引用不创建登录或业务绑定权限。登录项目和实际本地绑定项目仍必须具有非空的精确
-audience；不存在、关闭或跨 issuer/tenant 的管理目标必须拒绝。
+audience；不存在或跨 issuer/tenant 的管理目标必须拒绝。停用项目仍是合法的精确管理目标，
+已获准管理者可以确认其 disabled 本地绑定或撤回引用；该管理权限不允许停用项目登录、
+执行业务或保存 enabled 本地绑定。
 
 `GET /projects/{id}/reconciliation` 返回：
 `{project,policyRevision,directoryRevision,upperBound:{project,scopes}}`。

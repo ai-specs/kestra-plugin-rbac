@@ -135,7 +135,7 @@ public final class ProjectRuntimePolicies {
         for(var owner:policy.applicationProjects().values())for(var scope:owner.scopes().values())for(var grant:scope.managementGrants())for(String target:grant.projectIds()){
             var boundary=boundaries.get(target);if(boundary==null)throw new Rejected(Failure.INVALID_DIRECTORY);
             var shared=boundary.project();
-            if(!target.equals(shared.id()) || !shared.active() || !"main".equals(shared.tenant()) || !owner.issuer().equals(shared.issuer())
+            if(!target.equals(shared.id()) || !"main".equals(shared.tenant()) || !owner.issuer().equals(shared.issuer())
                 || shared.revision()<=0 || shared.authorizationVersion()<=0)throw new Rejected(Failure.INVALID_DIRECTORY);
             targets.add(target);
         }
