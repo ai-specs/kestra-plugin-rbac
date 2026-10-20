@@ -59,7 +59,7 @@ public final class ProjectPolicyCommand {
     private static String environment(String name) {
         String value=System.getenv(name);if(value==null||value.isBlank())throw new IllegalArgumentException("Required environment: "+name);return value;
     }
-    private static DataSource dataSource() {
+    static DataSource dataSource() {
         String url=environment("RBAC_POLICY_JDBC_URL"),user=environment("RBAC_POLICY_JDBC_USER"),secret=environment("RBAC_POLICY_JDBC_PASSWORD");
         return new DataSource() {
             public Connection getConnection()throws SQLException{return DriverManager.getConnection(url,user,secret);}

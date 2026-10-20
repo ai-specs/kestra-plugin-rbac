@@ -3,7 +3,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 directory = Path(sys.argv[1])
-for name, expected in [('store.PolicyDocumentValidatorTest', 6), ('store.JdbcPolicyStoreTest', 9), ('store.ProjectPolicyStoreTest', 5), ('store.ProjectMigrationReviewTest', 10), ('store.ProjectPolicyManagementTest', 7), ('declaration.ApplicationScopeDeclarationStoreTest', 2)]:
+for name, expected in [('store.PolicyDocumentValidatorTest', 6), ('store.JdbcPolicyStoreTest', 9), ('store.ProjectPolicyStoreTest', 5), ('store.ProjectMigrationReviewTest', 10), ('store.ProjectPolicyManagementTest', 7), ('store.ApplicationScopeDeclarationCommandTest', 2), ('declaration.ApplicationScopeDeclarationStoreTest', 3)]:
     path = directory / ('TEST-io.kestra.extensions.rbac.' + name + '.xml')
     if not path.is_file():
         raise SystemExit('FAIL: missing required report ' + name)

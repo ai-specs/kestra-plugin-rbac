@@ -46,6 +46,30 @@ public final class ApplicationScopeDeclarationStore {
         return transaction(connection -> list(connection, applicationGroupId, clientId));
     }
 
+    public void initialize(String applicationGroupId, String clientId, List<ApplicationScopeDeclarationsV1.Scope> scopes) {
+        target(applicationGroupId, clientId);
+        if (scopes == null || scopes.isEmpty() || scopes.stream().map(ApplicationScopeDeclarationsV1.Scope::key).distinct().count() != scopes.size())
+            throw new IllegalArgumentException("Initial application declarations required");
+        transaction(connection -> {
+            lock(connection);
+            if (!list(connection, applicationGroupId, clientId).isEmpty()) throw new Conflict();
+            var permissionKeys = new java.util.HashSet<String>();
+            for (var scope : scopes) {
+                valid(applicationGroupId, clientId, scope.key(), scope.permissions());
+                if (scope.permissions().stream().map(ApplicationScopeDeclarationsV1.Permission::key)
+                    .anyMatch(key -> !permissionKeys.add(key))) throw new Conflict();
+                try (var statement = prepare(connection, "INSERT INTO rbac_application_scope_declaration(application_group_id,client_id,scope_key,revision,permissions_json) VALUES(?,?,?,1,?)")) {
+                    statement.setString(1, applicationGroupId);
+                    statement.setString(2, clientId);
+                    statement.setString(3, scope.key());
+                    statement.setString(4, json(scope.permissions()));
+                    statement.executeUpdate();
+                }
+            }
+            return null;
+        });
+    }
+
     public List<StoredScope> list(Connection connection, String applicationGroupId, String clientId) throws SQLException {
         target(applicationGroupId, clientId);
         var result = new ArrayList<StoredScope>();

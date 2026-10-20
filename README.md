@@ -105,6 +105,17 @@ scope LOCAL_POLICY.MANAGE 的管理员可审查全部绑定并执行完整恢复
 
 ## 离线 schema2 维护与显式迁移
 
+应用组新安装还需为当前 Kestra 应用登记支持 scope 的权限声明元数据。此登记用于签发范围与授权页展示，不替代下方 Kestra 实际资源策略。先从成功宿主 CI 的固定镜像运行 `./scripts/prepare-host.sh`，再编译插件 jar 或下载成功插件 CI 的 jar，最后用同一 PostgreSQL 连接执行以下命令；`declarations.json` 含 `applicationGroupId`、`clientId` 与 `scopes:[{key,permissions:[{key,name}]}]`。`initialize` 在一个事务中写入全部声明，重复或无效 key 拒绝，不修改已有记录。
+
+```bash
+java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar' \
+  io.kestra.extensions.rbac.store.ApplicationScopeDeclarationCommand validate <declarations.json>
+java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar' \
+  io.kestra.extensions.rbac.store.ApplicationScopeDeclarationCommand initialize <declarations.json>
+```
+
+命令读取下方相同的 `RBAC_POLICY_JDBC_URL`、`RBAC_POLICY_JDBC_USER` 和 `RBAC_POLICY_JDBC_PASSWORD` 环境变量。宿主成员登记的支持范围与插件声明必须同时存在，应用才能申请该 scope；新增或删除声明不会改写 Kestra 资源策略。当前应用组功能仍是部分候选，完整安装与组合验收须以根仓目标模型为准。
+
 以下工具仅在兼容正式宿主 executable 与本插件 jar 的 classpath 使用，不是生产 HTTP
 首次引导接口，也不自动创建登录账号或授予 scope。凭据必须放入环境变量或被忽略的
 .env，不写入命令历史。首次初始化只允许空库；已有 schema1 必须显式审批迁移，不双读。

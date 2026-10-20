@@ -79,4 +79,20 @@ class ApplicationScopeDeclarationStoreTest {
                 new ApplicationScopeDeclarationsV1.Permission("view", "Duplicate"))));
         assertTrue(store.list("group", "client").isEmpty());
     }
+
+    @Test
+    void initializationRollsBackAllScopesWhenPermissionKeysConflict() {
+        store.initializeSchema();
+        var reader = new ApplicationScopeDeclarationsV1.Scope("reader", permissions("View flows"));
+        var writer = new ApplicationScopeDeclarationsV1.Scope("writer", permissions("Operate flows"));
+        assertThrows(ApplicationScopeDeclarationStore.Conflict.class,
+            () -> store.initialize("group", "client", List.of(reader, writer)));
+        assertTrue(store.list("group", "client").isEmpty());
+        var write = new ApplicationScopeDeclarationsV1.Scope("writer",
+            List.of(new ApplicationScopeDeclarationsV1.Permission("operate-flows", "Operate flows")));
+        store.initialize("group", "client", List.of(reader, write));
+        assertEquals(2, store.list("group", "client").size());
+        assertThrows(ApplicationScopeDeclarationStore.Conflict.class,
+            () -> store.initialize("group", "client", List.of(reader, write)));
+    }
 }

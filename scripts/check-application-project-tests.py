@@ -5,8 +5,9 @@ import xml.etree.ElementTree as ET
 REQUIRED = {'io.kestra.extensions.rbac.project.ProjectAuthorizationTest': 26, 'io.kestra.extensions.rbac.store.ProjectPolicyManagementTest': 7, 'io.kestra.extensions.rbac.PolicyEngineTest': 8, 'io.kestra.extensions.rbac.project.ProjectManagementSafetyTest': 3, 'io.kestra.extensions.rbac.store.ProjectPolicyStoreTest': 5, 'io.kestra.extensions.rbac.store.PolicyDocumentValidatorTest': 6, 'io.kestra.extensions.rbac.store.ProjectMigrationReviewTest': 10, 'io.kestra.extensions.rbac.management.PublishedUserDirectoryAccessTest': 6, 'io.kestra.extensions.rbac.BeanDiscoveryTest': 3, 'io.kestra.extensions.rbac.project.ProjectPolicyBoundaryTest': 3, 'io.kestra.extensions.rbac.management.ManagementControllerTest': 10, 'io.kestra.extensions.rbac.management.ManagementInputTest': 4, 'io.kestra.extensions.rbac.management.PublishedApplicationDirectoryAccessTest': 6, 'io.kestra.extensions.rbac.ConfiguredRbacAuthorizerTest': 2, 'io.kestra.extensions.rbac.store.JdbcPolicyStoreTest': 9, 'io.kestra.extensions.rbac.RuntimePoliciesTest': 9, 'io.kestra.extensions.rbac.SafeFlowDependenciesTest': 2, 'io.kestra.extensions.rbac.ProjectRuntimeDirectoryTest': 9, 'io.kestra.extensions.rbac.TypedPolicyTest': 6, 'io.kestra.extensions.rbac.InstanceAdminTest': 3}
 REQUIRED['io.kestra.extensions.rbac.ProjectRuntimeDirectoryTest'] = 16
 REQUIRED['io.kestra.extensions.rbac.RuntimePoliciesTest'] = 10
-REQUIRED['io.kestra.extensions.rbac.declaration.ApplicationScopeDeclarationStoreTest'] = 2
+REQUIRED['io.kestra.extensions.rbac.declaration.ApplicationScopeDeclarationStoreTest'] = 3
 REQUIRED['io.kestra.extensions.rbac.declaration.ApplicationScopeDeclarationControllerTest'] = 3
+REQUIRED['io.kestra.extensions.rbac.store.ApplicationScopeDeclarationCommandTest'] = 2
 results=Path(sys.argv[1])
 for name,count in REQUIRED.items():
     report=ET.parse(results/('TEST-'+name+'.xml')).getroot()
