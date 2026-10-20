@@ -1,5 +1,7 @@
 # kestra-plugin-rbac
 
+> 当前应用组实施规范见根仓 `docs/application-group-target-model.md`。本文现有应用项目、完整恢复和“本地绑定”说明记录的是旧发布模型；新安装目标尚未由本插件发布或通过组合验收。
+
 Independent, database-backed authorization extension for the Kestra OSS overlay. The business policy lives in this repository. Output: **`build/libs/kestra-rbac-authorizer.jar`**. The jar is thin, includes Micronaut generated bean indexes, and contains no Kestra, Micronaut, Jackson or other dependency classes.
 
 The earlier runtime authorization implementation passed independent CI and real monorepo Compose
@@ -66,7 +68,7 @@ kestra:
       enabled: true
     management:
       enabled: true
-    application-projects:
+    application-groups:
       enabled: true
     policy-source: database
 ```

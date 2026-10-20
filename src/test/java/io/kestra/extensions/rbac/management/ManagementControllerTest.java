@@ -47,7 +47,7 @@ class ManagementControllerTest {
         var directory=mock(ApplicationDirectoryV1.class);var identities=mock(TrustedIdentityV1.class);
         when(identities.current()).thenReturn(new TrustedIdentityV1.Identity(1,ISSUER,"owner","kestra-ui",Set.of("kestra-ui"),"main","console",Set.of("openid"),scopes,1,97,directoryRevision));
         var shared=new ApplicationDirectoryV1.Project("console","main",ISSUER,"Console",true,directoryRevision,97);
-        var manager=new ApplicationDirectoryV1.ScopeDefinition("console",MANAGER,"Manager",true,List.of(),List.of(
+        var manager=new ApplicationDirectoryV1.ScopeDefinition("console",MANAGER,"Manager","",true,List.of(),List.of(
             new ApplicationDirectoryV1.ManagementIntent(ApplicationDirectoryV1.ManagementDomain.IDENTITY,Set.of("READ","MANAGE"),Set.of()),
             new ApplicationDirectoryV1.ManagementIntent(ApplicationDirectoryV1.ManagementDomain.LOCAL_POLICY,Set.of("READ","MANAGE"),Set.of())),2);
         when(directory.policyBoundaries()).thenReturn(List.of(new ApplicationDirectoryV1.PolicyBoundary(shared,List.of(manager),Set.of("kestra-ui"),Set.of(MANAGER),List.of(new ApplicationDirectoryV1.ProtocolScope("openid","OIDC")))));
@@ -123,7 +123,7 @@ class ManagementControllerTest {
     @Test void directoryTargetAndBodyCannotChangeIssuerOrOpaqueScope() {
         var s=setup(3,Set.of(MANAGER));
         String key="~"+Base64.getUrlEncoder().withoutPadding().encodeToString(json("a/read"));
-        assertEquals(400,s.controller.identityScopesUpdate("main","console",key,owner(),"\"2\"",json("{\"scope\":\"different\",\"description\":\"x\",\"active\":true,\"resourceIntents\":[],\"managementIntents\":[]}")).code());
+        assertEquals(400,s.controller.identityScopesUpdate("main","console",key,owner(),"\"2\"",json("{\"scope\":\"different\",\"name\":\"Different\",\"description\":\"x\",\"active\":true,\"resourceIntents\":[],\"managementIntents\":[]}")).code());
         assertEquals(403,s.controller.assignmentsCreate("main","console",owner(),"\"3\"",json("{\"issuer\":\"https://other.invalid\",\"subject\":\"user\",\"projectScopes\":[]}")).code());
         verifyNoInteractions(s.applications);
     }

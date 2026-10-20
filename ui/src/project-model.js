@@ -6,7 +6,7 @@ export const newGrant = () => ({scope: 'NAMESPACE', tenant: 'main', namespace: '
 export const newIntent = () => ({vocabularyVersion: 'kestra-resources-v1', resourceType: 'FLOW', namespaces: {kind: 'RESTRICTED', exact: [], subtrees: []}, resourceIds: {kind: 'ALL', ids: []}, actions: []})
 export function intentInput(value) {
   return {
-    scope: value.scope, description: value.description, active: value.active,
+    scope: value.scope, name: value.name, description: value.description, active: value.active,
     resourceIntents: value.resourceIntents.map(item => ({
       vocabularyVersion: 'kestra-resources-v1', resourceType: item.resourceType,
       namespaces: {kind: item.namespaces.kind, exact: item.namespaces.kind === 'ALL' ? [] : splitLines(item.namespaces.exact), subtrees: item.namespaces.kind === 'ALL' ? [] : splitLines(item.namespaces.subtrees)},

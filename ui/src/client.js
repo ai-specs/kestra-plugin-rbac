@@ -36,6 +36,7 @@ export function createClient(currentContext) {
   const identity = id => '/identity' + project(id)
   const page = (path, current = 1, size = 100) => call(path + '?page=' + current + '&size=' + size)
   const assignment = (id, subject) => identity(id) + '/assignments/detail?subject=' + encodeURIComponent(subject)
+  const declarations = (group, clientId) => '/application-groups/' + encodeURIComponent(group) + '/applications/' + encodeKey(clientId) + '/scope-declarations'
   return {
     capabilities: () => call('/capabilities'),
     policy: () => call('/policy'),
@@ -57,6 +58,11 @@ export function createClient(currentContext) {
     identityScope: (id, name) => call(identity(id) + '/scopes/' + encodeKey(name)),
     createIdentityScope: (id, value, revision) => write(identity(id) + '/scopes', 'POST', value, revision),
     updateIdentityScope: (id, name, value, revision) => write(identity(id) + '/scopes/' + encodeKey(name), 'PUT', value, revision),
+    deleteIdentityScope: (id, name, revision) => write(identity(id) + '/scopes/' + encodeKey(name), 'DELETE', undefined, revision),
+    applicationScopeDeclarations: (group, clientId) => call(declarations(group, clientId)),
+    createApplicationScopeDeclaration: (group, clientId, scope, permissions) => call(declarations(group, clientId) + '/' + encodeURIComponent(scope), {method: 'POST', body: JSON.stringify({permissions})}),
+    updateApplicationScopeDeclaration: (group, clientId, scope, permissions, revision) => write(declarations(group, clientId) + '/' + encodeURIComponent(scope), 'PUT', {permissions}, revision),
+    deleteApplicationScopeDeclaration: (group, clientId, scope, revision) => write(declarations(group, clientId) + '/' + encodeURIComponent(scope), 'DELETE', undefined, revision),
     clients: (id, current, size) => page(identity(id) + '/clients', current, size),
     client: (id, clientId) => call(identity(id) + '/clients/' + encodeKey(clientId)),
     createClient: (id, value, revision) => write(identity(id) + '/clients', 'POST', memberInput(value), revision),

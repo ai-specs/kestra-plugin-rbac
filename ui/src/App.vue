@@ -7,9 +7,10 @@ import KsInput from '@kestra-io/design-system/components/Form/KsInput'
 import KsTabs from '@kestra-io/design-system/components/Navigation/KsTabs/KsTabs'
 import KsTabPane from '@kestra-io/design-system/components/Navigation/KsTabs/KsTabPane'
 import ProjectList from './ProjectList.vue'
+import ApplicationGroupCards from './ApplicationGroupCards.vue'
+import ApplicationDeclarations from './ApplicationDeclarations.vue'
 import GrantEditor from './GrantEditor.vue'
 import ProjectRecoveryEditor from './ProjectRecoveryEditor.vue'
-import IntentEditor from './IntentEditor.vue'
 import {createClient, encodeKey, decodeKey} from './client.js'
 import {canonicalPath, collectPages, splitLines, copy, intentInput, scopeInput, memberInput, managementAccess, requiresReauthentication, loginEntry, reconciliationInput, directoryNeedsReconciliation, bindingOptionsModel, newLocalBinding} from './project-model.js'
 
@@ -29,6 +30,8 @@ const caps = ref(null)
 const view = ref(null)
 const project = ref(null)
 const localProject = ref(null)
+const identityEditing = ref(false)
+const policyEditing = ref(false)
 const identityScope = ref(null)
 const localScope = ref(null)
 const localScopeExists = ref(false)
@@ -38,6 +41,7 @@ const bindingNew = computed(() => !isUsers.value && tab.value === 'bindings' && 
 const recovery = ref(null)
 const recoveryTarget = ref('')
 const member = ref(null)
+const declarations = ref([])
 const assignment = ref(null)
 const user = ref(null)
 const password = ref('')
@@ -137,6 +141,8 @@ async function load() {
   if (busy.value) {pendingLoad = true; return}
   const current = ++generation
   ready.value = false
+  identityEditing.value = false
+  policyEditing.value = false
   recovery.value = null
   bindingOptions.value = null
   bindingName.value = ''
@@ -148,6 +154,7 @@ async function load() {
   // Clear previous path data before any awaited call: failed navigation must not expose an old editor.
   project.value = localProject.value = identityScope.value = localScope.value = member.value = assignment.value = user.value = null
   items.value = []
+  declarations.value = []
   scopeChoices.value = []
   password.value = ''
   busy.value = true
@@ -185,45 +192,48 @@ async function load() {
       conflicted.value = false
       return
     }
-    const nextView = nextCaps.localPolicyManagement && nextCaps.needsReconciliation !== true ? await api.policy() : null
+    const nextView = (nextCaps.localPolicyRead || nextCaps.localPolicyManagement) && nextCaps.needsReconciliation !== true ? await api.policy() : null
     if (nextView && nextView.policy?.schemaVersion !== 2) throw new Error('invalid_policy_schema')
     if (current !== generation || disposed) return
     view.value = nextView
     const all = (fetcher, revision) => collectPages(fetcher, props.context.signal, revision)
     if (isUsers.value) {
-      if (!nextCaps.userDirectory || !nextCaps.identityManagement) throw {status: 403}
+      if (!nextCaps.userDirectory || !nextCaps.identityRead) throw {status: 403}
       if (!detail.value) items.value = await all((page, size) => api.users(page, size))
       else user.value = isNew.value ? {username: '', name: '', email: '', password: ''} : await api.user(decodeKey(detail.value.startsWith('~') ? detail.value : '~' + detail.value))
     } else if (projectNew.value) {
       project.value = {id: '', tenant: 'main', displayName: ''}
     } else if (!projectId.value) {
-      const directory = nextCaps.identityManagement ? await all((page, size) => api.identityProjects(page, size)) : []
+      const directory = nextCaps.identityRead ? await all((page, size) => api.identityProjects(page, size)) : []
       const merged = new Map(directory.map(item => [item.id, {...item}]))
       for (const [id, value] of Object.entries(nextView?.policy.applicationProjects ?? {})) if (!merged.has(id)) merged.set(id, {id, issuer: value.issuer})
       items.value = [...merged.values()].map(item => ({...item, localStatus: displayLocalStatus(nextView?.policy.applicationProjects[item.id])}))
     } else {
-      project.value = nextCaps.identityManagement ? await optional(() => api.identityProject(projectId.value)) : null
+      project.value = nextCaps.identityRead ? await optional(() => api.identityProject(projectId.value)) : null
       const stored = localPolicyProject()
       // Bind to the directory edit revision, not the independent authorizationVersion epoch.
       localProject.value = stored ? {...copy(stored), id: projectId.value} : project.value ? {id: projectId.value, issuer: project.value.issuer, audiences: [], enabled: false, directoryRevision: project.value.revision} : null
       if (!project.value && !stored) throw {status: 404}
       if (tab.value === 'scopes') {
-        const directory = nextCaps.identityManagement && project.value ? await all((page, size) => api.identityScopes(projectId.value, page, size), project.value.revision) : []
+        const directory = nextCaps.identityRead && project.value ? await all((page, size) => api.identityScopes(projectId.value, page, size), project.value.revision) : []
         scopeChoices.value = directory
         if (!detail.value) items.value = scopeRows(directory, stored?.scopes)
         else {
           const name = isNew.value ? '' : decodeKey(detail.value)
-          identityScope.value = isNew.value ? {projectId: projectId.value, scope: '', description: '', active: true, resourceIntents: [], managementIntents: []} : nextCaps.identityManagement ? await optional(() => api.identityScope(projectId.value, name)) : null
+          identityScope.value = isNew.value ? {projectId: projectId.value, scope: '', name: '', description: '', active: true, resourceIntents: [], managementIntents: []} : nextCaps.identityRead ? await optional(() => api.identityScope(projectId.value, name)) : null
           const binding = stored?.scopes?.[name]
           localScopeExists.value = Boolean(binding)
           localScope.value = {name, description: binding?.description ?? identityScope.value?.description ?? '', enabled: binding?.enabled ?? false, grants: copy(binding?.grants ?? []), managementGrants: copy(binding?.managementGrants ?? [])}
           if (!isNew.value && !binding && !identityScope.value) throw {status: 404}
         }
       } else if (tab.value === 'clients' || tab.value === 'assignments') {
-        if (!nextCaps.identityManagement || !project.value) throw {status: 403}
+        if (!nextCaps.identityRead || !project.value) throw {status: 403}
         scopeChoices.value = await all((page, size) => api.identityScopes(projectId.value, page, size), project.value.revision)
         if (!detail.value) items.value = await all((page, size) => api[tab.value](projectId.value, page, size), project.value.revision)
-        else if (tab.value === 'clients') member.value = isNew.value ? {clientId: '', approved: false, firstPartyUi: false, audiences: [], allowedProjectScopes: []} : await api.client(projectId.value, decodeKey(detail.value))
+        else if (tab.value === 'clients') {
+          member.value = isNew.value ? {clientId: '', approved: false, firstPartyUi: false, audiences: [], allowedProjectScopes: []} : await api.client(projectId.value, decodeKey(detail.value))
+          if (!isNew.value && nextCaps.applicationScopeDeclarations) declarations.value = await api.applicationScopeDeclarations(projectId.value, member.value.clientId)
+        }
         else assignment.value = isNew.value ? {issuer: project.value.issuer, subject: '', projectScopes: []} : await api.assignment(projectId.value, decodeKey(detail.value))
       } else if (tab.value !== 'overview') throw {status: 404}
     }
@@ -277,6 +287,7 @@ async function saveIdentityProject() {
       const result = await api.createIdentityProject({id: project.value.id, tenant: 'main', displayName: project.value.displayName})
       project.value = result
     } else project.value = await api.updateIdentityProject(projectId.value, {displayName: project.value.displayName, active: project.value.active}, project.value.revision)
+    identityEditing.value = false
   }, 'identitySaved', true)
 }
 async function saveLocalProject() {
@@ -285,6 +296,7 @@ async function saveLocalProject() {
     const value = policyProjectInput()
     view.value = localPolicyProject() ? await api.updateProject(projectId.value, value, view.value.revision) : await api.createProject(value, view.value.revision)
     localProject.value = {...copy(localPolicyProject()), id: projectId.value}
+    policyEditing.value = false
   }, 'localSaved')
 }
 async function saveReconciliation(approved) {
@@ -329,6 +341,24 @@ async function saveMember() {
     // Do not continue with the pre-mutation authenticated identity.
   }, 'identitySaved', true)
 }
+async function createDeclaration(scope, permissions) {
+  await perform(async () => {
+    await api.createApplicationScopeDeclaration(projectId.value, member.value.clientId, scope, permissions)
+    declarations.value = await api.applicationScopeDeclarations(projectId.value, member.value.clientId)
+  })
+}
+async function updateDeclaration(scope, permissions, revision) {
+  await perform(async () => {
+    await api.updateApplicationScopeDeclaration(projectId.value, member.value.clientId, scope, permissions, revision)
+    declarations.value = await api.applicationScopeDeclarations(projectId.value, member.value.clientId)
+  })
+}
+async function deleteDeclaration(scope, revision) {
+  await perform(async () => {
+    await api.deleteApplicationScopeDeclaration(projectId.value, member.value.clientId, scope, revision)
+    declarations.value = await api.applicationScopeDeclarations(projectId.value, member.value.clientId)
+  })
+}
 async function saveAssignment() {
   await perform(async () => {
     const input = {issuer: assignment.value.issuer, subject: assignment.value.subject, projectScopes: [...assignment.value.projectScopes]}
@@ -342,6 +372,7 @@ async function remove() {
   const identityMutation = confirmation.value !== 'local'
   await perform(async () => {
     if (confirmation.value === 'local') view.value = await api.deleteScope(projectId.value, selectedScope.value, view.value.revision)
+    else if (confirmation.value === 'sharedScope') await api.deleteIdentityScope(projectId.value, selectedScope.value, identityScope.value.revision)
     else if (confirmation.value === 'client') await api.deleteClient(projectId.value, decodeKey(detail.value), member.value.revision)
     else await api.deleteAssignment(projectId.value, assignment.value.subject, assignment.value.revision)
     if (!identityMutation) navigate(base.value + '/' + tab.value)
@@ -364,7 +395,7 @@ onBeforeUnmount(() => {disposed = true; generation++; password.value = ''; if (u
 <template>
   <main ref="main" :aria-busy="busy">
     <KsTabs type="box" :model-value="isUsers ? 'users' : 'projects'" :aria-label="t('title')" @update:model-value="navigate">
-      <KsTabPane name="projects" :label="t('projects')" /><KsTabPane name="users" :label="t('users')" />
+      <KsTabPane name="projects" :label="t('applicationGroups')" /><KsTabPane name="users" :label="t('users')" />
     </KsTabs>
     <header class="management-toolbar">
       <div class="toolbar-status"><span v-if="view">{{ t('policyMode') }}: {{ view.mode }} · {{ t('revision') }}: {{ view.revision }}</span><span v-if="projectId">{{ projectId }}</span></div>
@@ -379,13 +410,12 @@ onBeforeUnmount(() => {disposed = true; generation++; password.value = ''; if (u
     <p v-if="notice" class="message" role="status">{{ notice }}</p>
     <section v-if="savedResult" class="message" data-test="saved-result"><h2>{{ t('authorizationState') }}</h2><pre>{{ JSON.stringify(savedResult, null, 2) }}</pre><p>{{ t('stateDisclaimer') }}</p></section>
     <template v-if="caps?.allowed && ready">
-      <p class="message muted">{{ t('independentSaves') }}</p>
       <p v-if="needsReconciliation" class="message">{{ t('localRecoveryOnly') }}</p>
       <form v-if="needsReconciliation && !projectId" @submit.prevent="navigate('projects/' + encodeURIComponent(recoveryTarget) + '/reconciliation')"><label>{{ t('projectId') }}<KsInput v-model="recoveryTarget" required /></label><KsButton native-type="submit">{{ t('atomicReconciliation') }}</KsButton></form>
       <p v-if="needsReconciliation" class="message error" role="alert" data-test="reconciliation-required">{{ t('reconciliationRequired') }}</p>
       <template v-if="projectId">
         <KsButton :disabled="busy" @click="navigate('projects')">{{ t('back') }}</KsButton>
-        <KsTabs type="box" :model-value="bindingNew ? 'scopes' : tab" :aria-label="t('projects')" @update:model-value="navigate(base + '/' + ($event === 'overview' ? '' : $event))">
+        <KsTabs type="box" :model-value="bindingNew ? 'scopes' : tab" :aria-label="t('applicationGroups')" @update:model-value="navigate(base + '/' + ($event === 'overview' ? '' : $event))">
           <KsTabPane v-for="name in ['overview', 'scopes', 'clients', 'assignments', 'reconciliation']" :key="name" :name="name" :label="t(name)" />
         </KsTabs>
       </template>
@@ -406,26 +436,38 @@ onBeforeUnmount(() => {disposed = true; generation++; password.value = ''; if (u
         </fieldset></form>
       </section>
       <ProjectRecoveryEditor v-else-if="recovery" :project="recovery.candidate" :upper="recovery.upperBound" :revision="recovery.policyRevision" :target-revision="recovery.directoryRevision" :disabled="recoveryDisabled" @save="saveReconciliation" />
+      <ApplicationGroupCards v-else-if="showList && !isUsers && !projectId" :items="items" :busy="busy" @open="openRow" />
       <ProjectList v-else-if="showList" :key="path" :items="items" :columns="columns" :storage-key="storageKey" :busy="busy" @open="openRow" @refresh="load" />
       <template v-else-if="projectNew || projectId && tab === 'overview'">
         <section v-if="project" aria-labelledby="identity-project-title">
-          <h2 id="identity-project-title">{{ t('identityDirectory') }}</h2>
-          <form @submit.prevent="saveIdentityProject"><fieldset :disabled="identityDisabled">
+          <h2 id="identity-project-title">{{ project.displayName || project.id }}</h2>
+          <div v-if="!projectNew && !identityEditing" data-test="application-group-detail">
+            <p>{{ project.id }}</p>
+            <p>{{ t('active') }}: {{ t(project.active ? 'active' : 'inactive') }}</p>
+            <KsButton v-if="identityAllowed" :disabled="identityDisabled" data-test="edit-application-group" @click="identityEditing = true">{{ t('edit') }}</KsButton>
+          </div>
+          <form v-else @submit.prevent="saveIdentityProject"><fieldset :disabled="identityDisabled">
             <label>{{ t('projectId') }}<KsInput v-if="projectNew" v-model="project.id" required name="project-id" /><output v-else>{{ project.id }}</output></label>
             <label>{{ t('displayName') }}<KsInput v-model="project.displayName" required name="project-display-name" /></label>
             <template v-if="!projectNew"><p>{{ t('issuer') }}: {{ project.issuer }}</p><p>{{ t('objectRevision') }}: {{ project.revision }} · {{ t('authorizationVersion') }}: {{ project.authorizationVersion }}</p><label class="checkbox"><input v-model="project.active" type="checkbox">{{ t('active') }}</label></template>
             <KsButton type="primary" native-type="submit" data-test="save-identity-project">{{ t('saveIdentity') }}</KsButton>
+            <KsButton v-if="!projectNew" native-type="button" :disabled="busy" @click="load">{{ t('cancel') }}</KsButton>
           </fieldset></form>
         </section>
         <section v-if="!projectNew && localProject" aria-labelledby="local-project-title">
-          <h2 id="local-project-title">{{ t('localPolicy') }}</h2>
-          <form @submit.prevent="saveLocalProject"><fieldset :disabled="localDisabled">
+          <h2 id="local-project-title">{{ t('kestraActualPermissions') }}</h2>
+          <div v-if="!policyEditing" data-test="application-policy-detail">
+            <p>{{ t('enabled') }}: {{ t(localProject.enabled ? 'active' : 'inactive') }}</p>
+            <KsButton v-if="localAllowed" :disabled="localDisabled" @click="policyEditing = true">{{ t('edit') }}</KsButton>
+          </div>
+          <form v-else @submit.prevent="saveLocalProject"><fieldset :disabled="localDisabled">
             <label>{{ t('issuer') }}<KsInput v-model="localProject.issuer" required name="local-issuer" /></label>
             <label>{{ t('audiences') }}<textarea :value="text(localProject.audiences)" required @input="localProject.audiences = $event.target.value" /><small>{{ t('onePerLine') }}</small></label>
             <p>{{ t('directoryRevision') }}: {{ localProject.directoryRevision }}</p>
             <p v-if="project">{{ t('objectRevision') }}: {{ project.revision }}</p>
             <label class="checkbox"><input v-model="localProject.enabled" type="checkbox">{{ t('enabled') }}</label>
             <KsButton type="primary" native-type="submit" data-test="save-local-project">{{ t('saveLocal') }}</KsButton>
+            <KsButton native-type="button" :disabled="busy" @click="load">{{ t('cancel') }}</KsButton>
           </fieldset></form>
           <section v-if="needsReconciliation" class="message"><p>{{ t('atomicReconciliationHelp') }}</p><KsButton :disabled="busy" @click="navigate(base + '/reconciliation')">{{ t('atomicReconciliation') }}</KsButton></section>
         </section>
@@ -436,11 +478,11 @@ onBeforeUnmount(() => {disposed = true; generation++; password.value = ''; if (u
           <h2 id="identity-scope-title">{{ t('sharedIntent') }}</h2>
           <form @submit.prevent="saveIdentityScope"><fieldset :disabled="identityDisabled">
             <label>{{ t('scope') }}<KsInput v-if="isNew" v-model="identityScope.scope" required name="identity-scope" /><output v-else>{{ identityScope.scope }}</output></label>
+            <label>{{ t('name') }}<KsInput v-model="identityScope.name" required name="identity-scope-name" /></label>
             <label>{{ t('description') }}<KsInput v-model="identityScope.description" name="identity-scope-description" /></label>
             <label class="checkbox"><input v-model="identityScope.active" type="checkbox">{{ t('active') }}</label>
             <p>{{ t('objectRevision') }}: {{ isNew ? project?.revision : identityScope.revision }}</p>
-            <IntentEditor :value="identityScope" />
-            <div class="buttons"><KsButton type="primary" native-type="submit" data-test="save-identity-scope">{{ t('saveIdentity') }}</KsButton></div>
+            <div class="buttons"><KsButton type="primary" native-type="submit" data-test="save-identity-scope">{{ t('saveIdentity') }}</KsButton><KsButton v-if="!isNew" native-type="button" @click="confirmation = 'sharedScope'">{{ t('delete') }}</KsButton></div>
           </fieldset></form>
         </section>
         <p v-else class="message">{{ t('identityUnavailable') }}</p>
@@ -471,6 +513,7 @@ onBeforeUnmount(() => {disposed = true; generation++; password.value = ''; if (u
           <div class="buttons"><KsButton type="primary" native-type="submit" data-test="save-member">{{ t('saveIdentity') }}</KsButton><KsButton v-if="!isNew" native-type="button" @click="confirmation = 'client'">{{ t('removeClient') }}</KsButton></div>
         </fieldset></form>
         <section v-if="savedMember" class="message"><h2>{{ t('authorizationState') }}</h2><p>{{ t('approved') }}: {{ t(savedMember.approved ? 'active' : 'inactive') }}</p><p>{{ t('firstPartyUi') }}: {{ t(savedMember.firstPartyUi ? 'active' : 'inactive') }}</p><p>{{ t('allowedProjectScopes') }}: {{ savedMember.allowedProjectScopes.join(', ') }}</p><p>{{ t('audiences') }}: {{ savedMember.audiences.join(', ') }}</p><p>{{ t('stateDisclaimer') }}</p></section>
+        <ApplicationDeclarations v-if="!isNew && caps?.applicationScopeDeclarations" :items="declarations" :scopes="scopeChoices" :supported="member.allowedProjectScopes" :disabled="identityDisabled" @create="createDeclaration" @update="updateDeclaration" @delete="deleteDeclaration" />
       </template>
       <template v-else-if="assignment">
         <KsButton :disabled="busy" @click="navigate(base + '/assignments')">{{ t('back') }}</KsButton>

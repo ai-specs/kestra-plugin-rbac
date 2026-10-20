@@ -28,7 +28,7 @@ class RuntimePoliciesTest {
                         grant.namespace()!=null&&!grant.descendants()?Set.of(grant.namespace()):Set.of(),grant.descendants()?Set.of(grant.namespace()):Set.of()),
                     new ApplicationDirectoryV1.ResourceIdDomain(grant.allIds()?ApplicationDirectoryV1.DomainKind.ALL:ApplicationDirectoryV1.DomainKind.RESTRICTED,grant.ids()),grant.actions()));
                 var management=entry.getValue().managementGrants().stream().map(g->new ApplicationDirectoryV1.ManagementIntent(ApplicationDirectoryV1.ManagementDomain.valueOf(g.domain().name()),g.actions().stream().map(Enum::name).collect(java.util.stream.Collectors.toSet()),g.projectIds())).toList();
-                shared.add(new ApplicationDirectoryV1.ScopeDefinition("p",entry.getKey(),"scope",true,intents,management,1));
+                shared.add(new ApplicationDirectoryV1.ScopeDefinition("p",entry.getKey(),"Scope","",true,intents,management,1));
             }
             when(directory.policyBoundaries()).thenReturn(List.of(new ApplicationDirectoryV1.PolicyBoundary(
                 new ApplicationDirectoryV1.Project("p","main","https://issuer.example","P",true,3,97),shared,Set.of("ui","api"),scopes.keySet(),List.of(new ApplicationDirectoryV1.ProtocolScope("openid","STANDARD")))));

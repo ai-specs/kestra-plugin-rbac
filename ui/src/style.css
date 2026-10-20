@@ -13,6 +13,15 @@ input[type=checkbox] { accent-color: var(--ks-text-link); }
 :focus-visible { outline: 2px solid var(--ks-text-link); outline-offset: 3px; }
 .grant { border: 1px solid var(--ks-border-default); border-radius: 8px; padding: 16px; margin: 16px 0; }
 .table-wrap { overflow-x: auto; margin: 16px 0; background: var(--ks-bg-base); }
+.application-group-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 16px; margin: 20px 0; }
+.application-group-card-link { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; min-height: 96px; padding: 16px; border: 0; background: transparent; color: var(--ks-text-primary); text-align: left; cursor: pointer; font: inherit; }
+.application-group-card-link:disabled { cursor: wait; }
+.application-group-card-title { font-size: 16px; font-weight: 600; }
+.application-group-card-id { color: var(--ks-text-secondary); overflow-wrap: anywhere; }
+.application-declaration { border: 1px solid var(--ks-border-default); border-radius: 8px; padding: 16px; margin: 16px 0; background: var(--ks-bg-surface); }
+.application-permission-row { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
+.application-permission-row label { flex: 1 1 200px; }
+.application-permission-row code { overflow-wrap: anywhere; }
 .table-wrap .ks-data-table-wrapper { --ks-data-table-gutter: 0px; }
 .management-data-table > .kel-pagination { display: flex; margin: 12px 0; }
 .management-data-table > .kel-pagination .kel-pagination__sizes { margin-right: auto; }

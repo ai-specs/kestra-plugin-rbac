@@ -8,6 +8,7 @@ import io.kestra.extensions.rbac.project.ProjectPolicy;
 import io.kestra.extensions.rbac.store.ProjectPolicyStore;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Requires;
+import io.micronaut.context.annotation.Value;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
@@ -41,6 +42,8 @@ public final class ManagementController {
     private final BeanProvider<ApplicationDirectoryAccess> applications;
     private final ManagementInput input=new ManagementInput();
     private final ObjectMapper mapper=new ObjectMapper();
+    @Value("${kestra.rbac.application-groups.enabled:false}")
+    private boolean applicationGroups;
     public ManagementController(ProjectRuntimePolicies policies,ProjectPolicyStore store,
         BeanProvider<UserDirectoryAccess> users,BeanProvider<ApplicationDirectoryAccess> applications) {
         this.policies=policies;this.store=store;this.users=users;this.applications=applications;
@@ -119,6 +122,7 @@ public final class ManagementController {
             capabilities.put("localPolicyManage",lm);capabilities.put("reconciliationAllowed",recovery);
             capabilities.put("identityRead",ir);capabilities.put("localPolicyRead",lr);
             capabilities.put("needsReconciliation",recovery&&!lm);capabilities.put("userDirectory",users.isUnique());
+            capabilities.put("applicationScopeDeclarations",applicationGroups);
             capabilities.put("mode","database");capabilities.put("readOnly",false);return ok(capabilities);
         });
     }
@@ -301,13 +305,18 @@ public final class ManagementController {
     }
     @Post("/identity/projects/{id}/scopes") @Consumes(MediaType.APPLICATION_JSON)
     public HttpResponse<?> identityScopesCreate(String tenant,String id,Authentication authentication,@Header("If-Match") @Nullable String match,@Body byte[] bytes) {
-        return request(tenant,authentication,c -> {Long rev=revision(match);var n=input.body(bytes,Set.of("scope","description","active","resourceIntents","managementIntents"));
+        return request(tenant,authentication,c -> {Long rev=revision(match);var n=input.body(bytes,Set.of("scope","name","description","active","resourceIntents","managementIntents"));
             return directory(c,ApplicationDirectoryAccess.Resource.SCOPE,ApplicationDirectoryAccess.Operation.CREATE,id,null,1,1,rev,n);});
     }
     @Put("/identity/projects/{id}/scopes/{key}") @Consumes(MediaType.APPLICATION_JSON)
     public HttpResponse<?> identityScopesUpdate(String tenant,String id,String key,Authentication authentication,@Header("If-Match") @Nullable String match,@Body byte[] bytes) {
-        return request(tenant,authentication,c -> {long rev=revision(match);var n=input.body(bytes,Set.of("scope","description","active","resourceIntents","managementIntents"));same(opaque(key),n,"scope");
+        return request(tenant,authentication,c -> {long rev=revision(match);var n=input.body(bytes,Set.of("scope","name","description","active","resourceIntents","managementIntents"));same(opaque(key),n,"scope");
             return directory(c,ApplicationDirectoryAccess.Resource.SCOPE,ApplicationDirectoryAccess.Operation.UPDATE,id,opaque(key),1,1,rev,n);});
+    }
+    @Delete("/identity/projects/{id}/scopes/{key}")
+    public HttpResponse<?> identityScopesDelete(String tenant,String id,String key,Authentication authentication,@Header("If-Match") @Nullable String match) {
+        return request(tenant,authentication,c -> {long rev=revision(match);
+            return directory(c,ApplicationDirectoryAccess.Resource.SCOPE,ApplicationDirectoryAccess.Operation.DELETE,id,opaque(key),1,1,rev,null);});
     }
     @Get("/identity/projects/{id}/clients{?page,size}")
     public HttpResponse<?> clients(String tenant,String id,Authentication authentication,@QueryValue(defaultValue="1") int page,@QueryValue(defaultValue="20") int size) {

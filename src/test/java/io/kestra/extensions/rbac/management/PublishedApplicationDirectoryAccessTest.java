@@ -45,23 +45,23 @@ class PublishedApplicationDirectoryAccessTest {
     }
     @Test void sharedScopeWriteForwardsProjectRevisionAndCompleteIntents()throws Exception {
         setup();String body="""
-            {"scope":"p:read/a","description":"Complete","active":true,"resourceIntents":[
+            {"scope":"reader","name":"Reader","description":"Complete","active":true,"resourceIntents":[
             {"vocabularyVersion":"kestra-resources-v1","resourceType":"FLOW","namespaces":{"kind":"RESTRICTED","exact":["a"],"subtrees":[]},
             "resourceIds":{"kind":"RESTRICTED","ids":["f"]},"actions":["READ","LIST"]}],"managementIntents":[]}
             """;
-        var expected=new ApplicationDirectoryV1.ScopeDefinition("p","p:read/a","Complete",true,List.of(),List.of(),1);
+        var expected=new ApplicationDirectoryV1.ScopeDefinition("p","reader","Reader","Complete",true,List.of(),List.of(),1);
         when(directory.createScope(eq("p"),eq(3L),any())).thenReturn(expected);
         assertEquals(expected,access.invoke(request(Resource.SCOPE,Operation.CREATE,null,3L,body)));
         var argument=org.mockito.ArgumentCaptor.forClass(ApplicationDirectoryV1.ScopeInput.class);
         verify(directory).createScope(eq("p"),eq(3L),argument.capture());
-        assertEquals("p:read/a",argument.getValue().scope());
+        assertEquals("reader",argument.getValue().scope());
         assertEquals(Set.of("a"),argument.getValue().resourceIntents().getFirst().namespaces().exact());
         assertEquals(Set.of("f"),argument.getValue().resourceIntents().getFirst().resourceIds().ids());
         assertEquals(Set.of("READ","LIST"),argument.getValue().resourceIntents().getFirst().actions());
     }
     @Test void invalidNestedScopeFieldsCannotReachDirectoryMutation()throws Exception {
         setup();String body="""
-            {"scope":"p:read","description":"Read","active":true,"resourceIntents":[
+            {"scope":"reader","name":"Reader","description":"Read","active":true,"resourceIntents":[
             {"vocabularyVersion":"unknown","resourceType":"FLOW","namespaces":{"kind":"ALL","exact":[],"subtrees":[]},
             "resourceIds":{"kind":"ALL","ids":[]},"actions":["READ"]}],"managementIntents":[]}
             """;

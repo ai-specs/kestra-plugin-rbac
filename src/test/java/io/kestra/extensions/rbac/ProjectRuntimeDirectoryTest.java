@@ -10,7 +10,7 @@ import static io.kestra.webserver.oidc.ApplicationDirectoryV1.*;
 class ProjectRuntimeDirectoryTest {
     private void managementTarget(boolean active,String issuer,String tenant,boolean present,boolean bound) {
         var intent=new ManagementIntent(ManagementDomain.LOCAL_POLICY,Set.of("MANAGE"),Set.of("p","new-project"));
-        var manager=new ScopeDefinition("p","manager","Manager",true,List.of(),List.of(intent),1);
+        var manager=new ScopeDefinition("p","manager","Manager","",true,List.of(),List.of(intent),1);
         var console=new PolicyBoundary(new Project("p","main","https://issuer.example","P",true,3,97),List.of(manager),Set.of("ui"),Set.of("manager"),List.of());
         var target=new PolicyBoundary(new Project("new-project",tenant,issuer,"New",active,1,1),List.of(),Set.of(),Set.of(),List.of());
         var grant=new io.kestra.extensions.rbac.project.ProjectPolicy.ManagementGrant(io.kestra.extensions.rbac.project.ProjectPolicy.ManagementDomain.LOCAL_POLICY,
@@ -45,7 +45,7 @@ class ProjectRuntimeDirectoryTest {
     @Test void inactiveBoundTargetCanBeReconciledAndReferenceWithdrawnWithoutLoginOrBusinessAuthority(){
         var domain=io.kestra.extensions.rbac.project.ProjectPolicy.ManagementDomain.LOCAL_POLICY;
         var action=io.kestra.extensions.rbac.project.ProjectPolicy.ManagementAction.MANAGE;
-        var sharedScope=new ScopeDefinition("p","manager","Manager",true,List.of(),List.of(new ManagementIntent(ManagementDomain.LOCAL_POLICY,Set.of("MANAGE"),Set.of("p","target"))),1);
+        var sharedScope=new ScopeDefinition("p","manager","Manager","",true,List.of(),List.of(new ManagementIntent(ManagementDomain.LOCAL_POLICY,Set.of("MANAGE"),Set.of("p","target"))),1);
         var console=new PolicyBoundary(new Project("p","main","https://issuer.example","P",true,3,97),List.of(sharedScope),Set.of("ui"),Set.of("manager"),List.of());
         var target=new PolicyBoundary(new Project("target","main","https://issuer.example","Target",false,2,2),List.of(),Set.of("api"),Set.of(),List.of());
         var localScope=new io.kestra.extensions.rbac.project.ProjectPolicy.ScopeDefinition("Manager",true,List.of(),List.of(new io.kestra.extensions.rbac.project.ProjectPolicy.ManagementGrant(domain,Set.of(action),Set.of("p","target"))));
@@ -85,7 +85,7 @@ class ProjectRuntimeDirectoryTest {
             new ResourceIdDomain(DomainKind.ALL,Set.of()),actions);
     }
     private ScopeDefinition scope(String name,ResourceIntent intent){
-        return new ScopeDefinition("p",name,"scope",true,List.of(intent),List.of(),1);
+        return new ScopeDefinition("p",name,"Scope","",true,List.of(intent),List.of(),1);
     }
     private PolicyBoundary boundary(List<ScopeDefinition> scopes,String tenant,List<ProtocolScope> protocols){
         return new PolicyBoundary(new Project("p",tenant,"https://issuer.example","P",true,3,97),scopes,Set.of("ui"),Set.of(),protocols);
@@ -128,7 +128,7 @@ class ProjectRuntimeDirectoryTest {
     }
     @Test void unboundEmptyProjectDoesNotBlockIdentityManagementOrClientApproval(){
         var management=new ManagementIntent(ManagementDomain.IDENTITY,Set.of("MANAGE"),Set.of());
-        var manager=new ScopeDefinition("p","manager","Manager",true,List.of(),List.of(management),1);
+        var manager=new ScopeDefinition("p","manager","Manager","",true,List.of(),List.of(management),1);
         var console=boundary(List.of(manager),"main",List.of());
         var empty=new PolicyBoundary(new Project("new-project","main","https://issuer.example","New",true,1,1),
             List.of(),Set.of(),Set.of(),List.of());

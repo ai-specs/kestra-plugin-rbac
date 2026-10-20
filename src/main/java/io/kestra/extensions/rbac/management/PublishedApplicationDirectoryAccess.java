@@ -76,7 +76,7 @@ public final class PublishedApplicationDirectoryAccess implements ApplicationDir
             case FIND -> d.scope(r.project(),r.key()).orElseThrow(()->new DirectoryFailure(404,"not_found"));
             case CREATE -> d.createScope(r.project(),r.revision(),scopeInput(r.body()));
             case UPDATE -> d.updateScope(r.project(),r.key(),r.revision(),scopeInput(r.body()));
-            case DELETE -> throw new DirectoryFailure(405,"method_not_allowed");
+            case DELETE -> {d.deleteScope(r.project(),r.key(),r.revision());yield java.util.Map.of("deleted",true);}
         };
     }
     private Object client(ApplicationDirectoryV1 d,Request r) {
@@ -144,8 +144,7 @@ public final class PublishedApplicationDirectoryAccess implements ApplicationDir
             Set<String> actions=strings(value.get("actions"));if(actions.isEmpty())throw new IllegalArgumentException();
             management.add(new ApplicationDirectoryV1.ManagementIntent(ApplicationDirectoryV1.ManagementDomain.valueOf(domain),actions,strings(value.get("projectIds"))));
         }
-        if(resources.isEmpty() && management.isEmpty())throw new IllegalArgumentException();
-        return new ApplicationDirectoryV1.ScopeInput(text(n,"scope"),text(n,"description"),bool(n,"active"),List.copyOf(resources),List.copyOf(management));
+        return new ApplicationDirectoryV1.ScopeInput(text(n,"scope"),text(n,"name"),text(n,"description"),bool(n,"active"),List.copyOf(resources),List.copyOf(management));
     }
     private static JsonNode array(JsonNode value,int max) {
         if(value==null || !value.isArray() || value.size()>max)throw new IllegalArgumentException();return value;
