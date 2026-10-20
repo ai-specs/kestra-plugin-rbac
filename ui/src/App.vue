@@ -436,7 +436,7 @@ onBeforeUnmount(() => {disposed = true; generation++; password.value = ''; if (u
         </fieldset></form>
       </section>
       <ProjectRecoveryEditor v-else-if="recovery" :project="recovery.candidate" :upper="recovery.upperBound" :revision="recovery.policyRevision" :target-revision="recovery.directoryRevision" :disabled="recoveryDisabled" @save="saveReconciliation" />
-      <ApplicationGroupCards v-else-if="showList && !isUsers && !projectId" :items="items" :busy="busy" @open="openRow" />
+      <ApplicationGroupCards v-else-if="showList && !isUsers && !projectId" :items="items" :busy="busy" :storage-key="storageKey" @open="openRow" @refresh="load" />
       <ProjectList v-else-if="showList" :key="path" :items="items" :columns="columns" :storage-key="storageKey" :busy="busy" @open="openRow" @refresh="load" />
       <template v-else-if="projectNew || projectId && tab === 'overview'">
         <section v-if="project" aria-labelledby="identity-project-title">
