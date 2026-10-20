@@ -1,6 +1,6 @@
 # 应用项目授权模型
 
-状态：当前目标规范。schema2、运行时、迁移工具与管理页面已实现；`4bfcb29` 的独立插件 CI 和产物已核对。新的宿主输入与页面修复正在验证，Compose 全矩阵尚未通过，不得据此宣称整体交付。
+状态：应用项目新模型已实现并通过独立发布与开发环境组合验收。插件实现 `fa18839` 的 CI `39246508084` 通过；部署仓提交 `85eb764` 的 CI `39263232685` 完整报告已下载核对，失败、跳过、未运行均为零。下文标注候选或未发布的阶段记录属于历史调查，不替代本状态；组合版本和检查范围见部署仓 `docs/rbac-acceptance.md`。
 
 本文定义 `policy-source: database` 下的应用项目授权模型。本文是新增需求来源，
 不修改也不覆盖 `docs/rbac-management-plan.md`、`docs/authorization-flow.md` 和
@@ -591,7 +591,7 @@ HTTP client 时使用正式授权流程，不能用测试 header 伪造 scope。
 - Compose 真实验收通过，并核对最终镜像 digest、插件 jar hash 和最终提交。
 
 
-## 实施契约与发布边界（已冻结，组合验收进行中）
+## 实施契约与发布边界（已冻结；以下保留阶段调查记录）
 
 候选 schemaVersion 2 使用 `applicationProjects` 映射。每个项目包含 `issuer`、精确 `audiences` 集合、`enabled`、正整数 `directoryRevision` 和 `scopes` 映射；每个 scope 包含 `description`、`enabled` 和非空完整 `grants`。UI 与 MCP 可使用不同 audience，但必须通过显式 client 目录绑定到项目，不接受通配或按名称推断。IdP 提供项目目录与角色授权意图上界；插件只保存本地收窄和只读投影，不构造第二事实源。目录版本不匹配时必须拒绝，直到本地重新确认；策略全局 `revision` 与 `directoryRevision` 独立。
 
@@ -685,7 +685,6 @@ issuer、精确 audiences、目录修订与启用状态，逐 scope 检查全部
 `4bfcb29` 已通过独立 CI `39104160398`。实际下载的 artifact 包含 137 项 Java 检查、
 37 项 PostgreSQL 存储检查，均无失败或跳过，并含 jar 与宿主输入 provenance。
 该提交编译输入为正式宿主 `8279e82`；这项历史发布证据不替代后续版本的检查。
-当前 host-contract.properties 已选择通过正式 CI `39110903137` 并推广发布的宿主
-`5cac500`，包括 MCP 异步可信来源和 OAuth 错误回调修复。新的插件 CI、产物及
-完整组合验收尚待通过。身份授予、本地保存、撤权、迁移与实际浏览器继续按本文
-完成标准验证；前文的阶段候选记录只描述其当时状态，不作为当前部署结论。
+当时 host-contract.properties 选择宿主 `5cac500`；这是历史输入。当前公开编译输入以
+`host-contract.properties` 为准。后续实现 `fa18839` 已通过独立 CI `39246508084`，
+部署仓 `85eb764` 已通过完整组合 CI `39263232685`。前文阶段候选记录仅描述当时状态。
