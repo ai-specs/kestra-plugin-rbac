@@ -356,7 +356,8 @@ async function updateDeclaration(scope, permissions, revision) {
 async function deleteDeclaration(scope, revision) {
   await perform(async () => {
     await api.deleteApplicationScopeDeclaration(projectId.value, member.value.clientId, scope, revision)
-    declarations.value = await api.applicationScopeDeclarations(projectId.value, member.value.clientId)
+    reauthenticationRequired.value = true
+    caps.value = null
   })
 }
 async function saveAssignment() {
