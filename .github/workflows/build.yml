@@ -52,7 +52,7 @@ jobs:
         env:
           RBAC_STORE_TEST_JDBC: jdbc:postgresql://localhost:5432/postgres
         run: |
-          ./gradlew test --tests 'io.kestra.extensions.rbac.store.*' --rerun-tasks --console=plain
+          ./gradlew test --tests 'io.kestra.extensions.rbac.store.*' --tests 'io.kestra.extensions.rbac.declaration.ApplicationScopeDeclarationStoreTest' --rerun-tasks --console=plain
           python3 scripts/check-policy-tests.py build/test-results/test
           mkdir -p .evidence/postgres
           cp -R build/reports/tests/test .evidence/postgres/report
