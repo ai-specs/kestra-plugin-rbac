@@ -5,6 +5,7 @@ import io.kestra.webserver.oidc.*;
 import io.kestra.extensions.rbac.store.ProjectPolicyStore;
 import io.kestra.extensions.rbac.declaration.ApplicationScopeDeclarationStore;
 import io.kestra.extensions.rbac.declaration.ApplicationScopeDeclarationController;
+import io.kestra.extensions.rbac.management.PublishedApplicationGroupManagement;
 import org.junit.jupiter.api.Test;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -22,6 +23,8 @@ class BeanDiscoveryTest {
             assertNotNull(context.getBean(McpAuthorizationResolver.class));
             assertNotNull(context.getBean(ApplicationScopeDeclarationsV1.class));
             assertNotNull(context.getBean(ApplicationScopeDeclarationController.class));
+            assertNotNull(context.getBean(ApplicationGroupManagementV1.class));
+            assertNotNull(context.getBean(PublishedApplicationGroupManagement.class));
         }
     }
     @Test void legacyAdministratorConfigurationFailsStartup(){
