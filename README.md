@@ -118,7 +118,9 @@ scope 名称和说明不授予资源权限。旧项目路径、完整恢复和�
 `builtInApplicationGroupId` 与一个 `applicationGroups` 项。该项包含 `applicationGroup`
 （`id/displayName/active/revision/authorizationVersion`）、`scopes`（`key/name/description/revision`）、
 `applications`（`clientId/approved/audiences/supportedScopeKeys/revision`）及 `userGrants`
-（`issuer/subject/scopeKeys/revision`）。初始修订和撤权版本均为 1。UI client 是普通应用成员。
+（`issuer/subject/scopeKeys/revision`）。`subject` 是成员的登录用户名（账号表 `username`
+列），不是安装回执 UUID 或账号内部标识；安装校验与管理 API 都按登录用户名查询账号。
+初始修订和撤权版本均为 1。UI client 是普通应用成员。
 不接受 `firstPartyUi`、`projects`、旧 scope 字段或恢复快照。初始账号必须获授实际管理策略
 所用的 scope；完整管理员可达性还需随后初始化 Kestra 实际策略并通过真实登录验证。
 

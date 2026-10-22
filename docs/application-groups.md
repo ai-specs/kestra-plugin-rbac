@@ -142,7 +142,7 @@ Kestra 实际权限表单已从组概览、scope 详情及旧绑定创建路径�
 
 scope 的公开创建、修改输入只有 `key/name/description`。详情路径中的 key 为小写稳定标识，旧 scope base64 编码不接受。公开响应使用插件 `ApplicationGroupScope` DTO，字段为 `applicationGroupId/key/name/description/revision`；不序列化宿主旧字段及权限意图。宿主返回其他组、错误 key 或无效字段时返回 503。列表另带当前目录分页快照修订。宿主 OIDC 公开 SPI 当前仍使用 `projectId/scope` 类型字段，插件暂在单一目录适配边界读取；该 SPI 及其存储、策略 JSON 的全栈改名仍是明确剩余工作，不能把插件 DTO 投影当作宿主模型已经完成。
 
-普通应用成员输入使用 `clientId/approved/audiences/supportedScopeKeys`。响应 DTO `ApplicationGroupApplication` 使用 `applicationGroupId`，不输出 `projectId/allowedProjectScopes/firstPartyUi`。用户 scope 授予输入使用 `issuer/subject/scopeKeys`；响应 DTO `ApplicationGroupScopeGrant` 使用 `applicationGroupId/issuer/subject/scopeKeys/revision/authorizationVersion`，不输出 `projectId/projectScopes`。详情与写入响应必须与请求的应用、用户和应用组精确匹配；用户授予的 issuer 也必须匹配当前可信 issuer。错误投影返回 503。
+普通应用成员输入使用 `clientId/approved/audiences/supportedScopeKeys`。响应 DTO `ApplicationGroupApplication` 使用 `applicationGroupId`，不输出 `projectId/allowedProjectScopes/firstPartyUi`。用户 scope 授予输入使用 `issuer/subject/scopeKeys`，`subject` 是成员的登录用户名（账号表 `username` 列），不是安装回执 UUID 或账号内部标识；响应 DTO `ApplicationGroupScopeGrant` 使用 `applicationGroupId/issuer/subject/scopeKeys/revision/authorizationVersion`，不输出 `projectId/projectScopes`。详情与写入响应必须与请求的应用、用户和应用组精确匹配；用户授予的 issuer 也必须匹配当前可信 issuer。错误投影返回 503。
 
 普通成员管理 API 不再接收首方 UI 标志。新增成员时适配器显式使用 false；更新成员时按同一目录快照读取现有成员，保留其宿主标志，不从 client 名称、ID 或应用权限推断该值。安装流程仍按宿主安装凭据建立必要首方登录关系。旧成员和授予输入字段、直接传入的 `firstPartyUi` 均拒绝，不提供兼容别名。此适配器变更已补充独立测试源码；完整执行须等待匹配宿主正式发布，目前不能列为通过证据。
 
