@@ -120,6 +120,12 @@ class ApplicationGroupDirectoryStoreTest {
         assertThrows(IllegalStateException.class,store::readAll);
     }
 
+    @Test void missingDirectoryTablesReportNotInitializedWithGuidance() {
+        var store=new ApplicationGroupDirectoryStore(database());
+        var failure=assertThrows(ApplicationGroupDirectoryStore.NotInitialized.class,store::readAll);
+        assertTrue(failure.getMessage().contains("ApplicationGroupDirectoryCommand"));
+    }
+
     @Test void databaseVersionMismatchAndMissingStorageFailClosed() throws Exception {
         var source=database();var store=new ApplicationGroupDirectoryStore(source);store.initializeSchema();store.initializeBuiltin(empty("first"));
         try(var connection=source.getConnection();var statement=connection.createStatement()) {

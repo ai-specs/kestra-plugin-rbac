@@ -11,7 +11,7 @@ del REQUIRED['io.kestra.extensions.rbac.management.PublishedApplicationDirectory
 REQUIRED['io.kestra.extensions.rbac.management.ApplicationGroupDirectoryManagementTest'] = 8
 REQUIRED['io.kestra.extensions.rbac.store.ApplicationGroupStorageTest'] = 1
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectoryModelTest'] = 4
-REQUIRED['io.kestra.extensions.rbac.store.ApplicationGroupDirectoryStoreTest'] = 15
+REQUIRED['io.kestra.extensions.rbac.store.ApplicationGroupDirectoryStoreTest'] = 16
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationGroupInstallationPlanTest'] = 8
 REQUIRED['io.kestra.extensions.rbac.store.ApplicationGroupDirectoryCommandTest'] = 5
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationGroupChangesTest'] = 7

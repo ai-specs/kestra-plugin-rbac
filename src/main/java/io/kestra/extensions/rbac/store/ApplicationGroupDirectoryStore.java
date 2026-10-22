@@ -16,8 +16,12 @@ import javax.sql.DataSource;
 
 public final class ApplicationGroupDirectoryStore {
     public static final class Conflict extends IllegalStateException {}
-    public static final class Unavailable extends IllegalStateException {
+    public static class Unavailable extends IllegalStateException {
         public Unavailable(SQLException cause) { super("Application group storage unavailable",cause); }
+        Unavailable(String message,SQLException cause) { super(message,cause); }
+    }
+    public static final class NotInitialized extends Unavailable {
+        public NotInitialized(SQLException cause) { super("Application group directory is not initialized; run ApplicationGroupDirectoryCommand preview/apply against this database before enabling kestra.rbac.application-groups",cause); }
     }
 
     private final DataSource source;
@@ -263,6 +267,6 @@ public final class ApplicationGroupDirectoryStore {
             connection.setAutoCommit(false);connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
             try{connectionGuard.lock(connection);var result=work.run(connection);connection.commit();return result;}
             catch(SQLException|RuntimeException failure){try{connection.rollback();}catch(SQLException rollback){failure.addSuppressed(rollback);}throw failure;}
-        }catch(SQLException failure){throw new Unavailable(failure);}
+        }catch(SQLException failure){var state=failure.getSQLState();throw "42P01".equals(state)||"42S04".equals(state)?new NotInitialized(failure):new Unavailable(failure);}
     }
 }
