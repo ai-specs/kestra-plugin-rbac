@@ -1,8 +1,8 @@
 # kestra-plugin-rbac
 
-> 最新职责纠正：应用组、scope、应用支持、用户授予、内置/退役约束和业务存储由本仓实现；宿主仅提供标准 OIDC 与只读协议输入机制。前序“插件代理宿主组 CRUD”的候选被替代，当前尚未完成迁移或正式交付。实施和风险顺序见 `docs/application-groups.md`。
+> 应用组、scope、应用支持、用户授予、内置/退役约束和业务存储由本仓实现；宿主仅提供标准 OIDC 与只读协议输入机制。旧宿主组 CRUD 代理已删除。实施与验收状态见 `docs/application-groups.md`。
 
-> 当前应用组实施规范见根仓 `docs/application-group-target-model.md`。本文现有应用项目、完整恢复和“本地绑定”说明记录的是旧发布模型；新安装目标尚未由本插件发布或通过组合验收。
+> 当前目标以维护者应用组模型为准；本仓自足契约见 `docs/application-groups.md` 和 `docs/management-api.md`。正式 CI 及 root 组合验收必须对应最终提交，历史记录不能替代。
 
 当前未发布的应用组设计和候选 API 见 `docs/application-groups.md`。候选实际策略接口已改为具体应用的 `runtime-permissions` 路径；旧全局策略与完整恢复入口已从候选源码删除。只有匹配宿主正式发布后重新编译、通过本仓 CI 并发布的插件才可用于最终部署；本文后续旧路径示例不得作为新模型接入说明。
 

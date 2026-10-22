@@ -19,7 +19,7 @@ REQUIRED['io.kestra.extensions.rbac.RuntimePoliciesTest'] = 10
 REQUIRED['io.kestra.extensions.rbac.declaration.ApplicationScopeDeclarationStoreTest'] = 3
 REQUIRED['io.kestra.extensions.rbac.declaration.ApplicationScopeDeclarationControllerTest'] = 3
 REQUIRED['io.kestra.extensions.rbac.store.ApplicationScopeDeclarationCommandTest'] = 2
-REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectoryServiceTest'] = 12
+REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectoryServiceTest'] = 13
 results=Path(sys.argv[1])
 for name,count in REQUIRED.items():
     report=ET.parse(results/('TEST-'+name+'.xml')).getroot()

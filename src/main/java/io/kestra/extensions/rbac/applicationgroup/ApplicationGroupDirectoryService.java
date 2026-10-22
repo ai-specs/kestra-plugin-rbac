@@ -150,7 +150,8 @@ public final class ApplicationGroupDirectoryService implements ApplicationGroupD
             if(application==null || !application.audiences().containsAll(actor.audiences()))throw new IdentityLifecycleGuardV1.Rejected(IdentityLifecycleGuardV1.Failure.FORBIDDEN);
             var scopes=new java.util.TreeMap<String,ApplicationGroupAuthorization.DirectoryScope>();
             snapshot.scopes().forEach(scope->scopes.put(scope.key(),new ApplicationGroupAuthorization.DirectoryScope(scope.name(),scope.description())));
-            var boundary=new ApplicationGroupAuthorization.Directory(new ApplicationGroupAuthorization.ScopeCatalog(issuer,actor.audiences(),snapshot.group().active(),snapshot.group().revision(),scopes),
+            var registeredAudiences=snapshot.applications().stream().filter(Application::approved).flatMap(member->member.audiences().stream()).collect(java.util.stream.Collectors.toSet());
+            var boundary=new ApplicationGroupAuthorization.Directory(new ApplicationGroupAuthorization.ScopeCatalog(issuer,registeredAudiences,snapshot.group().active(),snapshot.group().revision(),scopes),
                 snapshot.group().id(),PROTOCOL_SCOPES.stream().map(ProtocolScope::scope).collect(java.util.stream.Collectors.toSet()));
             var identity=new ApplicationGroupAuthorization.Identity(actor.subject(),issuer,actor.audiences().stream().sorted().findFirst().orElseThrow(),
                 actor.applicationGroupId(),actor.directoryRevision(),actor.applicationGroupScopes(),actor.protocolScopes(),"main");

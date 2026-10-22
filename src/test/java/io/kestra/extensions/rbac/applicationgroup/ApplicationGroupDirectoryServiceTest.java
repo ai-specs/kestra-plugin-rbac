@@ -172,6 +172,19 @@ class ApplicationGroupDirectoryServiceTest {
         assertThrows(IdentityLifecycleGuardV1.Rejected.class,()->fixture.service.transaction(connection->{fixture.service.verifyIdentity(connection,stale);return null;}));
     }
 
+    @Test void administratorGuardUsesAllRegisteredApplicationAudiencesWithoutGivingActorAnotherAudience()throws Exception {
+        var fixture=new Fixture();
+        when(fixture.protocol.client(any(),eq(ISSUER),eq("api"))).thenReturn(Optional.of(new OidcProtocolStateV1.Client(ISSUER,"api",true,Set.of("openid"),false)));
+        fixture.update(current->registerApplication(current,"api",true,Set.of("api-resource"),Set.of("reader")));
+        var original=fixture.policies.readCurrent();var group=original.policy().applicationGroups().get("group");
+        var policy=new ApplicationGroupPolicy(2,Map.of("group",new ApplicationGroupPolicy.ApplicationGroup(ISSUER,Set.of("ui","api-resource"),true,group.scopes())));
+        fixture.policies.replace(original.revision(),new ApplicationGroupPolicyParser().canonicalJson(policy).getBytes(java.nio.charset.StandardCharsets.UTF_8),"test");
+        var identity=fixture.identity(ADMIN);assertEquals(Set.of("ui"),identity.audiences());
+        try(var mutation=ApplicationGroupMutationContext.bind(identity)) {
+            fixture.guard(IdentityLifecycleGuardV1.Kind.PASSWORD_RESET,"second",null);
+        }
+    }
+
     @Test void boundariesExcludeDisabledAccountsAndNeverExposeApplicationPermissionGrants()throws Exception {
         var fixture=new Fixture();fixture.accounts.replaceAll((subject,active)->false);
         var boundary=fixture.service.boundaries().getFirst();assertEquals(Set.of(),boundary.reachableManagementScopes());

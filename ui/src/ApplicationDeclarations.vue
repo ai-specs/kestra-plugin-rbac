@@ -52,7 +52,7 @@ function removePermission(scope, key) {
         <label>{{ t('permissionName') }}<KsInput v-model="permission.name" :disabled="disabled" required /></label>
         <KsButton :disabled="disabled" @click="removePermission(item.scopeKey, permission.key)">{{ t('delete') }}</KsButton>
       </div>
-      <div class="application-permission-row">
+      <div class="application-permission-row application-permission-add">
         <label>{{ t('permissionKey') }}<KsInput v-model="additional[item.scopeKey].key" :disabled="disabled" /></label>
         <label>{{ t('permissionName') }}<KsInput v-model="additional[item.scopeKey].name" :disabled="disabled" /></label>
         <KsButton :disabled="disabled || !additional[item.scopeKey]?.key || !additional[item.scopeKey]?.name" @click="add(item.scopeKey)">{{ t('create') }}</KsButton>
