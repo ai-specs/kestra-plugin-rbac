@@ -9,7 +9,7 @@ const sdk = await import(sdkPath)
 if (typeof sdk.checkTranslations !== 'function') throw new Error('正式 UI SDK 缺少 checkTranslations(directory)')
 const files = (await readdir(directory)).filter(name => name.endsWith('.json')).sort()
 if (files.length !== 13) throw new Error('翻译文件数量必须为 13，实际为 ' + files.length)
-const required = ["title", "projects", "users", "scopes", "clients", "assignments", "overview", "scope", "saveIdentity", "saveLocal", "independentSaves", "stateDisclaimer", "completeGrants", "directoryStale", "search", "reload", "conflict"]
+const required = ["title", "applicationGroups", "users", "scopes", "clients", "assignments", "overview", "scope", "key", "roleName", "save", "kestraActualPermissions", "search", "reload", "conflict"]
 // Check literal UI lookups too: matching locale key sets alone can miss a key
 // absent from every language. Dynamic status/column keys remain in the catalogue.
 const sourceDirectory = resolve(import.meta.dirname, '../src')

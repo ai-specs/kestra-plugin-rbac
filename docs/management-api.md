@@ -1,180 +1,107 @@
-# 管理接口实施契约
+# 应用组管理接口契约
 
-状态：schema2 实施契约。宿主公开 SPI 已正式发布；插件 HTTP、独立 CI 和 Compose
-验收状态以实际报告为准。源码和控制器单元测试不能代替生产认证、CSRF 与浏览器验收。
-管理功能默认关闭，策略来源只有 database。schema1 只用于离线迁移读取，旧 subject
-管理员、roles claim、roleMapping 和 OAuth 协议 scope 均不能取得新管理授权。
+状态：当前候选源码契约。宿主正式输入由 `host-contract.properties` 固定；插件正式 CI、
+产物与部署仓真实组合验收尚须独立取得。本文不把单元测试或源码存在写成正式交付。
 
-根路径为 `/api/v1/main/extensions/rbac`。前端从宿主 `context.apiBase` 拼接后缀。
-身份只取自宿主 `TrustedIdentityV1`，并核对已认证 subject。每个请求固定一份本地策略
-快照和一份 `policyBoundaries()` 目录快照；普通管理、恢复、候选验证共用此 Context。
-其他 tenant 返回 404。GET 和策略响应使用 `Cache-Control: no-store`，不返回凭据或 SQL。
+## 身份与事务
 
-## 请求和授权
+根路径为 `/api/v1/main/extensions/rbac`。其他 tenant 返回 404。宿主生产 OIDC、签名、
+会话、CSRF 和标准 issuer 校验保持有效。插件只消费 `TrustedIdentityV1`，核对登录 subject，
+不自行解析 token。请求体为单个 UTF-8 JSON 对象，最多 1 MiB；重复键、未知字段、null、
+尾随文档、错误类型及路径与正文标识不一致拒绝。响应使用 `Cache-Control: no-store`。
 
-IDENTITY.READ 与 IDENTITY.MANAGE 分别控制精确可信 issuer 的目录/账号读取和修改。
-LOCAL_POLICY.READ 与 LOCAL_POLICY.MANAGE 分别控制实际目标项目；MANAGE 不隐含 READ。
-每次操作重新授权，不信任 capabilities、请求体、URL 中声明的调用人或 scope。
-BUSINESS_INSTANCE 不授予任何本接口权限。所有写入保留宿主认证和 CSRF 过滤链；
-插件不注册匿名写入例外，不自行解析 token，不复制宿主身份表。
+IDENTITY 的 READ/MANAGE 控制本 issuer 的用户、应用组、scope、支持登记和用户授予。
+LOCAL_POLICY 的 READ/MANAGE 控制指定应用组中配置的 Kestra 应用实际权限。二者不互含；
+MANAGE 不隐含 READ。BUSINESS_INSTANCE 不授予上述管理权限。能力响应仅用于界面展示，
+每次实际操作仍重新校验。
 
-请求体必须是单个严格 UTF-8 JSON 对象，最多 1 MiB。重复键、未知字段、缺字段、null、
-错误布尔/数值类型、重复集合项、尾随文档、非法枚举和路径/body 标识不一致均拒绝。
-项目 ID 为 `[A-Za-z0-9][A-Za-z0-9_-]{0,127}`。scope/client ID 不透明，路径键为
-`~` 加 UTF-8 base64url 无 padding；服务端解码后回编码验证规范形式，拒绝别名和非法 UTF-8。
-subject 保持精确原值，以 URL 编码查询参数传输，不再解码为 base64。
+业务写入在 `READ_COMMITTED` 事务中先取得正式 `OidcProtocolStateV1` 的安全锁，再读取
+当前标准账号/client、组修订、撤权版本和 scope 交集，重新校验操作者。目录写入、实际策略
+条件提交与生命周期 guard 使用同连接标准身份检查。拒绝回滚所有相关写入。组、scope、
+应用支持、用户授予、内置与退役记录均存于插件表。插件不读取宿主私有表。
 
-带修订的写入必须使用强 `If-Match: "<revision>"`；缺少返回 428。弱标签、列表、通配、
-前后空白、前导零、负数和溢出返回 400；过时修订返回 412。身份项目与账号的首次创建
-没有 If-Match；共享 scope/client/assignment 创建使用项目 revision；更新/删除使用对应
-对象 revision；账号更新允许 revision=0；本地写入一律使用全局 policy revision。
+## 标识与修订
 
-## 发现与读取投影
+应用组 ID 为 `[A-Za-z0-9][A-Za-z0-9_-]{0,127}`。scope key 为 `[a-z][a-z0-9-]{0,63}`，
+路径直接使用稳定 key。应用 client 路径键为 `~` 加无 padding 的 UTF-8 base64url，服务端
+解码后回编码检查规范形式。用户 subject 使用 URL 编码查询参数传递，保持精确原值。
 
-- GET `/capabilities` 返回 allowed、subject、identityManagement、identityRead、
-  localPolicyManagement、localPolicyManage、localPolicyRead、reconciliationAllowed、
-  needsReconciliation、userDirectory、mode 和 readOnly。localPolicyManagement 表示可以
-  进行普通或恢复的本地管理交互；localPolicyManage 仅表示普通 MANAGE。目录过期时可以
-  needsReconciliation=true、localPolicyManagement=true，而普通 CRUD 与身份管理仍拒绝。
-  这些字段不是授权凭证，实际目标仍逐次检查。
-- GET `/policy`（别名 GET `/projects`）返回 `{mode,revision,readOnly,policy}`，policy 下为
-  schemaVersion=2、applicationProjects，仅含当前 LOCAL_POLICY.READ 允许的项目。
-  无权项目不能通过全局策略封套泄露。响应 ETag 是当前全局策略 revision。
-- GET `/projects/{id}/scopes` 和 `/projects/{id}/scopes/{K}` 读取精确目标的本地绑定，
-  要求 LOCAL_POLICY.READ；不存在的已授权 scope 返回 404。
-- GET `/projects/{id}/binding-options` 仅要求实际目标的普通 LOCAL_POLICY.MANAGE，
-  不要求 IDENTITY 或一般 READ。返回 `{policyRevision,directoryRevision,upperBound:{project,scopes}}`。
-  project 只含 id、issuer、audiences、enabled、revision；scopes 只含 scope、description、
-  active、resourceIntents、managementIntents。不返回用户、client、assignment、reachable
-  管理 scope、凭据或 authorizationVersion。目标尚无获批 client/audiences 时返回 409
-  binding_target_incomplete，不能伪造 audience 或令一般目录页失败。
+条件写入使用强 `If-Match: "<revision>"`。缺少返回 428，弱标签、通配、负数、前导零、
+溢出或列表返回 400。过时修订返回 412，创建冲突返回 409。创建应用组和账号无需修订；
+创建 scope、应用支持或用户授予使用组修订；修改或删除子对象使用子对象修订。
+账号更新可以使用修订 0。实际权限写入使用全局策略修订。
 
-`directoryRevision == upperBound.project.revision`，来自同一目录快照；它与
-`authorizationVersion`（token/session 撤权 epoch）不同。完整目标上界一次返回，不分页
-拼接或截断。投影不会写入任何策略、目录或账号状态。目录失配时普通投影拒绝，不自动进入恢复。
+## 应用组 API
 
-## 本地项目与完整 grants
+| 方法及路径 | 请求或响应 | 权限 |
+| --- | --- | --- |
+| GET `/application-groups?page=1&size=20` | 分页组卡片数据 | IDENTITY.READ |
+| POST `/application-groups` | `id/tenant/displayName` | IDENTITY.MANAGE |
+| GET `/application-groups/{id}` | `id/tenant/issuer/displayName/active/revision/authorizationVersion/builtIn` | IDENTITY.READ |
+| PUT `/application-groups/{id}` | `displayName/active` | IDENTITY.MANAGE |
+| DELETE `/application-groups/{id}` | 删除回执 | IDENTITY.MANAGE |
 
-- POST `/projects` 和 PUT `/projects/{id}` 接收完整元数据
-  `{id,issuer,audiences,enabled,directoryRevision}`。更新 id 不变，且不能改变 directoryRevision；
-  不接收 scopes。首次创建也须已获准实际目标，不能通过此 HTTP 首次引导管理员。
-- POST `/projects/{id}/scopes` 和 PUT `/projects/{id}/scopes/{K}` 接收
-  `{name,description,enabled,grants,managementGrants}`；managementGrants 可省略为空。
-  PUT 的 name 必须与路径解码值相同。DELETE 同路径删除一个本地绑定。
-- business grant 为 `{scope,tenant,namespace,descendants,resource,actions,ids,allIds}`。
-  普通资源必须为具体 NAMESPACE/main，METADATA 与 MCP_SERVER 仅接受已裁决的 TENANT/main
-  例外。namespace、动作和 ID 必须由同一 scope 的完整授权提供，不跨 scope 拼接。
-- management grant 为 `{domain,actions,projectIds}`；域为 IDENTITY、LOCAL_POLICY 或
-  BUSINESS_INSTANCE，动作 READ/MANAGE 分开。只有 LOCAL_POLICY 可以列出非空精确目标；
-  空集合只表示所属项目，不是全部项目。不使用旧本地角色间接共享授权。
+内置组固定 ID 且 `builtIn=true`，始终不可删除。普通组删除要求没有 scope、应用或用户
+授予，并在同一事务登记退役 ID；退役 ID 不可重用。卡片进入只读详情，点击编辑后才显示
+表单；有修改权限不等于有查看权限。页面没有默认操作列或配置状态。
 
-每次保存完整解析候选 schema2，并对全部绑定检查同目录快照中的 issuer、audiences、
-目录修订、scope、资源/管理上界和真实最后管理员可达性，然后用全局策略 revision 执行
-一次 compare-and-set（比较后交换）保存。拒绝不保存部分 scopes，不先推进目录确认版本。
-成功响应只含实际修改项目及新 revision，保持 `{mode,readOnly,revision,policy}` 封套；
-不能因操作者有 MANAGE 就返回其他项目或完整全局策略。
+## Scope、应用和用户授予
 
-## 完整恢复
+以下路径均在 `/application-groups/{id}` 下。列表返回 `items/total/page/size/directoryRevision`，
+跨页消费者必须核对同一修订，不得只依赖总数。
 
-GET `/projects/{id}/reconciliation` 与 PUT 同路径只使用实际目标的独立恢复授权。
-恢复只忽略本地 directoryRevision 过期；真实身份仍须当前、已知且启用的 scope 必须完整，
-未知 scope 混入仍拒绝，并由同一 scope 的本地与当前共享 LOCAL_POLICY.MANAGE 覆盖目标。
-恢复不授予一般读取、账号管理、身份目录管理或业务操作。
+| 路径 | 创建及修改输入 | 响应 |
+| --- | --- | --- |
+| `/scopes`、`/scopes/{key}` | `key/name/description` | `applicationGroupId/key/name/description/revision` |
+| `/applications`、`/applications/{clientKey}` | `clientId/approved/audiences/supportedScopeKeys` | 输入字段及 `applicationGroupId/revision` |
+| `/scope-grants`、`/scope-grants/detail?subject=...` | `issuer/subject/scopeKeys` | 输入字段及 `applicationGroupId/revision/authorizationVersion` |
 
-GET 返回 `{project,policyRevision,directoryRevision,upperBound:{project,scopes}}`；外层 project
-为含 id 的完整本地项目。PUT 接收完整 `{id,issuer,audiences,enabled,directoryRevision,scopes}`，
-必须审查并一次保存全部 scopes。不能先只改修订、自动剪裁越界 grants 或部分提交。
-普通项目更新和普通 scope 更新均不得隐式确认目录变更。
+三类入口支持 GET、POST、PUT、DELETE。GET 要求 IDENTITY.READ，写入要求 IDENTITY.MANAGE。
+scope key 不可修改；角色 name 必填且同组精确唯一，description 不参与授权。删除 scope
+要求组内全部应用和用户授予均已释放引用。应用登记须存在标准 active 或有效 pending
+client；pending 只允许先登记支持并展示 consent，不能直接签发凭据。用户授予要求同一
+issuer 的真实标准账号。当前 UI client 是普通成员，无 `firstPartyUi` 输入或输出。
 
-本地策略单次保存是数据库事务。公开目录快照与本地策略不具有跨系统条件提交或共享锁，
-因此当前实现不能保证目录在校验后、提交前变化时绝不产生一个随即过期的本地版本。
-后续运行请求仍按当前目录失败关闭；这一限制不能描述为全局原子提交或已通过并发目录漂移门。
-需要严格的跨系统保存保证时，必须先接收并发布对应公开契约，再完成该验收。
+用户在应用可获得的 scope 是应用支持与该用户授予的交集。混入未知、已撤销或不再支持
+scope 必须整体拒绝。支持或授予变更原子推进组修订与撤权版本；旧会话须重新生产登录。
+最后管理员保护分别检查用户管理及实际策略管理可达性，不按角色名称或永久 subject 推断。
 
-## 共享身份目录代理
+## 应用权限声明
 
-以下入口只调用公开 ApplicationDirectoryV1，不保存第二份身份事实源：
+路径为 `/application-groups/{id}/applications/{clientKey}/scope-declarations` 及 `/{scopeKey}`。
+GET 列表或详情需要 IDENTITY.READ。POST、PUT、DELETE 需要 IDENTITY.MANAGE，修改与删除
+使用声明自己的强修订。写入体为 `permissions:[{key,name}]`，机器 key 与人类名称均必填。
+创建和修改要求目标应用已支持该 scope。删除声明不改变应用支持，也不改变实际资源策略。
 
-|入口|输入|修订|
-|---|---|---|
-|GET/POST `/identity/projects`|分页 / `{id,tenant:main,displayName}`|创建无 If-Match|
-|GET/PUT `/identity/projects/{id}`|读取 / `{displayName,active}`|project revision|
-|GET/POST `/identity/projects/{id}/scopes`|分页 / `{scope,description,active,resourceIntents,managementIntents}`|创建用 project revision|
-|GET/PUT `/identity/projects/{id}/scopes/{K}`|读取 / 同上|scope revision|
-|GET/POST `/identity/projects/{id}/clients`|分页 / `{clientId,approved,firstPartyUi,audiences,allowedProjectScopes}`|创建用 project revision|
-|GET/PUT/DELETE `/identity/projects/{id}/clients/{K}`|读取 / 同上 / 无 body|member revision|
-|GET/POST `/identity/projects/{id}/assignments`|分页 / `{issuer,subject,projectScopes}`|创建用 project revision|
-|GET/PUT/DELETE `/identity/projects/{id}/assignments/detail?subject=...`|精确 subject / 同上 / 无 body|assignment revision|
+此处保存的是应用内部逻辑的元数据镜像，可与应用代码不同步，只用于声明与 OAuth2 展示。
+它不是应用运行时授权事实来源，不是额外 scope 授予或撤权开关。
 
-资源意图使用 `{vocabularyVersion:kestra-resources-v1,resourceType,namespaces,resourceIds,actions}`。
-管理意图与本地 managementGrants 分开提交，不自动复制。创建身份项目不会创建本地绑定；
-授予成功不保证本地已允许。新空项目可在身份目录显示，但先批准真实 client/audiences
-后才能建立本地绑定。同一第一方 UI client 不得同时属于多个项目。
+## Kestra 实际权限
 
-分页为 `{items,total,page,size}`，page>=1、1<=size<=100。client 详情通过公开分页精确查找，
-检查项目目录修订、页元数据、total、重复 ID 和读取前后修订，完整扫描上限 10000；
-漂移/缺页/超限返回 409 directory_changed，不用旧页拼接为成功。
-目标共享 scopes、clients、assignments 的每页响应额外包含 directoryRevision，值为该请求
-Context 的目标 Project.revision，adapter 在读取前后核对相同修订。跨请求完整收集必须核对
-每页 directoryRevision 相同；只比较 total 不够。当前 UI collector 仍只核对 total，尚未消费
-此新增字段，因此不能宣称 UI 跨页为同一快照。项目清单没有 issuer 级全局修订，账号列表
-也没有全局账号目录修订；这两个列表不提供跨请求快照保证，不伪造版本。
-任何目标 issuer 与可信身份 issuer 不同都拒绝。创建账号不附加任何项目 scope。
+路径为 `/application-groups/{id}/applications/{clientKey}/runtime-permissions`。client 必须与
+配置 `micronaut.security.oauth2.clients.kestra.client-id` 精确匹配并确为目标组成员。
+只读成员核对按 LOCAL_POLICY 的实际操作权限执行，不额外要求 IDENTITY.READ。
+GET 要求目标 LOCAL_POLICY.READ，返回 `revision/applicationGroupId/clientId/policy`。
+POST 创建、PUT 更新配置，输入 `issuer/audiences/enabled`，不接受组 ID 或 scopes。
+写入要求目标 LOCAL_POLICY.MANAGE，成功只返回 `{revision}` 与 ETag。
 
-## 登录账号
+`/scopes` 与 `/scopes/{scopeKey}` 管理该应用的实际 scope 策略。输入为
+`scopeKey/description/enabled/grants/managementGrants`，managementGrants 可以省略。
+资源 grant 使用 `scope/tenant/namespace/descendants/resource/actions/ids/allIds`；
+管理 grant 使用 `domain/actions/applicationGroupIds`。同一个操作所需权限必须由同 scope
+完整提供，不跨 scope 拼接 READ/LIST、namespace 或资源 ID。名称和声明元数据不授予权限。
 
-GET `/users`、GET `/users/detail?subject=...` 需要 IDENTITY.READ。
-POST `/users` 接收 `{username,name,email,password}`，不使用 If-Match。
-PUT `/users/profile` 接收 `{subject,name,email}`，PUT `/users/state` 接收 `{subject,active}`，
-PUT `/users/password` 接收 `{subject,password}`。写操作需要 IDENTITY.MANAGE，更新使用账号
-revision。subject 不可改名，不提供物理删除。密码不回显，资料、身份授予与本地绑定分别保存。
-宿主负责账号停用、密码修改后的认证撤销及最后身份管理员保护；不保留 subject 特权名单。
+策略条件提交在安全锁内重新授权与验证真实管理员可达性，不依赖先前 capabilities。
+没有 READ 的合法写入不返回策略，后续读取仍独立校验。功能关闭返回 404，缺少配置返回
+503，其他应用返回 404。旧全局 `/policy`、`/projects`、reconciliation、roles、bindings 与
+role-mappings 路由不注册，不保留兼容别名。
 
-公开 ApplicationDirectoryV1.LAST_ADMIN 映射 409 last_administrator，FORBIDDEN 映射 403。
-若宿主先将该异常封装为 UserDirectoryV1.UNAVAILABLE，插件只能映射 503，不能根据错误
-文字猜测 409。实际版本错误保留行为必须通过宿主与组合验收核对。
+## 标准账号与错误
 
-## 已移除的旧写入口与错误
+`/users`、`/users/detail?subject=...` 提供分页、详情与创建；`/users/profile`、`/users/state`、
+`/users/password` 修改标准账号。用户创建不自动授予 scope。标准账号由宿主 UserDirectoryV1
+操作；停用和密码变更在宿主事务内调用插件 guard，保留最后管理员与撤权检查。
 
-POST `/roles`、PUT/DELETE `/roles/{id}`、PUT `/bindings` 和 PUT `/role-mappings`
-明确返回 410 legacy_policy_api_removed，不读取或修改旧表，不自动转换 scope，不触发账号
-或身份目录写入。旧管理业务服务已删除，schema1 validator/store 只保留离线迁移用途。
-
-插件错误体为 `{"code":"..."}`：401 authentication_required；403 access_denied 或
-invalid_identity；400 invalid_request；404 not_found；409 already_exists、directory_changed、
-last_administrator 或 binding_target_incomplete；412 revision_conflict；428 revision_required；
-503 policy_unavailable 或 directory_unavailable。宿主认证/CSRF 拒绝保留宿主格式。
-未知内部异常返回 500 management_failed，不泄露异常详情，不自动重试写入。
-
-## 页面与请求
-
-扩展页组件样式、主题和筛选必须与上游同构页一致。验收以所消费正式宿主的 MCP Servers
-详情顶部 tabs 和按钮、KV Store／Flows 数据表及条件筛选为参照。Namespaces 只作搜索控件参照，
-其树形结构不得当作表格。不能以组件导入成功或 CSS 文件存在代替
-实际样式验证。组件必须消费 `.integration/ui-sdk` 指定版本与 integrity 的公开组件包，
-Element Plus 必须在扩展自己的 Vue 上下文中配置 `kel` 命名空间，不借用宿主 Vue 实例。
-tab 使用公开 KsTabs/KsTabPane，条件筛选使用 KsFilter，数据表使用 KsDataTable 与 KsTable。
-顶部 tabs 直接衔接宿主导航，不重复显示大标题。Create 使用主按钮并置于右侧工具栏。
-这些组件来自 SDK 指定的同一公开 npm 包；并不表示 SDK 承诺所有弹出层自动兼容。
-插件用 Vue 公开 renderer 将 Teleport 的 body 目标解析到自有 ShadowRoot 容器，
-KsPopover／KsTooltip 禁止传送到 document。上游 KsDataTable 的分页固定英文，因此插件
-用同一 Element Plus 分页组件传入当前语言，保留组件包样式。禁止修改 vendor 源码。
-筛选条件存入按 tenant、已认证 subject 和 tab 隔离的 sessionStorage，刷新恢复；不是授权来源。
-
-浏览器必须在 light 和 dark 分别断言：按钮不是浏览器默认边框和圆角；tab 的字号、字重、
-pill 形态与圆角和参考页一致；表头及行分隔线正确；背景、文字、按钮、输入与表格随主题
-翻转；搜索确实改变项目、用户和 scope 绑定列表，清空恢复。账号筛选必须覆盖全部分页，而非只
-过滤当前页；筛选后的总数和分页必须对应可见结果。刷新、切换页面、空结果及窄屏同时检查。
-条件编辑、关闭按钮、清空、Contains／Equals、组合 AND／OR 和页大小切换必须实际操作。
-计算样式之外，必须保留同视口截图并检查布局、工具栏、留白和 tab 相对宿主导航的位置。
-
-页面根内路径为 projects、projects/{id}/scopes、projects/{id}/bindings/new、
-projects/{id}/reconciliation 和 users。scope/client 的 API 路径键必须使用 `~` 加 UTF-8
-base64url 无 padding 编码。subject 使用查询参数或 JSON 中的原值，不用显示名称替代。
-
-页面采用发布SDK和公开组件包的兼容入口；基础输入、按钮、表格优先复用。原生选择框、
-复选框与页内确认采用同一主题语义；详情走路由，不使用未经验证的vendor弹出层。
-宿主负责页面外壳和菜单，插件只挂载自己的ShadowRoot内容，所有样式由SDK工具准备后
-放入context.styles，不向document写CSS。全部文案来自ui/src/translations，支持发布
-SDK的全部语言、主题与窄屏。请求使用context.request，处理401/403、过时版本、网络
-异常和加载状态；保存期间禁止重复提交，保存冲突提示重新加载，不覆盖他人修改。
+认证失败 401，权限拒绝 403，未知对象 404，修订/业务冲突 409 或 412，缺修订 428，
+依赖不可用 503。最后管理员返回 409 `last_administrator`。错误响应不包含密码、token、
+数据库语句或内部异常内容。真实 HTTP、CSRF、浏览器、撤权与无副作用门由部署仓验收。

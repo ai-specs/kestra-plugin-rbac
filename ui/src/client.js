@@ -1,4 +1,4 @@
-import {memberInput} from './project-model.js'
+import {memberInput} from './application-group-model.js'
 
 // Opaque identifiers: UTF-8 base64url, without padding, with a required ~ prefix.
 export function encodeKey(value) {
@@ -32,50 +32,48 @@ export function createClient(currentContext) {
     if (revision === undefined || revision === null) throw new Error('revision_required')
     return call(path, {method, headers: {'If-Match': '"' + revision + '"'}, ...(body === undefined ? {} : {body: JSON.stringify(body)})})
   }
-  const project = id => '/projects/' + encodeURIComponent(id)
-  const identity = id => '/identity' + project(id)
+  const group = id => '/application-groups/' + encodeURIComponent(id)
   const page = (path, current = 1, size = 100) => call(path + '?page=' + current + '&size=' + size)
-  const assignment = (id, subject) => identity(id) + '/assignments/detail?subject=' + encodeURIComponent(subject)
+  const assignment = (id, subject) => group(id) + '/scope-grants/detail?subject=' + encodeURIComponent(subject)
   const declarations = (group, clientId) => '/application-groups/' + encodeURIComponent(group) + '/applications/' + encodeKey(clientId) + '/scope-declarations'
+  const runtime = (group,clientId) => '/application-groups/' + encodeURIComponent(group) + '/applications/' + encodeKey(clientId) + '/runtime-permissions'
   return {
-    capabilities: () => call('/capabilities'),
-    policy: () => call('/policy'),
-    createProject: (value, revision) => write('/projects', 'POST', value, revision),
-    updateProject: (id, value, revision) => write(project(id), 'PUT', value, revision),
-    bindingOptions: id => call(project(id) + '/binding-options'),
-    reconciliation: id => call(project(id) + '/reconciliation'),
-    reconcileProject: (id, value, revision) => write(project(id) + '/reconciliation', 'PUT', value, revision),
-    scopes: id => call(project(id) + '/scopes'),
-    scope: (id, name) => call(project(id) + '/scopes/' + encodeKey(name)),
-    createScope: (id, value, revision) => write(project(id) + '/scopes', 'POST', value, revision),
-    updateScope: (id, name, value, revision) => write(project(id) + '/scopes/' + encodeKey(name), 'PUT', value, revision),
-    deleteScope: (id, name, revision) => write(project(id) + '/scopes/' + encodeKey(name), 'DELETE', undefined, revision),
-    identityProjects: (current, size) => page('/identity/projects', current, size),
-    identityProject: id => call(identity(id)),
-    createIdentityProject: value => call('/identity/projects', {method: 'POST', body: JSON.stringify(value)}),
-    updateIdentityProject: (id, value, revision) => write(identity(id), 'PUT', value, revision),
-    identityScopes: (id, current, size) => page(identity(id) + '/scopes', current, size),
-    identityScope: (id, name) => call(identity(id) + '/scopes/' + encodeKey(name)),
-    createIdentityScope: (id, value, revision) => write(identity(id) + '/scopes', 'POST', value, revision),
-    updateIdentityScope: (id, name, value, revision) => write(identity(id) + '/scopes/' + encodeKey(name), 'PUT', value, revision),
-    deleteIdentityScope: (id, name, revision) => write(identity(id) + '/scopes/' + encodeKey(name), 'DELETE', undefined, revision),
+    capabilities: applicationGroupId => call('/capabilities' + (applicationGroupId ? '?applicationGroupId=' + encodeURIComponent(applicationGroupId) : '')),
+    runtimePolicy: (group,clientId) => call(runtime(group,clientId)),
+    createRuntimePolicy: (group,clientId,value,revision) => write(runtime(group,clientId),'POST',value,revision),
+    updateRuntimePolicy: (group,clientId,value,revision) => write(runtime(group,clientId),'PUT',value,revision),
+    runtimeScopes: (group,clientId) => call(runtime(group,clientId) + '/scopes'),
+    runtimeScope: (group,clientId,key) => call(runtime(group,clientId) + '/scopes/' + encodeURIComponent(key)),
+    createRuntimeScope: (group,clientId,value,revision) => write(runtime(group,clientId) + '/scopes','POST',value,revision),
+    updateRuntimeScope: (group,clientId,key,value,revision) => write(runtime(group,clientId) + '/scopes/' + encodeURIComponent(key),'PUT',value,revision),
+    deleteRuntimeScope: (group,clientId,key,revision) => write(runtime(group,clientId) + '/scopes/' + encodeURIComponent(key),'DELETE',undefined,revision),
+    applicationGroups: (current, size) => page('/application-groups', current, size),
+    applicationGroup: id => call(group(id)),
+    createApplicationGroup: value => call('/application-groups', {method: 'POST', body: JSON.stringify(value)}),
+    updateApplicationGroup: (id, value, revision) => write(group(id), 'PUT', value, revision),
+    deleteApplicationGroup: (id, revision) => write(group(id), 'DELETE', undefined, revision),
+    applicationGroupScopes: (id, current, size) => page(group(id) + '/scopes', current, size),
+    applicationGroupScope: (id, name) => call(group(id) + '/scopes/' + encodeURIComponent(name)),
+    createApplicationGroupScope: (id, value, revision) => write(group(id) + '/scopes', 'POST', value, revision),
+    updateApplicationGroupScope: (id, name, value, revision) => write(group(id) + '/scopes/' + encodeURIComponent(name), 'PUT', value, revision),
+    deleteApplicationGroupScope: (id, name, revision) => write(group(id) + '/scopes/' + encodeURIComponent(name), 'DELETE', undefined, revision),
     applicationScopeDeclarations: (group, clientId) => call(declarations(group, clientId)),
     createApplicationScopeDeclaration: (group, clientId, scope, permissions) => call(declarations(group, clientId) + '/' + encodeURIComponent(scope), {method: 'POST', body: JSON.stringify({permissions})}),
     updateApplicationScopeDeclaration: (group, clientId, scope, permissions, revision) => write(declarations(group, clientId) + '/' + encodeURIComponent(scope), 'PUT', {permissions}, revision),
     deleteApplicationScopeDeclaration: (group, clientId, scope, revision) => write(declarations(group, clientId) + '/' + encodeURIComponent(scope), 'DELETE', undefined, revision),
-    clients: (id, current, size) => page(identity(id) + '/clients', current, size),
-    client: (id, clientId) => call(identity(id) + '/clients/' + encodeKey(clientId)),
-    createClient: (id, value, revision) => write(identity(id) + '/clients', 'POST', memberInput(value), revision),
-    updateClient: (id, clientId, value, revision) => {
+    applications: (id, current, size) => page(group(id) + '/applications', current, size),
+    application: (id, clientId) => call(group(id) + '/applications/' + encodeKey(clientId)),
+    createApplication: (id, value, revision) => write(group(id) + '/applications', 'POST', memberInput(value), revision),
+    updateApplication: (id, clientId, value, revision) => {
       if (value.clientId !== clientId) throw new Error('client_id_immutable')
-      return write(identity(id) + '/clients/' + encodeKey(clientId), 'PUT', memberInput(value), revision)
+      return write(group(id) + '/applications/' + encodeKey(clientId), 'PUT', memberInput(value), revision)
     },
-    deleteClient: (id, clientId, revision) => write(identity(id) + '/clients/' + encodeKey(clientId), 'DELETE', undefined, revision),
-    assignments: (id, current, size) => page(identity(id) + '/assignments', current, size),
-    assignment: (id, subject) => call(assignment(id, subject)),
-    createAssignment: (id, value, revision) => write(identity(id) + '/assignments', 'POST', value, revision),
-    updateAssignment: (id, value, revision) => write(assignment(id, value.subject), 'PUT', value, revision),
-    deleteAssignment: (id, subject, revision) => write(assignment(id, subject), 'DELETE', undefined, revision),
+    deleteApplication: (id, clientId, revision) => write(group(id) + '/applications/' + encodeKey(clientId), 'DELETE', undefined, revision),
+    scopeGrants: (id, current, size) => page(group(id) + '/scope-grants', current, size),
+    scopeGrant: (id, subject) => call(assignment(id, subject)),
+    createScopeGrant: (id, value, revision) => write(group(id) + '/scope-grants', 'POST', value, revision),
+    updateScopeGrant: (id, value, revision) => write(assignment(id, value.subject), 'PUT', value, revision),
+    deleteScopeGrant: (id, subject, revision) => write(assignment(id, subject), 'DELETE', undefined, revision),
     users: (current, size) => page('/users', current, size),
     user: subject => call('/users/detail?subject=' + encodeURIComponent(subject)),
     createUser: value => call('/users', {method: 'POST', body: JSON.stringify(value)}),

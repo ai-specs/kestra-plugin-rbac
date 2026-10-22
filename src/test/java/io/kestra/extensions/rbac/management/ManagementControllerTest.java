@@ -2,10 +2,10 @@ package io.kestra.extensions.rbac.management;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.kestra.extensions.rbac.ProjectRuntimePolicies;
-import io.kestra.extensions.rbac.project.ProjectPolicyParser;
-import io.kestra.extensions.rbac.store.ProjectPolicyStore;
-import io.kestra.webserver.oidc.ApplicationDirectoryV1;
+import io.kestra.extensions.rbac.ApplicationGroupRuntimePolicies;
+import io.kestra.extensions.rbac.applicationgroup.ApplicationGroupPolicyParser;
+import io.kestra.extensions.rbac.store.ApplicationGroupPolicyStore;
+import io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectoryReader;
 import io.kestra.webserver.oidc.TrustedIdentityV1;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.security.authentication.Authentication;
@@ -33,98 +33,127 @@ class ManagementControllerTest {
         };
     }
     private static final String POLICY="""
-        {"schemaVersion":2,"applicationProjects":{"console":{"issuer":"https://identity.example.invalid",
-        "audiences":["kestra-ui"],"enabled":true,"directoryRevision":3,"scopes":{
+        {"schemaVersion":2,"applicationGroups":{"console":{"issuer":"https://identity.example.invalid",
+        "audiences":["kestra-ui"],"enabled":true,"scopes":{
         "console-manage-v1":{"description":"Manager","enabled":true,"grants":[],"managementGrants":[
-        {"domain":"IDENTITY","actions":["READ","MANAGE"],"projectIds":[]},
-        {"domain":"LOCAL_POLICY","actions":["READ","MANAGE"],"projectIds":[]}]}}}}}
+        {"domain":"IDENTITY","actions":["READ","MANAGE"],"applicationGroupIds":[]},
+        {"domain":"LOCAL_POLICY","actions":["READ","MANAGE"],"applicationGroupIds":[]}]}}}}}
         """;
-    private record Setup(ManagementController controller,ProjectPolicyStore store,ApplicationDirectoryV1 directory,
+    private record Setup(ManagementController controller,ApplicationGroupPolicyStore store,ApplicationGroupDirectoryReader directory,
                          UserDirectoryAccess users,ApplicationDirectoryAccess applications,TrustedIdentityV1 identities) {}
     private Setup setup(long directoryRevision,Set<String> scopes) {
         var data=new JdbcDataSource();data.setURL("jdbc:h2:mem:http-"+UUID.randomUUID()+";MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
-        var store=spy(new ProjectPolicyStore(data,new ProjectPolicyParser()));store.initializeSchema();store.initialize(json(POLICY),"installer");
-        var directory=mock(ApplicationDirectoryV1.class);var identities=mock(TrustedIdentityV1.class);
+        var store=spy(new ApplicationGroupPolicyStore(data,new ApplicationGroupPolicyParser()));store.initializeSchema();store.initialize(json(POLICY),"installer");
+        var directory=mock(ApplicationGroupDirectoryReader.class);var identities=mock(TrustedIdentityV1.class);
         when(identities.current()).thenReturn(new TrustedIdentityV1.Identity(1,ISSUER,"owner","kestra-ui",Set.of("kestra-ui"),"main","console",Set.of("openid"),scopes,1,97,directoryRevision));
-        var shared=new ApplicationDirectoryV1.Project("console","main",ISSUER,"Console",true,directoryRevision,97);
-        var manager=new ApplicationDirectoryV1.ScopeDefinition("console",MANAGER,"Manager","",true,List.of(),List.of(
-            new ApplicationDirectoryV1.ManagementIntent(ApplicationDirectoryV1.ManagementDomain.IDENTITY,Set.of("READ","MANAGE"),Set.of()),
-            new ApplicationDirectoryV1.ManagementIntent(ApplicationDirectoryV1.ManagementDomain.LOCAL_POLICY,Set.of("READ","MANAGE"),Set.of())),2);
-        when(directory.policyBoundaries()).thenReturn(List.of(new ApplicationDirectoryV1.PolicyBoundary(shared,List.of(manager),Set.of("kestra-ui"),Set.of(MANAGER),List.of(new ApplicationDirectoryV1.ProtocolScope("openid","OIDC")))));
+        var shared=new ApplicationGroupDirectoryReader.GroupView("console","main",ISSUER,"Console",true,directoryRevision,97);
+        var manager=mock(ApplicationGroupDirectoryReader.ScopeView.class);
+        when(manager.applicationGroupId()).thenReturn("console");when(manager.key()).thenReturn(MANAGER);
+        when(manager.name()).thenReturn("Manager");when(manager.description()).thenReturn("");when(manager.revision()).thenReturn(2L);
+        when(directory.boundaries()).thenReturn(List.of(new ApplicationGroupDirectoryReader.Boundary(shared,List.of(manager),Set.of("kestra-ui"),Set.of(MANAGER),List.of(new ApplicationGroupDirectoryReader.ProtocolScope("openid","OIDC")))));
+        try {when(directory.boundaries(any(java.sql.Connection.class))).thenAnswer(call->directory.boundaries());}
+        catch(java.sql.SQLException failure){throw new AssertionError(failure);}
         var users=mock(UserDirectoryAccess.class);var applications=mock(ApplicationDirectoryAccess.class);
-        var runtime=new ProjectRuntimePolicies(store,directory,identities);
+        when(applications.invoke(any())).thenAnswer(invocation->{
+            ApplicationDirectoryAccess.Request request=invocation.getArgument(0);
+            if(request==null)return null;
+            if(request.resource()==ApplicationDirectoryAccess.Resource.CLIENT && request.operation()==ApplicationDirectoryAccess.Operation.FIND
+                && "console".equals(request.applicationGroupId()) && "kestra-ui".equals(request.key()))
+                return new ApplicationGroupApplication("console","kestra-ui",true,Set.of("kestra-ui"),Set.of(MANAGER),1);
+            return null;
+        });
+        var runtime=new ApplicationGroupRuntimePolicies(store,directory,identities);
         var controller=new ManagementController(runtime,store,provider(users),provider(applications));
+        try {
+            var enabled=ManagementController.class.getDeclaredField("applicationGroups");enabled.setAccessible(true);enabled.set(controller,true);
+            var application=ManagementController.class.getDeclaredField("runtimeApplicationClientId");application.setAccessible(true);application.set(controller,"kestra-ui");
+        } catch(ReflectiveOperationException failure) {throw new AssertionError(failure);}
         clearInvocations(store,directory);
         return new Setup(controller,store,directory,users,applications,identities);
     }
     private JsonNode response(io.micronaut.http.HttpResponse<?> response) {return MAPPER.valueToTree(response.body());}
-    private String reconciliationBody(long revision) throws Exception {
-        var value=(com.fasterxml.jackson.databind.node.ObjectNode)MAPPER.readTree(POLICY).path("applicationProjects").path("console").deepCopy();
-        value.put("id","console");value.put("directoryRevision",revision);return value.toString();
+    private void onlyRuntimeMembershipReads(Setup setup) {
+        verifyNoInteractions(setup.users);
+        for(var invocation:mockingDetails(setup.applications).getInvocations()) {
+            assertEquals("invoke",invocation.getMethod().getName());
+            var request=(ApplicationDirectoryAccess.Request)invocation.getArgument(0);
+            assertEquals(ApplicationDirectoryAccess.Resource.CLIENT,request.resource());
+            assertEquals(ApplicationDirectoryAccess.Operation.FIND,request.operation());
+            assertEquals("console",request.applicationGroupId());assertEquals("kestra-ui",request.key());
+            assertEquals(ISSUER,request.identity().issuer());assertNull(request.body());assertNull(request.revision());
+        }
     }
-    @Test void staleBindingEnablesOnlyRecoveryAndCompleteRecoveryRestoresOrdinaryManagement()throws Exception {
+    private String scopeBody() throws Exception {
+        var value=(com.fasterxml.jackson.databind.node.ObjectNode)MAPPER.readTree(POLICY).path("applicationGroups").path("console").path("scopes").path(MANAGER).deepCopy();
+        value.put("scopeKey",MANAGER);value.put("description","Updated manager");return value.toString();
+    }
+    private String scopeKey() {return MANAGER;}
+    private String clientKey() {return "~"+Base64.getUrlEncoder().withoutPadding().encodeToString(json("kestra-ui"));}
+    @Test void directoryChangesKeepOrdinaryManagementAvailableWithoutRecovery()throws Exception {
         var s=setup(4,Set.of(MANAGER));
-        var capabilities=response(s.controller.capabilities("main",owner()));
+        var capabilities=response(s.controller.capabilities("main",owner(),"console"));
         assertTrue(capabilities.path("allowed").booleanValue());assertTrue(capabilities.path("localPolicyManagement").booleanValue());
-        assertFalse(capabilities.path("localPolicyManage").booleanValue());assertTrue(capabilities.path("reconciliationAllowed").booleanValue());
-        assertTrue(capabilities.path("needsReconciliation").booleanValue());assertFalse(capabilities.path("identityManagement").booleanValue());
+        assertTrue(capabilities.path("localPolicyManage").booleanValue());assertTrue(capabilities.path("identityManagement").booleanValue());
+        assertFalse(capabilities.has("reconciliationAllowed"));assertFalse(capabilities.has("needsReconciliation"));
         String before=s.store.readCurrent().canonicalJson();
-        assertEquals(403,s.controller.bindingOptions("main","console",owner()).code());
-        assertEquals(403,s.controller.createScope("main","console",owner(),"\"1\"",json("{\"name\":\"new\",\"description\":\"New\",\"enabled\":true,\"grants\":[]}")).code());
-        assertEquals(403,s.controller.users("main",owner(),1,20).code());
-        assertEquals(before,s.store.readCurrent().canonicalJson());verifyNoInteractions(s.users,s.applications);
-        var recovery=s.controller.reconciliation("main","console",owner());assertEquals(200,recovery.code());
-        assertEquals(4,response(recovery).path("directoryRevision").longValue());
-        assertEquals(200,s.controller.reconcileProject("main","console",owner(),"\"1\"",json(reconciliationBody(4))).code());
-        assertEquals(4,s.store.readCurrent().policy().applicationProjects().get("console").directoryRevision());
-        var after=response(s.controller.capabilities("main",owner()));
+        assertEquals(200,s.controller.runtimePolicy("main","console",clientKey(),owner()).code());
+        assertEquals(400,s.controller.createRuntimeScope("main","console",clientKey(),owner(),"\"1\"",json("{\"scopeKey\":\"new\",\"description\":\"New\",\"enabled\":true,\"grants\":[]}")).code());
+        assertEquals(before,s.store.readCurrent().canonicalJson());onlyRuntimeMembershipReads(s);
+        assertEquals(200,s.controller.updateRuntimeScope("main","console",clientKey(),scopeKey(),owner(),"\"1\"",json(scopeBody())).code());
+        assertEquals("Updated manager",s.store.readCurrent().policy().applicationGroups().get("console").scopes().get(MANAGER).description());
+        var after=response(s.controller.capabilities("main",owner(),"console"));
         assertTrue(after.path("localPolicyManage").booleanValue());assertTrue(after.path("identityManagement").booleanValue());assertFalse(after.path("needsReconciliation").booleanValue());
     }
-    @Test void mixedUnknownScopeCannotUseRecoveryOrKnownSubsetAndHasNoSideEffects()throws Exception {
+    @Test void mixedUnknownScopeCannotUseKnownSubsetAndHasNoSideEffects()throws Exception {
         var s=setup(4,Set.of(MANAGER,"unknown-scope"));String before=s.store.readCurrent().canonicalJson();
-        assertFalse(response(s.controller.capabilities("main",owner())).path("allowed").booleanValue());
-        assertEquals(403,s.controller.reconciliation("main","console",owner()).code());
-        assertEquals(403,s.controller.reconcileProject("main","console",owner(),"\"1\"",json(reconciliationBody(4))).code());
-        assertEquals(403,s.controller.bindingOptions("main","console",owner()).code());
+        assertFalse(response(s.controller.capabilities("main",owner(),"console")).path("allowed").booleanValue());
+        assertEquals(403,s.controller.updateRuntimeScope("main","console",clientKey(),scopeKey(),owner(),"\"1\"",json(scopeBody())).code());
+        assertEquals(403,s.controller.runtimePolicy("main","console",clientKey(),owner()).code());
         assertEquals(before,s.store.readCurrent().canonicalJson());verifyNoInteractions(s.users,s.applications);
     }
     @Test void oneRequestReadsOnePolicyAndDirectoryAndProjectionDoesNotLeakReachabilityOrEpoch() {
-        var s=setup(3,Set.of(MANAGER));var result=s.controller.bindingOptions("main","console",owner());assertEquals(200,result.code());
-        verify(s.store,times(1)).readCurrent();verify(s.directory,times(1)).policyBoundaries();
-        var value=response(result);assertEquals(3,value.path("directoryRevision").longValue());
-        assertEquals(3,value.path("upperBound").path("project").path("revision").longValue());
-        String body=value.toString();for(String field:List.of("authorizationVersion","reachableManagementScopes","clientId","subject","assignments"))assertFalse(body.contains("\""+field+"\""));
-        verifyNoInteractions(s.users,s.applications);
+        var s=setup(3,Set.of(MANAGER));var result=s.controller.runtimePolicy("main","console",clientKey(),owner());assertEquals(200,result.code());
+        verify(s.store,times(1)).readCurrent();verify(s.directory,times(1)).boundaries();
+        var value=response(result);assertEquals(1,value.path("revision").longValue());
+        assertEquals("console",value.path("applicationGroupId").textValue());assertEquals("kestra-ui",value.path("clientId").textValue());
+        assertEquals("Manager",value.path("policy").path("scopes").path(MANAGER).path("description").textValue());
+        String body=value.toString();for(String field:List.of("directoryRevision","authorizationVersion","reachableManagementScopes","subject","assignments","applicationGroups"))assertFalse(body.contains("\""+field+"\""));
+        onlyRuntimeMembershipReads(s);
     }
     @Test void strongRevisionMalformedJsonAndImmutablePathRejectWithoutWriting()throws Exception {
         var s=setup(3,Set.of(MANAGER));String before=s.store.readCurrent().canonicalJson();
-        String body=reconciliationBody(3);
-        assertEquals(428,s.controller.reconcileProject("main","console",owner(),null,json(body)).code());
-        assertEquals(400,s.controller.reconcileProject("main","console",owner(),"W/\"1\"",json(body)).code());
-        assertEquals(400,s.controller.reconcileProject("main","console",owner(),"\"1\"",json(body+" {} ")).code());
-        assertEquals(400,s.controller.reconcileProject("main","console",owner(),"\"1\"",json(body.replace("\"id\":\"console\"","\"id\":\"other\""))).code());
-        assertEquals(400,s.controller.updateScope("main","console","~YR",owner(),"\"1\"",json("{}")).code());
+        String body=scopeBody();
+        assertEquals(428,s.controller.updateRuntimeScope("main","console",clientKey(),scopeKey(),owner(),null,json(body)).code());
+        assertEquals(400,s.controller.updateRuntimeScope("main","console",clientKey(),scopeKey(),owner(),"W/\"1\"",json(body)).code());
+        assertEquals(400,s.controller.updateRuntimeScope("main","console",clientKey(),scopeKey(),owner(),"\"1\"",json(body+" {} ")).code());
+        assertEquals(400,s.controller.updateRuntimeScope("main","console",clientKey(),scopeKey(),owner(),"\"1\"",json(body.replace(MANAGER,"other"))).code());
+        assertEquals(400,s.controller.updateRuntimeScope("main","console",clientKey(),"~YR",owner(),"\"1\"",json("{}")).code());
         assertEquals(before,s.store.readCurrent().canonicalJson());
     }
     @Test void permanentSubjectAndRolesCannotSupplyTrustedIdentity() {
         var s=setup(3,Set.of(MANAGER));when(s.identities.current()).thenReturn(null);
-        assertEquals(403,s.controller.policy("main",owner()).code());
-        assertEquals(401,s.controller.policy("main",null).code());verifyNoInteractions(s.users,s.applications);
+        assertEquals(403,s.controller.runtimePolicy("main","console",clientKey(),owner()).code());
+        assertEquals(401,s.controller.runtimePolicy("main","console",clientKey(),null).code());verifyNoInteractions(s.users,s.applications);
     }
-    @Test void legacyWritesAreExplicitlyGoneAndNeverReadOrWriteEitherStoreOrDirectory() {
-        var s=setup(3,Set.of(MANAGER));
-        assertEquals(410,s.controller.createRole("main",owner(),"\"1\"",json("{}")).code());
-        assertEquals(410,s.controller.updateRole("main","old",owner(),"\"1\"",json("{}")).code());
-        assertEquals(410,s.controller.deleteRole("main","old",owner(),"\"1\"").code());
-        assertEquals(410,s.controller.binding("main",owner(),"\"1\"",json("{}")).code());
-        assertEquals(410,s.controller.mapping("main",owner(),"\"1\"",json("{}")).code());
-        verifyNoInteractions(s.store,s.directory,s.users,s.applications,s.identities);
+    @Test void legacyPolicyRoutesAreNotRegisteredAndRuntimeRoutesAlwaysCarryApplicationContext() throws Exception {
+        var routes=new java.util.ArrayList<String>();
+        for(var method:ManagementController.class.getDeclaredMethods())for(var annotation:method.getDeclaredAnnotations()) {
+            if(!Set.of("Get","Post","Put","Delete").contains(annotation.annotationType().getSimpleName()))continue;
+            routes.add((String)annotation.annotationType().getMethod("value").invoke(annotation));
+        }
+        for(var route:routes) {
+            assertFalse(route.matches("^/(?:policy|projects|roles|bindings|role-mappings|identity)(?:[/{?].*)?$"),route);
+            assertFalse(route.contains("reconciliation") || route.contains("binding-options"),route);
+        }
+        var runtime=routes.stream().filter(route->route.contains("runtime-permissions")).toList();
+        assertEquals(8,runtime.size());
+        assertTrue(runtime.stream().allMatch(route->route.startsWith("/application-groups/{id}/applications/{clientKey}/runtime-permissions")));
     }
     @Test void directoryTargetAndBodyCannotChangeIssuerOrOpaqueScope() {
         var s=setup(3,Set.of(MANAGER));
         String key="~"+Base64.getUrlEncoder().withoutPadding().encodeToString(json("a/read"));
-        assertEquals(400,s.controller.identityScopesUpdate("main","console",key,owner(),"\"2\"",json("{\"scope\":\"different\",\"name\":\"Different\",\"description\":\"x\",\"active\":true,\"resourceIntents\":[],\"managementIntents\":[]}")).code());
-        assertEquals(403,s.controller.assignmentsCreate("main","console",owner(),"\"3\"",json("{\"issuer\":\"https://other.invalid\",\"subject\":\"user\",\"projectScopes\":[]}")).code());
+        assertEquals(400,s.controller.updateApplicationGroupScope("main","console",key,owner(),"\"2\"",json("{\"scope\":\"different\",\"name\":\"Different\",\"description\":\"x\",\"active\":true,\"resourceIntents\":[],\"managementIntents\":[]}")).code());
+        assertEquals(403,s.controller.assignmentsCreate("main","console",owner(),"\"3\"",json("{\"issuer\":\"https://other.invalid\",\"subject\":\"user\",\"scopeKeys\":[]}")).code());
         verifyNoInteractions(s.applications);
     }
     @Test void lastAdministratorUserGuardPreserves409AndAccountConflictPreserves412() {
@@ -134,28 +163,220 @@ class ManagementControllerTest {
         when(s.users.update("user",0,"Name","mail")).thenThrow(new UserDirectoryAccess.DirectoryFailure(UserDirectoryAccess.Failure.CONFLICT));
         assertEquals(412,s.controller.profile("main",owner(),"\"0\"",json("{\"subject\":\"user\",\"name\":\"Name\",\"email\":\"mail\"}")).code());
     }
-    @Test void exactLocalManageCanReadBindingOptionsWithoutIdentityOrGeneralRead() throws Exception {
+    @Test void manageWithoutReadCanWriteButReceivesNoPolicyData() throws Exception {
         var s=setup(3,Set.of(MANAGER));
         var policy=(com.fasterxml.jackson.databind.node.ObjectNode)MAPPER.readTree(POLICY);
-        var grants=(com.fasterxml.jackson.databind.node.ArrayNode)policy.path("applicationProjects").path("console").path("scopes").path(MANAGER).path("managementGrants");
+        var grants=(com.fasterxml.jackson.databind.node.ArrayNode)policy.path("applicationGroups").path("console").path("scopes").path(MANAGER).path("managementGrants");
         grants.remove(0);((com.fasterxml.jackson.databind.node.ObjectNode)grants.get(0)).putArray("actions").add("MANAGE");
         s.store.replace(1,json(policy.toString()),"installer");
-        assertEquals(200,s.controller.bindingOptions("main","console",owner()).code());
-        assertEquals(403,s.controller.bindingOptions("main","different",owner()).code());
-        assertEquals(403,s.controller.scopes("main","console",owner()).code());
+        assertEquals(403,s.controller.runtimePolicy("main","console",clientKey(),owner()).code());
+        assertEquals(403,s.controller.runtimePolicy("main","different",clientKey(),owner()).code());
+        assertEquals(403,s.controller.runtimeScopes("main","console",clientKey(),owner()).code());
         assertEquals(403,s.controller.users("main",owner(),1,20).code());
-        assertEquals(403,s.controller.identityProjects("main",owner(),1,20).code());
-        verifyNoInteractions(s.users,s.applications);
+        assertEquals(403,s.controller.applicationGroups("main",owner(),1,20).code());
+        var capabilities=response(s.controller.capabilities("main",owner(),"console"));
+        assertFalse(capabilities.path("localPolicyRead").booleanValue());assertTrue(capabilities.path("localPolicyManage").booleanValue());
+        assertEquals(2,capabilities.path("runtimePolicyRevision").longValue());
+        var input=(com.fasterxml.jackson.databind.node.ObjectNode)policy.path("applicationGroups").path("console").path("scopes").path(MANAGER).deepCopy();
+        input.put("scopeKey",MANAGER);input.put("description","Write without read");
+        var saved=response(s.controller.updateRuntimeScope("main","console",clientKey(),MANAGER,owner(),"\"2\"",json(input.toString())));
+        assertEquals(1,saved.size());assertEquals(3,saved.path("revision").longValue());assertFalse(saved.has("policy"));
+        assertEquals("Write without read",s.store.readCurrent().policy().applicationGroups().get("console").scopes().get(MANAGER).description());
+        assertEquals(403,s.controller.runtimePolicy("main","console",clientKey(),owner()).code());
+        onlyRuntimeMembershipReads(s);
     }
-    @Test void successfulWriteUsesSingleSnapshotAndStaleRetryCannotOverwriteIt() throws Exception {
-        var s=setup(3,Set.of(MANAGER));String body=reconciliationBody(3);
-        var result=s.controller.reconcileProject("main","console",owner(),"\"1\"",json(body));
-        assertEquals(200,result.code());verify(s.store,times(1)).readCurrent();verify(s.directory,times(1)).policyBoundaries();
+    @Test void capabilityProjectionUsesTheExactTargetAndConfiguredApplicationWithoutChangingAuthorization() throws Exception {
+        var setup=setup(3,Set.of(MANAGER));
+        var configuration=ManagementController.class.getDeclaredField("runtimeApplicationClientId");configuration.setAccessible(true);
+        configuration.set(setup.controller,"");
+        var initial=response(setup.controller.capabilities("main",owner(),"console"));
+        assertEquals("",initial.path("runtimeApplicationClientId").textValue());
+        configuration.set(setup.controller,"kestra-ui");
+        var console=setup.directory.boundaries().getFirst();
+        var target=new ApplicationGroupDirectoryReader.GroupView("target","main",ISSUER,"Target",true,1,1);
+        when(setup.directory.boundaries()).thenReturn(List.of(console,new ApplicationGroupDirectoryReader.Boundary(target,List.of(),Set.of("api"),Set.of(),List.of())));
+        String before=setup.store.readCurrent().canonicalJson();
+        var own=response(setup.controller.capabilities("main",owner(),"console"));
+        assertEquals("kestra-ui",own.path("runtimeApplicationClientId").textValue());
+        assertEquals("console",own.path("applicationGroupId").textValue());
+        assertTrue(own.path("localPolicyRead").booleanValue());assertTrue(own.path("localPolicyManage").booleanValue());
+        var outside=response(setup.controller.capabilities("main",owner(),"target"));
+        assertEquals("target",outside.path("applicationGroupId").textValue());
+        assertFalse(outside.path("localPolicyRead").booleanValue());assertFalse(outside.path("localPolicyManage").booleanValue());
+        assertEquals(403,setup.controller.capabilities("main",owner(),"unknown").code());
+        assertEquals(before,setup.store.readCurrent().canonicalJson());
+        verifyNoInteractions(setup.users,setup.applications);
+    }
+    @Test void groupScopeUsesKeyMetadataAndRejectsOldPayloadsAndMismatchedHostOutput() {
+        var setup=setup(3,Set.of(MANAGER));
+        var scope=mock(ApplicationGroupScope.class);
+        when(scope.applicationGroupId()).thenReturn("console");when(scope.key()).thenReturn("reader");when(scope.name()).thenReturn("Reader");
+        when(scope.description()).thenReturn("Read workflows");when(scope.revision()).thenReturn(1L);
+        when(setup.applications.invoke(any())).thenReturn(scope);
+        var detail=setup.controller.applicationGroupScope("main","console","reader",owner());
+        assertEquals(200,detail.code());var value=response(detail);
+        assertEquals(5,value.size());assertEquals("console",value.path("applicationGroupId").textValue());
+        assertEquals("reader",value.path("key").textValue());assertEquals("Reader",value.path("name").textValue());
+        assertEquals("Read workflows",value.path("description").textValue());assertEquals(1,value.path("revision").longValue());
+        for(String field:List.of("projectId","scope","active","resourceIntents","managementIntents"))assertFalse(value.has(field));
+        when(setup.applications.invoke(any())).thenReturn(new ApplicationGroupDirectoryManagement.Page<>(List.of(scope),1,1,20,3));
+        var list=setup.controller.applicationGroupScopes("main","console",owner(),1,20);
+        assertEquals(200,list.code());assertEquals(value,response(list).path("items").get(0));
+        assertEquals(3,response(list).path("directoryRevision").longValue());
+        clearInvocations(setup.applications);
+        assertEquals(400,setup.controller.createApplicationGroupScope("main","console",owner(),"\"3\"",json("{\"scope\":\"reader\",\"name\":\"Reader\",\"description\":\"\"}")).code());
+        assertEquals(400,setup.controller.updateApplicationGroupScope("main","console","reader",owner(),"\"1\"",json("{\"key\":\"renamed\",\"name\":\"Reader\",\"description\":\"\"}")).code());
+        assertEquals(400,setup.controller.applicationGroupScope("main","console","~cmVhZGVy",owner()).code());
+        verifyNoInteractions(setup.applications);
+        when(setup.applications.invoke(any())).thenReturn(scope);
+        when(scope.applicationGroupId()).thenReturn("other");
+        assertEquals(503,setup.controller.applicationGroupScope("main","console","reader",owner()).code());
+        when(scope.applicationGroupId()).thenReturn("console");when(scope.key()).thenReturn("other");
+        assertEquals(503,setup.controller.applicationGroupScope("main","console","reader",owner()).code());
+        when(scope.key()).thenReturn("BAD");
+        assertEquals(503,setup.controller.applicationGroupScope("main","console","reader",owner()).code());
+        assertEquals(1,setup.store.readCurrent().revision());
+    }
+    @Test void deletedGroupMappingsDoNotBlockOtherGroupsOrKeepManagementAuthority() throws Exception {
+        var setup=setup(3,Set.of(MANAGER));
+        var document=(com.fasterxml.jackson.databind.node.ObjectNode)MAPPER.readTree(POLICY);
+        var groups=(com.fasterxml.jackson.databind.node.ObjectNode)document.path("applicationGroups");
+        var current=(com.fasterxml.jackson.databind.node.ObjectNode)groups.path("console");
+        groups.set("deleted",current.deepCopy());
+        var scope=(com.fasterxml.jackson.databind.node.ObjectNode)current.path("scopes").path(MANAGER);
+        var management=(com.fasterxml.jackson.databind.node.ObjectNode)scope.path("managementGrants").get(1);
+        management.putArray("applicationGroupIds").add("console").add("deleted");
+        setup.store.replace(1,json(document.toString()),"installer");
+        var retained=setup.store.readCurrent().policy().applicationGroups().get("deleted");
+        assertEquals(200,setup.controller.runtimePolicy("main","console",clientKey(),owner()).code());
+        assertEquals(403,setup.controller.runtimePolicy("main","deleted",clientKey(),owner()).code());
+        assertEquals(403,setup.controller.capabilities("main",owner(),"deleted").code());
+        scope.put("scopeKey",MANAGER);scope.put("description","Updated without recovering the deleted group");
+        var saved=setup.controller.updateRuntimeScope("main","console",clientKey(),MANAGER,owner(),"\"2\"",json(scope.toString()));
+        assertEquals(200,saved.code());assertEquals(3,setup.store.readCurrent().revision());
+        assertEquals(retained,setup.store.readCurrent().policy().applicationGroups().get("deleted"));
+        assertEquals("Updated without recovering the deleted group",setup.store.readCurrent().policy().applicationGroups().get("console").scopes().get(MANAGER).description());
+        var changed=(com.fasterxml.jackson.databind.node.ObjectNode)scope.path("managementGrants").get(1);
+        changed.putArray("applicationGroupIds").add("console").add("new-missing");
+        String before=setup.store.readCurrent().canonicalJson();
+        assertEquals(400,setup.controller.updateRuntimeScope("main","console",clientKey(),MANAGER,owner(),"\"3\"",json(scope.toString())).code());
+        assertEquals(before,setup.store.readCurrent().canonicalJson());
+        onlyRuntimeMembershipReads(setup);
+    }
+    @Test void memberAndUserGrantProjectionsHaveOnlyApplicationGroupFieldsAndExactTargets() {
+        var setup=setup(3,Set.of(MANAGER));
+        var member=new ApplicationGroupApplication("console","api-client",true,Set.of("api"),Set.of("reader"),4);
+        String applicationKey="~"+Base64.getUrlEncoder().withoutPadding().encodeToString(json("api-client"));
+        when(setup.applications.invoke(any())).thenReturn(member);
+        var detail=setup.controller.clientsDetail("main","console",applicationKey,owner());
+        assertEquals(200,detail.code());var application=response(detail);
+        assertEquals(6,application.size());assertEquals("console",application.path("applicationGroupId").textValue());
+        assertEquals("api-client",application.path("clientId").textValue());assertEquals("reader",application.path("supportedScopeKeys").get(0).textValue());
+        for(String field:List.of("projectId","allowedProjectScopes","firstPartyUi"))assertFalse(application.has(field));
+        when(setup.applications.invoke(any())).thenReturn(new ApplicationGroupDirectoryManagement.Page<>(List.of(member),1,1,20,3));
+        var applications=setup.controller.clients("main","console",owner(),1,20);
+        assertEquals(200,applications.code());assertEquals(application,response(applications).path("items").get(0));
+        var grant=new ApplicationGroupScopeGrant("console",ISSUER,"user",Set.of("reader"),4,97);
+        when(setup.applications.invoke(any())).thenReturn(grant);
+        var grantDetail=setup.controller.assignmentsDetail("main","console","user",owner());
+        assertEquals(200,grantDetail.code());var assignment=response(grantDetail);
+        assertEquals(6,assignment.size());assertEquals("console",assignment.path("applicationGroupId").textValue());
+        assertEquals("reader",assignment.path("scopeKeys").get(0).textValue());
+        assertFalse(assignment.has("projectId"));assertFalse(assignment.has("projectScopes"));
+        when(setup.applications.invoke(any())).thenReturn(new ApplicationGroupDirectoryManagement.Page<>(List.of(grant),1,1,20,3));
+        assertEquals(assignment,response(setup.controller.assignments("main","console",owner(),1,20)).path("items").get(0));
+        for(var wrong:List.of(
+            new ApplicationGroupScopeGrant("other",ISSUER,"user",Set.of("reader"),4,97),
+            new ApplicationGroupScopeGrant("console","https://other.invalid","user",Set.of("reader"),4,97),
+            new ApplicationGroupScopeGrant("console",ISSUER,"other-user",Set.of("reader"),4,97))) {
+            when(setup.applications.invoke(any())).thenReturn(wrong);
+            assertEquals(503,setup.controller.assignmentsDetail("main","console","user",owner()).code());
+        }
+        when(setup.applications.invoke(any())).thenReturn(new ApplicationGroupApplication("other","api-client",true,Set.of("api"),Set.of("reader"),4));
+        assertEquals(503,setup.controller.clientsDetail("main","console",applicationKey,owner()).code());
+        assertEquals(1,setup.store.readCurrent().revision());
+    }
+    @Test void memberAndGrantWritesRejectLegacyFieldsBeforeReachingTheHost() {
+        var setup=setup(3,Set.of(MANAGER));
+        assertEquals(400,setup.controller.clientsCreate("main","console",owner(),"\"3\"",json("{\"clientId\":\"api\",\"approved\":true,\"firstPartyUi\":true,\"audiences\":[\"api\"],\"supportedScopeKeys\":[\"reader\"]}")).code());
+        assertEquals(400,setup.controller.clientsCreate("main","console",owner(),"\"3\"",json("{\"clientId\":\"api\",\"approved\":true,\"audiences\":[\"api\"],\"allowedProjectScopes\":[\"reader\"]}")).code());
+        assertEquals(400,setup.controller.assignmentsCreate("main","console",owner(),"\"3\"",json("{\"issuer\":\"https://identity.example.invalid\",\"subject\":\"user\",\"projectScopes\":[\"reader\"]}")).code());
+        verifyNoInteractions(setup.applications);assertEquals(1,setup.store.readCurrent().revision());
+    }
+    @Test void runtimePolicyRequiresTheActualConfiguredApplicationMembershipWithoutHostUiPrivileges() throws Exception {
+        var setup=setup(3,Set.of(MANAGER));String before=setup.store.readCurrent().canonicalJson();
+        assertEquals(200,setup.controller.runtimePolicy("main","console",clientKey(),owner()).code());
+        var lookup=org.mockito.ArgumentCaptor.forClass(ApplicationDirectoryAccess.Request.class);
+        verify(setup.applications).invoke(lookup.capture());
+        assertEquals(3,lookup.getValue().directoryRevision());assertEquals("kestra-ui",lookup.getValue().key());
+        when(setup.applications.invoke(any())).thenThrow(new ApplicationDirectoryAccess.DirectoryFailure(404,"not_found"));
+        assertEquals(404,setup.controller.runtimePolicy("main","console",clientKey(),owner()).code());
+        assertEquals(404,setup.controller.updateRuntimeScope("main","console",clientKey(),MANAGER,owner(),"\"1\"",json(scopeBody())).code());
+        var invalidMember=mock(ApplicationGroupApplication.class);
+        when(invalidMember.applicationGroupId()).thenReturn("console");when(invalidMember.clientId()).thenReturn("kestra-ui");
+        when(invalidMember.revision()).thenReturn(0L);
+        for(var invalid:List.of(
+            new ApplicationGroupApplication("other","kestra-ui",true,Set.of("kestra-ui"),Set.of(MANAGER),1),
+            new ApplicationGroupApplication("console","other-application",true,Set.of("kestra-ui"),Set.of(MANAGER),1),
+            invalidMember)) {
+            doReturn(invalid).when(setup.applications).invoke(any());
+            assertEquals(503,setup.controller.runtimePolicy("main","console",clientKey(),owner()).code());
+            assertEquals(503,setup.controller.updateRuntimeScope("main","console",clientKey(),MANAGER,owner(),"\"1\"",json(scopeBody())).code());
+        }
+        doReturn(null).when(setup.applications).invoke(any());
+        assertEquals(503,setup.controller.runtimePolicy("main","console",clientKey(),owner()).code());
+        assertEquals(before,setup.store.readCurrent().canonicalJson());assertEquals(1,setup.store.readCurrent().revision());
+        onlyRuntimeMembershipReads(setup);
+    }
+    @Test void runtimeReadDoesNotGrantWriteAndRejectedWritesPreserveTheStoredPolicy() throws Exception {
+        var setup=setup(3,Set.of(MANAGER));
+        var policy=(com.fasterxml.jackson.databind.node.ObjectNode)MAPPER.readTree(POLICY);
+        var scope=(com.fasterxml.jackson.databind.node.ObjectNode)policy.path("applicationGroups").path("console").path("scopes").path(MANAGER);
+        var grants=(com.fasterxml.jackson.databind.node.ArrayNode)scope.path("managementGrants");
+        for(var grant:grants)((com.fasterxml.jackson.databind.node.ObjectNode)grant).putArray("actions").add("READ");
+        setup.store.replace(1,json(policy.toString()),"installer");
+        String before=setup.store.readCurrent().canonicalJson();
+        assertEquals(200,setup.controller.runtimePolicy("main","console",clientKey(),owner()).code());
+        assertEquals(200,setup.controller.runtimeScope("main","console",clientKey(),MANAGER,owner()).code());
+        var capabilities=response(setup.controller.capabilities("main",owner(),"console"));
+        assertTrue(capabilities.path("localPolicyRead").booleanValue());assertFalse(capabilities.path("localPolicyManage").booleanValue());
+        String settings="{\"issuer\":\"https://identity.example.invalid\",\"audiences\":[\"kestra-ui\"],\"enabled\":false}";
+        assertEquals(403,setup.controller.createRuntimePolicy("main","console",clientKey(),owner(),"\"2\"",json(settings)).code());
+        assertEquals(403,setup.controller.updateRuntimePolicy("main","console",clientKey(),owner(),"\"2\"",json(settings)).code());
+        assertEquals(403,setup.controller.createRuntimeScope("main","console",clientKey(),owner(),"\"2\"",json(scopeBody())).code());
+        assertEquals(403,setup.controller.updateRuntimeScope("main","console",clientKey(),MANAGER,owner(),"\"2\"",json(scopeBody())).code());
+        assertEquals(403,setup.controller.deleteRuntimeScope("main","console",clientKey(),MANAGER,owner(),"\"2\"").code());
+        assertEquals(before,setup.store.readCurrent().canonicalJson());assertEquals(2,setup.store.readCurrent().revision());
+        onlyRuntimeMembershipReads(setup);
+    }
+    @Test void runtimeApiRejectsOtherApplicationsOldPayloadsAndDisabledOrMissingConfigurationWithoutWrites() throws Exception {
+        var setup=setup(3,Set.of(MANAGER));
+        String before=setup.store.readCurrent().canonicalJson();
+        String other="~"+Base64.getUrlEncoder().withoutPadding().encodeToString(json("other-application"));
+        assertEquals(404,setup.controller.runtimePolicy("main","console",other,owner()).code());
+        assertEquals(404,setup.controller.updateRuntimeScope("main","console",other,MANAGER,owner(),"\"1\"",json(scopeBody())).code());
+        assertEquals(400,setup.controller.updateRuntimeScope("main","console",clientKey(),MANAGER,owner(),"\"1\"",json(scopeBody().replace("\"scopeKey\"","\"name\""))).code());
+        String settings="{\"id\":\"console\",\"issuer\":\"https://identity.example.invalid\",\"audiences\":[\"kestra-ui\"],\"enabled\":true}";
+        assertEquals(400,setup.controller.updateRuntimePolicy("main","console",clientKey(),owner(),"\"1\"",json(settings)).code());
+        var application=ManagementController.class.getDeclaredField("runtimeApplicationClientId");application.setAccessible(true);application.set(setup.controller,"");
+        assertEquals(503,setup.controller.runtimePolicy("main","console",clientKey(),owner()).code());
+        application.set(setup.controller,"kestra-ui");
+        var enabled=ManagementController.class.getDeclaredField("applicationGroups");enabled.setAccessible(true);enabled.set(setup.controller,false);
+        assertEquals(404,setup.controller.runtimePolicy("main","console",clientKey(),owner()).code());
+        assertEquals(404,setup.controller.updateRuntimeScope("main","console",clientKey(),MANAGER,owner(),"\"1\"",json(scopeBody())).code());
+        assertEquals(before,setup.store.readCurrent().canonicalJson());assertEquals(1,setup.store.readCurrent().revision());
+        onlyRuntimeMembershipReads(setup);
+    }
+    @Test void successfulWriteRechecksWithinTransactionAndStaleRetryCannotOverwriteIt() throws Exception {
+        var s=setup(3,Set.of(MANAGER));String body=scopeBody();
+        var result=s.controller.updateRuntimeScope("main","console",clientKey(),scopeKey(),owner(),"\"1\"",json(body));
+        assertEquals(200,result.code());verify(s.store,times(1)).readCurrent();verify(s.directory,times(1)).boundaries(any(java.sql.Connection.class));
+        var expectedIdentity=s.identities.current();
+        verify(s.directory,times(1)).verifyIdentity(any(java.sql.Connection.class),eq(expectedIdentity));
         assertEquals(2,response(result).path("revision").longValue());
-        assertEquals(2,response(result).path("policy").path("schemaVersion").intValue());
-        assertEquals(1,response(result).path("policy").path("applicationProjects").size());
+        assertEquals(1,response(result).size());assertFalse(response(result).has("policy"));
         String before=s.store.readCurrent().canonicalJson();
-        assertEquals(412,s.controller.reconcileProject("main","console",owner(),"\"1\"",json(body)).code());
+        assertEquals(412,s.controller.updateRuntimeScope("main","console",clientKey(),scopeKey(),owner(),"\"1\"",json(body)).code());
         assertEquals(before,s.store.readCurrent().canonicalJson());assertEquals(2,s.store.readCurrent().revision());
     }
 

@@ -3,6 +3,7 @@ import {computed, reactive, ref, watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import KsButton from '@kestra-io/design-system/components/Basic/KsButton/KsButton'
 import KsInput from '@kestra-io/design-system/components/Form/KsInput'
+import {availableDeclarationScopes} from './application-group-model.js'
 
 const props = defineProps({items: {type: Array, required: true}, scopes: {type: Array, required: true},
   supported: {type: Array, required: true}, disabled: Boolean})
@@ -14,8 +15,7 @@ const permissionName = ref('')
 const drafts = reactive({})
 const additional = reactive({})
 const deleting = ref('')
-const available = computed(() => props.scopes.filter(scope => scope.active && props.supported.includes(scope.scope)
-  && !props.items.some(item => item.scopeKey === scope.scope)))
+const available = computed(() => availableDeclarationScopes(props.scopes,props.supported,props.items))
 
 watch(() => props.items, items => {
   for (const key of Object.keys(drafts)) delete drafts[key]
@@ -46,7 +46,7 @@ function removePermission(scope, key) {
     <h2>{{ t('applicationPermissions') }}</h2>
     <p v-if="!items.length" class="muted">{{ t('noRows') }}</p>
     <section v-for="item in items" :key="item.scopeKey" class="application-declaration" :data-scope="item.scopeKey">
-      <h3>{{ scopes.find(scope => scope.scope === item.scopeKey)?.name || item.scopeKey }} ({{ item.scopeKey }})</h3>
+      <h3>{{ scopes.find(scope => scope.key === item.scopeKey)?.name || item.scopeKey }} ({{ item.scopeKey }})</h3>
       <div v-for="permission in drafts[item.scopeKey] || []" :key="permission.key" class="application-permission-row">
         <code>{{ permission.key }}</code>
         <label>{{ t('permissionName') }}<KsInput v-model="permission.name" :disabled="disabled" required /></label>
@@ -70,7 +70,7 @@ function removePermission(scope, key) {
     <form v-if="available.length" @submit.prevent="create">
       <fieldset :disabled="disabled">
         <h3>{{ t('registerScope') }}</h3>
-        <label>{{ t('scope') }}<select v-model="selectedScope" required><option disabled value="">{{ t('scope') }}</option><option v-for="scope in available" :key="scope.scope" :value="scope.scope">{{ scope.name }} ({{ scope.scope }})</option></select></label>
+        <label>{{ t('scope') }}<select v-model="selectedScope" required><option disabled value="">{{ t('scope') }}</option><option v-for="scope in available" :key="scope.key" :value="scope.key">{{ scope.name }} ({{ scope.key }})</option></select></label>
         <label>{{ t('permissionKey') }}<KsInput v-model="permissionKey" required /></label>
         <label>{{ t('permissionName') }}<KsInput v-model="permissionName" required /></label>
         <KsButton type="primary" native-type="submit">{{ t('create') }}</KsButton>

@@ -1,0 +1,87 @@
+package io.kestra.extensions.rbac.store;
+
+import io.kestra.extensions.rbac.applicationgroup.ApplicationGroupPolicyParser;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+import static io.kestra.extensions.rbac.store.ProjectMigrationReviewTest.*;
+
+class ApplicationGroupPolicyStoreTest {
+    @Test void concurrentWritersCannotMixSnapshotsOrOverwriteWinner()throws Exception {
+        var store=new ApplicationGroupPolicyStore(JdbcPolicyStoreTest.database(),new ApplicationGroupPolicyParser());
+        store.initializeSchema();var original=store.initialize(bytes(TARGET),"operator");
+        var barrier=new java.util.concurrent.CyclicBarrier(2);
+        var wins=new java.util.concurrent.atomic.AtomicInteger();
+        var conflicts=new java.util.concurrent.atomic.AtomicInteger();
+        try(var executor=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var futures=java.util.stream.IntStream.range(0,2).mapToObj(index->executor.submit(()->{
+                barrier.await(5,java.util.concurrent.TimeUnit.SECONDS);
+                try {store.replace(1,bytes(TARGET),"writer-"+index);wins.incrementAndGet();}
+                catch(ApplicationGroupPolicyStore.Conflict expected){conflicts.incrementAndGet();}
+                return null;
+            })).toList();
+            for(var future:futures)future.get(10,java.util.concurrent.TimeUnit.SECONDS);
+        }
+        assertEquals(1,wins.get());assertEquals(1,conflicts.get());
+        var current=store.readCurrent();assertEquals(2,current.revision());assertEquals(1,current.previousRevision());
+        assertTrue(current.actor().startsWith("writer-"));
+        assertEquals(1,original.revision());assertEquals("operator",original.actor());
+        assertEquals(original.policy(),current.policy());
+    }
+    @Test void initializesOnlyEmptyDatabaseAndUsesCompareAndSwap() {
+        var source=JdbcPolicyStoreTest.database();var store=new ApplicationGroupPolicyStore(source,new ApplicationGroupPolicyParser());
+        store.initializeSchema();store.initializeSchema();
+        assertThrows(IllegalStateException.class,store::readCurrent);
+        var first=store.initialize(bytes(TARGET),"operator");assertEquals(1,first.revision());
+        assertEquals(first.canonicalJson(),store.initialize(bytes(TARGET),"other").canonicalJson());
+        var next=store.replace(1,bytes(TARGET.replace("\"enabled\":true","\"enabled\":false")),"editor");
+        assertEquals(2,next.revision());assertEquals(1,next.previousRevision());
+        assertThrows(ApplicationGroupPolicyStore.Conflict.class,()->store.replace(1,bytes(TARGET),"stale"));
+        assertEquals(next.canonicalJson(),new ApplicationGroupPolicyStore(source,new ApplicationGroupPolicyParser()).readCurrent().canonicalJson());
+        assertTrue(first.policy().applicationGroups().get("kestra").enabled(),"An old snapshot is immutable");
+    }
+    @Test void legacyPolicyCannotBeSilentlyInitializedOrChangedByMigration() {
+        var source=JdbcPolicyStoreTest.database();var legacy=JdbcPolicyStoreTest.store(source);legacy.initializeSchema();
+        var old=legacy.importInitial(bytes(LEGACY),"old-operator");
+        var store=new ApplicationGroupPolicyStore(source,new ApplicationGroupPolicyParser());store.initializeSchema();
+        assertThrows(IllegalStateException.class,()->store.initialize(bytes(TARGET),"operator"));
+        var review=new ProjectMigrationReview().preview(old.revision(),bytes(LEGACY),bytes(TARGET),bytes(DROP),"operator");
+        assertThrows(IllegalArgumentException.class,()->store.migrateApproved(review,"0".repeat(64),bytes(TARGET),"operator"));
+        assertThrows(IllegalStateException.class,store::readCurrent);
+        assertThrows(ApplicationGroupPolicyStore.Conflict.class,()->store.migrateApproved(review,review.approvalHash(),bytes(TARGET.replace("kestra-ui","another-audience")),"operator"));
+        assertThrows(IllegalStateException.class,store::readCurrent);
+        var migrated=store.migrateApproved(review,review.approvalHash(),bytes(TARGET),"operator");
+        assertEquals(2,migrated.policy().schemaVersion());assertEquals(1,migrated.revision());
+        assertEquals(old.canonicalJson(),legacy.readCurrent().canonicalJson());
+        assertEquals(old.revision(),legacy.readCurrent().revision(),"Legacy backup is not rewritten or pruned");
+        assertThrows(ApplicationGroupPolicyStore.Conflict.class,()->store.migrateApproved(review,review.approvalHash(),bytes(TARGET),"operator"));
+    }
+    @Test void staleReviewDoesNotLeavePartialTargetPolicy() throws Exception {
+        var source=JdbcPolicyStoreTest.database();var legacy=JdbcPolicyStoreTest.store(source);legacy.initializeSchema();
+        legacy.importInitial(bytes(LEGACY),"old-operator");
+        var review=new ProjectMigrationReview().preview(1,bytes(LEGACY),bytes(TARGET),bytes(DROP),"operator");
+        legacy.replace(1,bytes(LEGACY.replace("alice","bob")),"concurrent-editor");
+        var store=new ApplicationGroupPolicyStore(source,new ApplicationGroupPolicyParser());
+        assertThrows(IllegalArgumentException.class,()->store.migrateApproved(review,review.approvalHash(),bytes(TARGET),"operator"));
+        try(var connection=source.getConnection();var tables=connection.getMetaData().getTables(null,connection.getSchema(),null,new String[]{"TABLE"})) {
+            while(tables.next())assertFalse(tables.getString("TABLE_NAME").toLowerCase(java.util.Locale.ROOT).startsWith("rbac_project_policy"),"Rejected migration must not create target tables");
+        }
+        assertEquals(2,legacy.readCurrent().revision());
+        var current=legacy.readCurrent();
+        var fresh=new ProjectMigrationReview().preview(current.revision(),bytes(current.canonicalJson()),bytes(TARGET),bytes(DROP),"operator");
+        var migrated=store.migrateApproved(fresh,fresh.approvalHash(),bytes(TARGET),"operator");
+        assertEquals(1,migrated.revision());
+        assertEquals(current.canonicalJson(),legacy.readCurrent().canonicalJson());
+    }
+    @Test void corruptedStoredDocumentAndDatabaseFailureDoNotReuseOldAllows() throws Exception {
+        var source=JdbcPolicyStoreTest.database();var store=new ApplicationGroupPolicyStore(source,new ApplicationGroupPolicyParser());store.initializeSchema();
+        store.initialize(bytes(TARGET),"operator");
+        try(var connection=source.getConnection();var statement=connection.createStatement()) {
+            statement.executeUpdate("UPDATE rbac_application_group_policy_snapshot SET document_json='{}'");
+        }
+        assertThrows(IllegalArgumentException.class,store::readCurrent);
+        try(var connection=source.getConnection();var statement=connection.createStatement()) {
+            statement.execute("DROP TABLE rbac_application_group_policy_snapshot");
+        }
+        assertThrows(ApplicationGroupPolicyStore.Unavailable.class,store::readCurrent);
+    }
+}

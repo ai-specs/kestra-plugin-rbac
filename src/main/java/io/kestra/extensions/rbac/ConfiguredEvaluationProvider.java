@@ -18,10 +18,10 @@ import jakarta.inject.Singleton;
 @Requires(property = "kestra.rbac.typed.enabled", value = "true")
 @Requires(property = "kestra.rbac.evaluation.enabled", value = "true")
 public final class ConfiguredEvaluationProvider implements AuthorizationEvaluationProviderV2 {
-    private final ProjectRuntimePolicies policies;
+    private final ApplicationGroupRuntimePolicies policies;
     private final Executor executor;
 
-    public ConfiguredEvaluationProvider(ProjectRuntimePolicies policies, @Named(TaskExecutors.IO) Executor executor) {
+    public ConfiguredEvaluationProvider(ApplicationGroupRuntimePolicies policies, @Named(TaskExecutors.IO) Executor executor) {
         this.policies = policies;
         this.executor = executor;
     }

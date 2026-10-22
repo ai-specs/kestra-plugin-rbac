@@ -2,7 +2,7 @@
 import {useI18n} from 'vue-i18n'
 import KsButton from '@kestra-io/design-system/components/Basic/KsButton/KsButton'
 import KsInput from '@kestra-io/design-system/components/Form/KsInput'
-import {actions, resources, newGrant, selectGrantResource} from './project-model.js'
+import {actions, resources, newGrant, selectGrantResource} from './application-group-model.js'
 defineProps({grants: {type: Array, required: true}, managementGrants: {type: Array, required: true}})
 const {t} = useI18n()
 </script>
@@ -20,10 +20,10 @@ const {t} = useI18n()
   </section>
   <KsButton native-type="button" data-test="add-grant" @click="grants.push(newGrant())">{{ t('addGrant') }}</KsButton>
   <section v-for="(grant, index) in managementGrants" :key="'management-' + index" class="grant">
-    <label>{{ t('managementDomain') }}<select v-model="grant.domain" @change="grant.domain !== 'LOCAL_POLICY' && (grant.projectIds = [])"><option>IDENTITY</option><option>LOCAL_POLICY</option><option>BUSINESS_INSTANCE</option></select></label>
-    <label v-if="grant.domain === 'LOCAL_POLICY'">{{ t('managementProjectIds') }}<textarea :value="Array.isArray(grant.projectIds) ? grant.projectIds.join('\n') : grant.projectIds ?? ''" name="management-project-ids" @input="grant.projectIds = $event.target.value" /><small>{{ t('managementProjectIdsHelp') }}</small></label>
+    <label>{{ t('managementDomain') }}<select v-model="grant.domain" @change="grant.domain !== 'LOCAL_POLICY' && (grant.applicationGroupIds = [])"><option value="IDENTITY">{{ t('applicationGroups') }}</option><option value="LOCAL_POLICY">{{ t('kestraActualPermissions') }}</option><option value="BUSINESS_INSTANCE">{{ t('resource') }}</option></select></label>
+    <label v-if="grant.domain === 'LOCAL_POLICY'">{{ t('applicationGroupIds') }}<textarea :value="Array.isArray(grant.applicationGroupIds) ? grant.applicationGroupIds.join('\n') : grant.applicationGroupIds ?? ''" name="management-project-ids" @input="grant.applicationGroupIds = $event.target.value" /><small>{{ t('onePerLine') }}</small></label>
     <fieldset><legend>{{ t('actions') }}</legend><label v-for="action in ['READ', 'MANAGE']" :key="action" class="checkbox"><input v-model="grant.actions" type="checkbox" :value="action">{{ action }}</label></fieldset>
     <KsButton native-type="button" @click="managementGrants.splice(index, 1)">{{ t('removeGrant') }}</KsButton>
   </section>
-  <KsButton native-type="button" @click="managementGrants.push({domain: 'IDENTITY', actions: [], projectIds: []})">{{ t('addManagementGrant') }}</KsButton>
+  <KsButton native-type="button" @click="managementGrants.push({domain: 'IDENTITY', actions: [], applicationGroupIds: []})">{{ t('addManagementGrant') }}</KsButton>
 </template>

@@ -1,7 +1,7 @@
 package io.kestra.extensions.rbac.management;
 
 import io.kestra.webserver.oidc.UserDirectoryV1;
-import io.kestra.webserver.oidc.ApplicationDirectoryV1;
+import io.kestra.webserver.oidc.IdentityLifecycleGuardV1;
 import io.micronaut.context.BeanProvider;
 import java.util.List;
 import java.util.Optional;
@@ -85,11 +85,11 @@ class PublishedUserDirectoryAccessTest {
     @Test void hostLastAdministratorGuardRemainsAConflictInsteadOfUnavailable() {
         unique();
         when(directory.setActive("last-admin", 3, false)).thenThrow(
-            new ApplicationDirectoryV1.DirectoryException(ApplicationDirectoryV1.Failure.LAST_ADMIN));
+            new IdentityLifecycleGuardV1.Rejected(IdentityLifecycleGuardV1.Failure.LAST_ADMIN));
         assertEquals(UserDirectoryAccess.Failure.LAST_ADMIN,
             assertThrows(UserDirectoryAccess.DirectoryFailure.class,()->access.setActive("last-admin",3,false)).failure());
         when(directory.resetPassword("denied", 4, "password")).thenThrow(
-            new ApplicationDirectoryV1.DirectoryException(ApplicationDirectoryV1.Failure.FORBIDDEN));
+            new IdentityLifecycleGuardV1.Rejected(IdentityLifecycleGuardV1.Failure.FORBIDDEN));
         assertEquals(UserDirectoryAccess.Failure.FORBIDDEN,
             assertThrows(UserDirectoryAccess.DirectoryFailure.class,()->access.resetPassword("denied",4,"password")).failure());
     }

@@ -3,9 +3,11 @@ package io.kestra.extensions.rbac.declaration;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.kestra.extensions.rbac.ProjectRuntimePolicies;
-import io.kestra.extensions.rbac.project.ProjectPolicy;
-import io.kestra.webserver.oidc.ApplicationDirectoryV1;
+import io.kestra.extensions.rbac.ApplicationGroupRuntimePolicies;
+import io.kestra.extensions.rbac.applicationgroup.ApplicationGroupPolicy;
+import io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectoryService;
+import io.kestra.extensions.rbac.applicationgroup.ApplicationGroupChanges;
+import io.kestra.webserver.oidc.IdentityLifecycleGuardV1;
 import io.kestra.webserver.oidc.ApplicationScopeDeclarationsV1;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Requires;
@@ -43,29 +45,29 @@ import java.util.function.Function;
 @Secured(SecurityRule.IS_AUTHENTICATED)
 @Requires(property = "kestra.rbac.application-groups.enabled", value = "true")
 public final class ApplicationScopeDeclarationController {
-    private final ProjectRuntimePolicies policies;
+    private final ApplicationGroupRuntimePolicies policies;
     private final ApplicationScopeDeclarationStore store;
-    private final BeanProvider<ApplicationDirectoryV1> directories;
+    private final ApplicationGroupDirectoryService directory;
     private final ObjectMapper mapper = new ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
 
-    public ApplicationScopeDeclarationController(ProjectRuntimePolicies policies,
+    public ApplicationScopeDeclarationController(ApplicationGroupRuntimePolicies policies,
                                                  ApplicationScopeDeclarationStore store,
-                                                 BeanProvider<ApplicationDirectoryV1> directories) {
+                                                 ApplicationGroupDirectoryService directory) {
         this.policies = policies;
         this.store = store;
-        this.directories = directories;
+        this.directory = directory;
     }
 
     @Get("/{group}/applications/{client}/scope-declarations")
     public HttpResponse<?> list(String tenant, String group, String client, Authentication authentication) {
-        return request(tenant, group, client, authentication, ProjectPolicy.ManagementAction.READ,
-            target -> ok(store.list(group, target)));
+        return request(tenant, group, client, authentication, ApplicationGroupPolicy.ManagementAction.READ,
+            (connection,target) -> ok(store.list(connection,group,target)));
     }
 
     @Get("/{group}/applications/{client}/scope-declarations/{scope}")
     public HttpResponse<?> detail(String tenant, String group, String client, String scope, Authentication authentication) {
-        return request(tenant, group, client, authentication, ProjectPolicy.ManagementAction.READ, target -> {
-            var found = store.list(group, target).stream().filter(value -> value.scopeKey().equals(scope)).findFirst()
+        return request(tenant, group, client, authentication, ApplicationGroupPolicy.ManagementAction.READ, (connection,target) -> {
+            var found = store.list(connection,group,target).stream().filter(value -> value.scopeKey().equals(scope)).findFirst()
                 .orElseThrow(() -> new ApiFailure(404, "not_found"));
             return ok(found).header("ETag", "\"" + found.revision() + "\"");
         });
@@ -75,10 +77,10 @@ public final class ApplicationScopeDeclarationController {
     @Consumes(MediaType.APPLICATION_JSON)
     public HttpResponse<?> create(String tenant, String group, String client, String scope,
                                   Authentication authentication, @Body byte[] body) {
-        return request(tenant, group, client, authentication, ProjectPolicy.ManagementAction.MANAGE, target -> {
-            requireSupported(group, target, scope);
+        return request(tenant, group, client, authentication, ApplicationGroupPolicy.ManagementAction.MANAGE, (connection,target) -> {
+            requireSupported(connection,group,target,scope);
             ApplicationScopeDeclarationStore.StoredScope created;
-            try { created = store.create(group, target, scope, permissions(body)); }
+            try { created = store.create(connection,group,target,scope, permissions(body)); }
             catch (ApplicationScopeDeclarationStore.Conflict failure) { throw new ApiFailure(409, "already_exists"); }
             return HttpResponse.created(created).header("Cache-Control", "no-store")
                 .header("ETag", "\"" + created.revision() + "\"");
@@ -90,9 +92,9 @@ public final class ApplicationScopeDeclarationController {
     public HttpResponse<?> update(String tenant, String group, String client, String scope,
                                   Authentication authentication, @Header("If-Match") @Nullable String match,
                                   @Body byte[] body) {
-        return request(tenant, group, client, authentication, ProjectPolicy.ManagementAction.MANAGE, target -> {
-            requireSupported(group, target, scope);
-            var saved = store.replace(group, target, scope, revision(match), permissions(body));
+        return request(tenant, group, client, authentication, ApplicationGroupPolicy.ManagementAction.MANAGE, (connection,target) -> {
+            requireSupported(connection,group,target,scope);
+            var saved = store.replace(connection,group,target,scope, revision(match), permissions(body));
             return ok(saved).header("ETag", "\"" + saved.revision() + "\"");
         });
     }
@@ -100,85 +102,54 @@ public final class ApplicationScopeDeclarationController {
     @Delete("/{group}/applications/{client}/scope-declarations/{scope}")
     public HttpResponse<?> delete(String tenant, String group, String client, String scope,
                                   Authentication authentication, @Header("If-Match") @Nullable String match) {
-        return request(tenant, group, client, authentication, ProjectPolicy.ManagementAction.MANAGE, target -> {
-            store.delete(group, target, scope, revision(match));
+        return request(tenant, group, client, authentication, ApplicationGroupPolicy.ManagementAction.MANAGE, (connection,target) -> {
+            store.delete(connection,group,target,scope, revision(match));
             return ok(Map.of("deleted", true));
         });
     }
 
     private HttpResponse<?> request(String tenant, String group, String encodedClient, Authentication authentication,
-                                    ProjectPolicy.ManagementAction action, Function<String, HttpResponse<?>> operation) {
+                                    ApplicationGroupPolicy.ManagementAction action, Operation operation) {
         try {
             if (!"main".equals(tenant) || group == null || !group.matches("[A-Za-z0-9][A-Za-z0-9_-]{0,127}"))
                 throw new ApiFailure(404, "not_found");
             if (authentication == null) throw new ApiFailure(401, "authentication_required");
             String client = client(encodedClient);
-            try (var context = policies.open(authentication, tenant)) {
-                if (!context.authorizeManagement(ProjectPolicy.ManagementDomain.IDENTITY, action, group))
-                    throw new ApiFailure(403, "access_denied");
-                var directory = directory();
-                var applicationGroup = directory.project(group).orElseThrow(() -> new ApiFailure(404, "not_found"));
-                if (!context.identity().issuer().equals(applicationGroup.issuer()) || !"main".equals(applicationGroup.tenant()))
-                    throw new ApiFailure(403, "access_denied");
-                if (!containsClient(directory, group, client)) throw new ApiFailure(404, "not_found");
-                return operation.apply(client);
+            try (var admitted = policies.open(authentication,tenant)) {
+                return directory.transaction(connection->{
+                    try(var context=policies.open(connection,admitted.identity(),tenant)) {
+                        if(!context.authorizeManagement(ApplicationGroupPolicy.ManagementDomain.IDENTITY,action,group))throw new ApiFailure(403,"access_denied");
+                        member(connection,group,client);
+                        return operation.apply(connection,client);
+                    }
+                });
             }
         } catch (ApiFailure failure) { return error(failure.status, failure.code); }
-        catch (ProjectRuntimePolicies.Rejected failure) {
+        catch (ApplicationGroupRuntimePolicies.Rejected failure) {
             return switch (failure.failure()) {
                 case DIRECTORY_UNAVAILABLE, INVALID_DIRECTORY -> error(503, "directory_unavailable");
                 case POLICY_UNAVAILABLE -> error(503, "policy_unavailable");
                 case INVALID_IDENTITY, FORBIDDEN, INVALID_CANDIDATE, LAST_ADMIN, CLOSED -> error(403, "access_denied");
             };
         }
-        catch (ApplicationDirectoryV1.DirectoryException failure) {
-            return switch (failure.failure()) {
-                case NOT_FOUND -> error(404, "not_found");
-                case FORBIDDEN -> error(403, "access_denied");
-                case CONFLICT, LAST_ADMIN -> error(409, "directory_conflict");
-                case INVALID -> error(400, "invalid_request");
-                case UNAVAILABLE, UNSUPPORTED -> error(503, "directory_unavailable");
-            };
-        }
+        catch (ApplicationGroupChanges.NotFound failure){return error(404,"not_found");}
+        catch (IdentityLifecycleGuardV1.Rejected failure){return error(failure.failure()==IdentityLifecycleGuardV1.Failure.FORBIDDEN?403:503,"access_denied");}
         catch (ApplicationScopeDeclarationStore.Conflict failure) { return error(412, "revision_conflict"); }
         catch (IllegalArgumentException failure) { return error(400, "invalid_request"); }
         catch (Exception failure) { return error(503, "declaration_unavailable"); }
     }
 
-    private void requireSupported(String group, String client, String scope) {
-        var directory = directory();
-        var member = member(directory, group, client);
-        if (!member.allowedProjectScopes().contains(scope)) throw new ApiFailure(409, "scope_not_registered");
-        if (directory.scope(group, scope).filter(ApplicationDirectoryV1.ScopeDefinition::active).isEmpty())
-            throw new ApiFailure(409, "scope_unavailable");
+    private interface Operation { HttpResponse<?> apply(java.sql.Connection connection,String client)throws java.sql.SQLException; }
+
+    private void requireSupported(java.sql.Connection connection,String group,String client,String scope)throws java.sql.SQLException {
+        var application=member(connection,group,client);
+        if(!application.supportedScopeKeys().contains(scope))throw new ApiFailure(409,"scope_not_registered");
+        if(directory.find(connection,group).scopes().stream().noneMatch(value->value.key().equals(scope)))throw new ApiFailure(409,"scope_unavailable");
     }
 
-    private ApplicationDirectoryV1 directory() {
-        if (!directories.isUnique()) throw new ApiFailure(503, "directory_unavailable");
-        return directories.get();
-    }
-
-    private boolean containsClient(ApplicationDirectoryV1 directory, String group, String client) {
-        try { member(directory, group, client); return true; }
-        catch (ApiFailure failure) {
-            if (failure.status == 404) return false;
-            throw failure;
-        }
-    }
-
-    private ApplicationDirectoryV1.ClientMembership member(ApplicationDirectoryV1 directory, String group, String client) {
-        for (int page = 1; page <= 100; page++) {
-            var result = directory.clients(group, page, 100);
-            if (result.total() < 0 || result.total() > 10000 || result.page() != page || result.size() != 100)
-                throw new ApiFailure(503, "directory_unavailable");
-            for (var membership : result.items()) {
-                if (!group.equals(membership.projectId())) throw new ApiFailure(503, "directory_unavailable");
-                if (client.equals(membership.clientId())) return membership;
-            }
-            if ((long) page * 100 >= result.total()) break;
-            if (result.items().size() != 100) throw new ApiFailure(503, "directory_unavailable");
-        }
-        throw new ApiFailure(404, "not_found");
+    private io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectory.Application member(java.sql.Connection connection,String group,String client)throws java.sql.SQLException {
+        return directory.find(connection,group).applications().stream().filter(value->value.clientId().equals(client)).findFirst()
+            .orElseThrow(()->new ApiFailure(404,"not_found"));
     }
 
     private List<ApplicationScopeDeclarationsV1.Permission> permissions(byte[] body) {

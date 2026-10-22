@@ -2,10 +2,12 @@ package io.kestra.extensions.rbac;
 import io.micronaut.context.ApplicationContext;
 import io.kestra.webserver.rbac.*;
 import io.kestra.webserver.oidc.*;
-import io.kestra.extensions.rbac.store.ProjectPolicyStore;
+import io.kestra.extensions.rbac.store.ApplicationGroupPolicyStore;
 import io.kestra.extensions.rbac.declaration.ApplicationScopeDeclarationStore;
 import io.kestra.extensions.rbac.declaration.ApplicationScopeDeclarationController;
-import io.kestra.extensions.rbac.management.PublishedApplicationGroupManagement;
+import io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectoryService;
+import io.kestra.extensions.rbac.store.ApplicationGroupDirectoryStore;
+import io.kestra.extensions.rbac.management.ApplicationGroupDirectoryManagement;
 import org.junit.jupiter.api.Test;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -13,9 +15,11 @@ import static org.mockito.Mockito.*;
 class BeanDiscoveryTest {
     @Test void productionRegistersOnlyTrustedV2Evaluation(){
         var properties=Map.<String,Object>of("kestra.rbac.enabled",true,"kestra.rbac.typed.enabled",true,
-            "kestra.rbac.evaluation.enabled",true,"kestra.rbac.application-groups.enabled",true);
+            "kestra.rbac.evaluation.enabled",true,"kestra.rbac.application-groups.enabled",true,
+            "kestra.rbac.management.enabled",true,"kestra.oidc.issuer","https://issuer.example",
+            "micronaut.security.oauth2.clients.kestra.client-id","ui");
         try(var context=ApplicationContext.builder().packages("io.kestra.extensions.rbac").properties(properties)
-            .singletons(mock(ProjectPolicyStore.class),mock(ApplicationScopeDeclarationStore.class),mock(ApplicationDirectoryV1.class),mock(TrustedIdentityV1.class)).start()){
+            .singletons(mock(ApplicationGroupPolicyStore.class),mock(ApplicationScopeDeclarationStore.class),mock(ApplicationGroupDirectoryStore.class),mock(OidcProtocolStateV1.class),mock(TrustedIdentityV1.class)).start()){
             assertNotNull(context.getBean(AuthorizationEvaluationProviderV2.class));
             assertFalse(context.containsBean(AuthorizationEvaluationProviderV1.class));
             assertFalse(context.containsBean(PolicyEngine.class));
@@ -23,8 +27,10 @@ class BeanDiscoveryTest {
             assertNotNull(context.getBean(McpAuthorizationResolver.class));
             assertNotNull(context.getBean(ApplicationScopeDeclarationsV1.class));
             assertNotNull(context.getBean(ApplicationScopeDeclarationController.class));
-            assertNotNull(context.getBean(ApplicationGroupManagementV1.class));
-            assertNotNull(context.getBean(PublishedApplicationGroupManagement.class));
+            assertNotNull(context.getBean(ApplicationGroupProtocolProjectionV1.class));
+            assertNotNull(context.getBean(IdentityLifecycleGuardV1.class));
+            assertNotNull(context.getBean(ApplicationGroupDirectoryService.class));
+            assertNotNull(context.getBean(ApplicationGroupDirectoryManagement.class));
         }
     }
     @Test void legacyAdministratorConfigurationFailsStartup(){

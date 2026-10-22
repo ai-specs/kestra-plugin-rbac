@@ -8,8 +8,8 @@ class ProjectMigrationReviewTest {
         "subjects":{"alice":["reader"]},"roleMapping":{"old-reader":["reader"]}}
         """;
     static final String TARGET = """
-        {"schemaVersion":2,"applicationProjects":{"kestra":{"issuer":"https://identity.example.invalid",
-        "audiences":["kestra-ui"],"enabled":true,"directoryRevision":1,"scopes":{}}}}
+        {"schemaVersion":2,"applicationGroups":{"kestra":{"issuer":"https://identity.example.invalid",
+        "audiences":["kestra-ui"],"enabled":true,"scopes":{}}}}
         """;
     static final String DROP = """
         [{"roleId":"reader","disposition":"DROP","targets":[],"reason":"No approved equivalent"}]
@@ -69,7 +69,7 @@ class ProjectMigrationReviewTest {
         var service=new ProjectMigrationReview();var original=preview(DROP);
         var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
         var changed=service.preview(7,bytes(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(mapper.readTree(LEGACY))),
-            bytes("{\"applicationProjects\":"+mapper.readTree(TARGET).get("applicationProjects")+",\"schemaVersion\":2}"),
+            bytes("{\"applicationGroups\":"+mapper.readTree(TARGET).get("applicationGroups")+",\"schemaVersion\":2}"),
             bytes(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(mapper.readTree(DROP))),"operator");
         assertEquals(original.sourceHash(),changed.sourceHash());
         assertEquals(original.targetHash(),changed.targetHash());

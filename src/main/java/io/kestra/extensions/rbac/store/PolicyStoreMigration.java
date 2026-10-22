@@ -6,6 +6,8 @@ import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Singleton;
 
 @Singleton
+@Requires(property = "kestra.rbac.enabled", value = "true")
+@Requires(property = "kestra.rbac.application-groups.enabled", notEquals = "true", defaultValue = "false")
 @Requires(property = "kestra.rbac.policy-source", value = "database", defaultValue = "database")
 @Requires(property = "kestra.repository.type", value = "postgres")
 public final class PolicyStoreMigration implements MigrationScript {

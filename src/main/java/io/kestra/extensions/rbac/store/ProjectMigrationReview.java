@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.kestra.extensions.rbac.project.ProjectPolicyParser;
+import io.kestra.extensions.rbac.applicationgroup.ApplicationGroupPolicyParser;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
@@ -25,7 +25,7 @@ public final class ProjectMigrationReview {
     public Review preview(long sourceRevision, byte[] legacy, byte[] target, byte[] decisions, String operator) {
         require(sourceRevision > 0 && operator != null && !operator.isBlank(), "Source revision and operator required");
         var source = new PolicyDocumentValidator().parse(legacy);
-        var targetParser=new ProjectPolicyParser();
+        var targetParser=new ApplicationGroupPolicyParser();
         JsonNode destination=read(targetParser.canonicalJson(targetParser.parse(target)).getBytes(StandardCharsets.UTF_8)), plan=read(decisions);
         require(plan.isArray(), "Role decisions must be an array");
         var remaining = new TreeSet<String>();
@@ -44,7 +44,7 @@ public final class ProjectMigrationReview {
                 fields(item, Set.of("project", "scope"));
                 String project = text(item, "project"), scope = text(item, "scope");
                 require(unique.add(project + "\n" + scope), "Duplicate target");
-                require(destination.path("applicationProjects").path(project).path("scopes").has(scope), "Missing target scope");
+                require(destination.path("applicationGroups").path(project).path("scopes").has(scope), "Missing target scope");
             }
         }
         require(remaining.isEmpty(), "Every old role needs an explicit decision");
@@ -65,7 +65,7 @@ public final class ProjectMigrationReview {
             var before=new TreeSet<String>();for(JsonNode grant:oldRole.path("grants"))before.add(canonical(grant).toString());
             var after=new TreeSet<String>();
             for(JsonNode targetRef:decision.path("targets"))
-                for(JsonNode grant:destination.path("applicationProjects").path(targetRef.path("project").asText()).path("scopes").path(targetRef.path("scope").asText()).path("grants"))after.add(canonical(grant).toString());
+                for(JsonNode grant:destination.path("applicationGroups").path(targetRef.path("project").asText()).path("scopes").path(targetRef.path("scope").asText()).path("grants"))after.add(canonical(grant).toString());
             var removed=new TreeSet<>(before);removed.removeAll(after);
             var added=new TreeSet<>(after);added.removeAll(before);
             var removedArray=row.putArray("removedGrantDefinitions");removed.forEach(value->removedArray.add(read(value.getBytes(StandardCharsets.UTF_8))));

@@ -88,8 +88,11 @@ public final class ApplicationScopeDeclarationStore {
 
     public StoredScope create(String applicationGroupId, String clientId, String scopeKey,
                               List<ApplicationScopeDeclarationsV1.Permission> permissions) {
+        return transaction(connection->create(connection,applicationGroupId,clientId,scopeKey,permissions));
+    }
+    public StoredScope create(Connection connection,String applicationGroupId,String clientId,String scopeKey,
+                              List<ApplicationScopeDeclarationsV1.Permission> permissions)throws SQLException {
         valid(applicationGroupId, clientId, scopeKey, permissions);
-        return transaction(connection -> {
             lock(connection);
             requireUniquePermissionKeys(connection, applicationGroupId, clientId, scopeKey, permissions);
             try (var statement = prepare(connection, "INSERT INTO rbac_application_scope_declaration(application_group_id,client_id,scope_key,revision,permissions_json) VALUES(?,?,?,1,?)")) {
@@ -103,14 +106,16 @@ public final class ApplicationScopeDeclarationStore {
                 throw conflict;
             }
             return new StoredScope(applicationGroupId, clientId, scopeKey, permissions, 1);
-        });
     }
 
     public StoredScope replace(String applicationGroupId, String clientId, String scopeKey, long expectedRevision,
                                List<ApplicationScopeDeclarationsV1.Permission> permissions) {
+        return transaction(connection->replace(connection,applicationGroupId,clientId,scopeKey,expectedRevision,permissions));
+    }
+    public StoredScope replace(Connection connection,String applicationGroupId,String clientId,String scopeKey,long expectedRevision,
+                               List<ApplicationScopeDeclarationsV1.Permission> permissions)throws SQLException {
         valid(applicationGroupId, clientId, scopeKey, permissions);
         if (expectedRevision < 1) throw new IllegalArgumentException("Positive revision required");
-        return transaction(connection -> {
             lock(connection);
             requireUniquePermissionKeys(connection, applicationGroupId, clientId, scopeKey, permissions);
             try (var statement = prepare(connection, "UPDATE rbac_application_scope_declaration SET revision=revision+1,permissions_json=? WHERE application_group_id=? AND client_id=? AND scope_key=? AND revision=?")) {
@@ -122,14 +127,15 @@ public final class ApplicationScopeDeclarationStore {
                 if (statement.executeUpdate() != 1) throw new Conflict();
             }
             return new StoredScope(applicationGroupId, clientId, scopeKey, permissions, Math.addExact(expectedRevision, 1));
-        });
     }
 
     public void delete(String applicationGroupId, String clientId, String scopeKey, long expectedRevision) {
+        transaction(connection->{delete(connection,applicationGroupId,clientId,scopeKey,expectedRevision);return null;});
+    }
+    public void delete(Connection connection,String applicationGroupId,String clientId,String scopeKey,long expectedRevision)throws SQLException {
         validScope(scopeKey);
         target(applicationGroupId, clientId);
         if (expectedRevision < 1) throw new IllegalArgumentException("Positive revision required");
-        transaction(connection -> {
             lock(connection);
             try (var statement = prepare(connection, "DELETE FROM rbac_application_scope_declaration WHERE application_group_id=? AND client_id=? AND scope_key=? AND revision=?")) {
                 statement.setString(1, applicationGroupId);
@@ -138,8 +144,6 @@ public final class ApplicationScopeDeclarationStore {
                 statement.setLong(4, expectedRevision);
                 if (statement.executeUpdate() != 1) throw new Conflict();
             }
-            return null;
-        });
     }
 
     private List<ApplicationScopeDeclarationsV1.Permission> parse(String json) {

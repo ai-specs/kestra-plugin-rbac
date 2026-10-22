@@ -7,9 +7,10 @@ IMAGE="$(sed -n 's/^overlay.image=//p' "$ROOT/host-contract.properties")"
 AREA="$ROOT/.integration"
 mkdir -p "$AREA"
 docker pull "$IMAGE"
-CONTAINER="$(docker create "$IMAGE")"
+HOST_OWNER="rbac-host-extract-$$"
+CONTAINER="$(docker create --label "owner=$HOST_OWNER" "$IMAGE")"
 TEMP_DIR="$(mktemp -d "$AREA/host-extract.XXXXXX")"
-cleanup() { docker rm "$CONTAINER" >/dev/null; rm -rf "$TEMP_DIR"; }
+cleanup() { while read -r container; do docker rm "$container" >/dev/null; done < <(docker ps -aq --filter "label=owner=$HOST_OWNER"); rm -rf "$TEMP_DIR"; }
 trap cleanup EXIT
 docker cp "$CONTAINER:/app/kestra" "$TEMP_DIR/host.jar"
 python3 - "$TEMP_DIR/host.jar" "$IMAGE" "$TEMP_DIR/provenance.json" "$TEMP_DIR/ui-sdk" <<'PY'
@@ -21,8 +22,10 @@ with zipfile.ZipFile(path) as jar:
     for name in ['RbacAuthorizer','RestAuthorizationResolver','McpAuthorizationResolver','TypedAuthorization','TypedAuthorizationResolver','AuthorizationEvaluationV1','AuthorizationEvaluationProviderV1','AuthorizationEvaluationProviderV2']:
         assert f'io/kestra/webserver/rbac/{name}.class' in names, f'Missing host SPI: {name}'
     assert 'io/kestra/core/models/executions/Execution.class' in names
-    for name in ['io/kestra/webserver/oidc/UserDirectoryV1.class','io/kestra/webserver/oidc/ApplicationDirectoryV1.class','io/kestra/webserver/oidc/TrustedIdentityV1.class','io/kestra/webserver/ui/UiExtensionProviderV1.class','io/kestra/webserver/ui/UiExtensionDescriptorV1.class']:
+    for name in ['io/kestra/webserver/oidc/UserDirectoryV1.class','io/kestra/webserver/oidc/ApplicationGroupProtocolProjectionV1.class','io/kestra/webserver/oidc/OidcProtocolStateV1.class','io/kestra/webserver/oidc/OidcProtocolStateV1$PendingClient.class','io/kestra/webserver/oidc/IdentityLifecycleGuardV1.class','io/kestra/webserver/oidc/TrustedIdentityV1.class','io/kestra/webserver/ui/UiExtensionProviderV1.class','io/kestra/webserver/ui/UiExtensionDescriptorV1.class']:
         assert name in names, f'Missing management contract: {name}'
+    for name in ['ApplicationDirectoryV1','ApplicationGroupManagementV1']:
+        assert not any(entry.startswith('io/kestra/webserver/oidc/'+name) for entry in names), f'Obsolete host business contract: {name}'
     prefix='META-INF/kestra/ui-sdk/v1/'
     required={'index.d.ts','contract.json','locales.mjs','check-translations.mjs','shadow-styles.mjs','README.md'}
     sdk_names={name.removeprefix(prefix) for name in names if name.startswith(prefix) and not name.endswith('/')}

@@ -37,7 +37,7 @@ public final class ApplicationScopeDeclarationCommand {
             System.out.println("Valid application scope declarations=" + plan.scopes().size());
             return;
         }
-        var store = new ApplicationScopeDeclarationStore(ProjectPolicyCommand.dataSource(), MAPPER);
+        var store = new ApplicationScopeDeclarationStore(ApplicationGroupPolicyCommand.dataSource(), MAPPER);
         store.initializeSchema();
         store.initialize(plan.applicationGroupId(), plan.clientId(), plan.scopes());
         System.out.println("Initialized application scope declarations=" + plan.scopes().size());
