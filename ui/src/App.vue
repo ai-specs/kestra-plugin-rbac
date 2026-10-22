@@ -8,7 +8,7 @@ import KsTabs from '@kestra-io/design-system/components/Navigation/KsTabs/KsTabs
 import KsTabPane from '@kestra-io/design-system/components/Navigation/KsTabs/KsTabPane'
 import ApplicationGroupList from './ApplicationGroupList.vue'
 import ApplicationGroupCards from './ApplicationGroupCards.vue'
-import ApplicationDeclarations from './ApplicationDeclarations.vue'
+import ApplicationDeclarationsTable from './ApplicationDeclarationsTable.vue'
 import GrantEditor from './GrantEditor.vue'
 import {createClient, encodeKey, decodeKey} from './client.js'
 import {canonicalPath, collectPages, splitLines, copy, groupScopeInput, scopeInput, memberInput, managementAccess, requiresReauthentication, loginEntry, isRuntimeApplication, applicationPermissionModel, runtimePolicyView, runtimeScopeDefinition} from './application-group-model.js'
@@ -37,7 +37,7 @@ const localScopeExists = ref(false)
 const permissionScope = ref('')
 const permissionEditing = ref(false)
 const member = ref(null)
-const declarations = ref([])
+const declarationApplications = ref([])
 const assignment = ref(null)
 const user = ref(null)
 const password = ref('')
@@ -69,7 +69,7 @@ const usersDisabled = computed(() => identityDisabled.value || !caps.value?.user
 const storageKey = computed(() => ['rbac-management-filters', props.context.tenant, caps.value?.subject, path.value].join(':'))
 const base = computed(() => 'application-groups/' + encodeURIComponent(projectId.value))
 const columns = computed(() => isUsers.value ? ['subject', 'name', 'email', 'active'] : !projectId.value ? ['id', 'displayName', 'issuer', 'active'] : tab.value === 'scopes' ? ['key','roleName','description'] : tab.value === 'applications' ? ['clientId', 'approved', 'audiences', 'supportedScopeKeys'] : ['subject', 'issuer', 'scopeKeys'])
-const showList = computed(() => !projectNew.value && (isUsers.value ? !detail.value : !projectId.value || tab.value !== 'overview' && !detail.value))
+const showList = computed(() => !projectNew.value && (isUsers.value ? !detail.value : !projectId.value || tab.value !== 'overview' && tab.value !== 'declarations' && !detail.value))
 const selectedScope = computed(() => detail.value && !isNew.value && tab.value === 'scopes' ? decodeURIComponent(detail.value) : '')
 const localPolicyProject = () => view.value?.policy
 const runtimeScopes = computed(() => {
@@ -144,7 +144,7 @@ async function load() {
   // Clear previous path data before any awaited call: failed navigation must not expose an old editor.
   project.value = localProject.value = identityScope.value = localScope.value = member.value = assignment.value = user.value = null
   items.value = []
-  declarations.value = []
+  declarationApplications.value = []
   scopeChoices.value = []
   password.value = ''
   busy.value = true
@@ -187,7 +187,6 @@ async function load() {
         if (!detail.value) items.value = await all((page, size) => (tab.value === 'applications' ? api.applications : api.scopeGrants)(projectId.value,page,size), project.value.revision)
         else if (tab.value === 'applications') {
           member.value = isNew.value ? {clientId: '', approved: false, audiences: [], supportedScopeKeys: []} : await api.application(projectId.value, decodeKey(detail.value))
-          if (!isNew.value && nextCaps.applicationScopeDeclarations) declarations.value = await api.applicationScopeDeclarations(projectId.value, member.value.clientId)
           if (!isNew.value && nextCaps.localPolicyRead && isRuntimeApplication(nextCaps,projectId.value,member.value.clientId)) {
             const result = await api.runtimePolicy(projectId.value,member.value.clientId)
             if (current !== generation || disposed) return
@@ -195,6 +194,17 @@ async function load() {
           }
         }
         else assignment.value = isNew.value ? {issuer: project.value.issuer, subject: '', scopeKeys: []} : await api.scopeGrant(projectId.value, decodeKey(detail.value))
+      } else if (tab.value === 'declarations') {
+        if (!nextCaps.identityRead || !project.value) throw {status: 403}
+        scopeChoices.value = await all((page, size) => api.applicationGroupScopes(projectId.value, page, size), project.value.revision)
+        const applications = await all((page, size) => api.applications(projectId.value,page,size), project.value.revision)
+        const withDeclarations = nextCaps.applicationScopeDeclarations ? await Promise.all(applications.map(async application => {
+          const declarations = await optional(() => api.applicationScopeDeclarations(projectId.value, application.clientId))
+          if (current !== generation || disposed) return null
+          return {...application, declarations: declarations ?? []}
+        })) : applications.map(application => ({...application, declarations: []}))
+        if (current !== generation || disposed) return
+        declarationApplications.value = withDeclarations.filter(Boolean)
       } else if (tab.value !== 'overview') throw {status: 404}
     }
     if (current === generation && !disposed) {
@@ -299,21 +309,28 @@ async function saveMember() {
     // Do not continue with the pre-mutation authenticated identity.
   }, 'saved', true)
 }
-async function createDeclaration(scope, permissions) {
+async function reloadDeclarations() {
+  const applications = await collectPages((page, size) => api.applications(projectId.value,page,size), props.context.signal, project.value.revision)
+  declarationApplications.value = await Promise.all(applications.map(async application => {
+    const declarations = caps.value?.applicationScopeDeclarations ? await optional(() => api.applicationScopeDeclarations(projectId.value, application.clientId)) : null
+    return {...application, declarations: declarations ?? []}
+  }))
+}
+async function createDeclaration(clientId, scope, permissions) {
   await perform(async () => {
-    await api.createApplicationScopeDeclaration(projectId.value, member.value.clientId, scope, permissions)
-    declarations.value = await api.applicationScopeDeclarations(projectId.value, member.value.clientId)
+    await api.createApplicationScopeDeclaration(projectId.value, clientId, scope, permissions)
+    await reloadDeclarations()
   })
 }
-async function updateDeclaration(scope, permissions, revision) {
+async function updateDeclaration(clientId, scope, permissions, revision) {
   await perform(async () => {
-    await api.updateApplicationScopeDeclaration(projectId.value, member.value.clientId, scope, permissions, revision)
-    declarations.value = await api.applicationScopeDeclarations(projectId.value, member.value.clientId)
+    await api.updateApplicationScopeDeclaration(projectId.value, clientId, scope, permissions, revision)
+    await reloadDeclarations()
   })
 }
-async function deleteDeclaration(scope, revision) {
+async function deleteDeclaration(clientId, scope, revision) {
   await perform(async () => {
-    await api.deleteApplicationScopeDeclaration(projectId.value, member.value.clientId, scope, revision)
+    await api.deleteApplicationScopeDeclaration(projectId.value, clientId, scope, revision)
     reauthenticationRequired.value = true
     caps.value = null
   })
@@ -380,11 +397,12 @@ onBeforeUnmount(() => {disposed = true; generation++; password.value = ''; if (u
       <template v-if="projectId">
         <KsButton :disabled="busy" @click="navigate('application-groups')">{{ t('back') }}</KsButton>
         <KsTabs type="box" :model-value="tab" :aria-label="t('applicationGroups')" @update:model-value="navigate(base + '/' + ($event === 'overview' ? '' : $event))">
-          <KsTabPane v-for="name in ['overview', 'scopes', 'applications', 'scope-grants']" :key="name" :name="name" :label="t(name === 'applications' ? 'clients' : name === 'scope-grants' ? 'assignments' : name)" />
+          <KsTabPane v-for="name in ['overview', 'scopes', 'applications', 'declarations', 'scope-grants']" :key="name" :name="name" :label="t(name === 'applications' ? 'clients' : name === 'scope-grants' ? 'assignments' : name === 'declarations' ? 'applicationPermissions' : name)" />
         </KsTabs>
       </template>
       <ApplicationGroupCards v-if="showList && !isUsers && !projectId" :items="items" :busy="busy" :storage-key="storageKey" @open="openRow" @refresh="load" />
       <ApplicationGroupList v-else-if="showList" :key="path" :items="items" :columns="columns" :storage-key="storageKey" :busy="busy" @open="openRow" @refresh="load" />
+      <ApplicationDeclarationsTable v-else-if="projectId && tab === 'declarations'" :applications="declarationApplications" :scopes="scopeChoices" :busy="busy" :disabled="identityDisabled" @create="createDeclaration" @update="updateDeclaration" @delete="deleteDeclaration" />
       <template v-else-if="projectNew || projectId && tab === 'overview'">
         <section v-if="project" aria-labelledby="identity-project-title">
           <h2 id="identity-project-title">{{ project.displayName || project.id }}</h2>
@@ -431,7 +449,6 @@ onBeforeUnmount(() => {disposed = true; generation++; password.value = ''; if (u
           <div class="buttons"><KsButton type="primary" native-type="submit" data-test="save-member">{{ t('save') }}</KsButton><KsButton v-if="!isNew" native-type="button" @click="confirmation = 'client'">{{ t('removeClient') }}</KsButton></div>
         </fieldset></form>
         <section v-if="savedMember" class="message"><h2>{{ t('saved') }}</h2><p>{{ t('approved') }}: {{ t(savedMember.approved ? 'active' : 'inactive') }}</p><p>{{ t('supportedScopeKeys') }}: {{ savedMember.supportedScopeKeys.join(', ') }}</p><p>{{ t('audiences') }}: {{ savedMember.audiences.join(', ') }}</p></section>
-        <ApplicationDeclarations v-if="!isNew && caps?.applicationScopeDeclarations" :items="declarations" :scopes="scopeChoices" :supported="member.supportedScopeKeys" :disabled="identityDisabled" @create="createDeclaration" @update="updateDeclaration" @delete="deleteDeclaration" />
         <section v-if="showRuntimePolicy" data-test="application-runtime-policy">
           <section v-if="localProject" aria-labelledby="local-project-title">
             <h2 id="local-project-title">{{ t('kestraActualPermissions') }}</h2>
