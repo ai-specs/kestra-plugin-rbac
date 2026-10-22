@@ -24,6 +24,11 @@ public final class ApplicationGroupDirectoryStore {
         public NotInitialized(SQLException cause) { super("Application group directory is not initialized; run ApplicationGroupDirectoryCommand preview/apply against this database before enabling kestra.rbac.application-groups",cause); }
     }
 
+    public static RuntimeException reclassified(SQLException failure) {
+        var state=failure.getSQLState();
+        return "42P01".equals(state)||"42S04".equals(state)?new NotInitialized(failure):new Unavailable(failure);
+    }
+
     private final DataSource source;
     private final ConnectionGuard connectionGuard;
     private final ObjectMapper mapper=new ObjectMapper()
@@ -267,6 +272,6 @@ public final class ApplicationGroupDirectoryStore {
             connection.setAutoCommit(false);connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
             try{connectionGuard.lock(connection);var result=work.run(connection);connection.commit();return result;}
             catch(SQLException|RuntimeException failure){try{connection.rollback();}catch(SQLException rollback){failure.addSuppressed(rollback);}throw failure;}
-        }catch(SQLException failure){var state=failure.getSQLState();throw "42P01".equals(state)||"42S04".equals(state)?new NotInitialized(failure):new Unavailable(failure);}
+        }catch(SQLException failure){throw reclassified(failure);}
     }
 }

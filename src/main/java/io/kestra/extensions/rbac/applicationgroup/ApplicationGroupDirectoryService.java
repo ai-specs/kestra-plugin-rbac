@@ -53,6 +53,10 @@ public final class ApplicationGroupDirectoryService implements ApplicationGroupD
     public long catalogRevision(Connection connection)throws SQLException { return store.catalogRevision(connection); }
 
     @Override public Result current(Connection connection,Request request)throws SQLException {
+        try { return readCurrent(connection, request); }
+        catch(SQLException failure) { throw ApplicationGroupDirectoryStore.reclassified(failure); }
+    }
+    private Result readCurrent(Connection connection,Request request)throws SQLException {
         if(!issuer.equals(request.issuer()) || !"main".equals(request.tenant()))throw new IllegalArgumentException("Protocol target mismatch");
         if(store.builtinGroupId(connection)==null)return new Result(1,false,Optional.empty());
         ApplicationGroupProtocolProjectionV1.Projection result=null;
