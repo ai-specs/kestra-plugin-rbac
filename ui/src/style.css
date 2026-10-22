@@ -25,6 +25,9 @@ input[type=checkbox] { accent-color: var(--ks-text-link); }
 .declaration-name-edit { width: 100%; height: 32px; box-sizing: border-box; padding: 4px 12px; font: inherit; color: var(--ks-text-primary); background: var(--ks-bg-input); border: 1px solid var(--ks-border-default); border-radius: 4px; }
 .application-permission-row label { flex: 1 1 200px; }
 .application-permission-row code { overflow-wrap: anywhere; }
+.rbac-page .kel-button.is-link { color: var(--ks-text-link); }
+.rbac-page .kel-button.is-link:hover { color: var(--ks-text-link); }
+.rbac-page .kel-button.is-link.is-disabled { color: var(--ks-text-secondary); }
 .table-wrap .ks-data-table-wrapper { --ks-data-table-gutter: 0px; }
 .management-data-table > .kel-pagination { display: flex; margin: 12px 0; }
 .management-data-table > .kel-pagination .kel-pagination__sizes { margin-right: auto; }
