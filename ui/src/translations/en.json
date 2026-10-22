@@ -20,6 +20,7 @@
     "password": "Password",
     "email": "Email",
     "active": "Active",
+    "builtinGroup": "Built-in application group",
     "inactive": "Inactive",
     "reset": "Reset password",
     "resource": "Resource",

@@ -390,6 +390,7 @@ onBeforeUnmount(() => {disposed = true; generation++; password.value = ''; if (u
           <h2 id="identity-project-title">{{ project.displayName || project.id }}</h2>
           <div v-if="!projectNew && !identityEditing" data-test="application-group-detail">
             <p>{{ project.id }}</p>
+            <p v-if="project.builtIn" class="builtin-indicator" data-test="builtin-group-indicator">{{ t('builtinGroup') }}</p>
             <p>{{ t('active') }}: {{ t(project.active ? 'active' : 'inactive') }}</p>
             <KsButton v-if="identityAllowed" :disabled="identityDisabled" data-test="edit-application-group" @click="identityEditing = true">{{ t('edit') }}</KsButton>
           </div>

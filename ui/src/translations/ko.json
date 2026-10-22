@@ -20,6 +20,7 @@
     "password": "비밀번호",
     "email": "이메일",
     "active": "활성",
+    "builtinGroup": "내장 애플리케이션 그룹",
     "inactive": "비활성",
     "reset": "비밀번호 재설정",
     "resource": "리소스",

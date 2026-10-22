@@ -20,6 +20,7 @@
     "password": "パスワード",
     "email": "メールアドレス",
     "active": "有効",
+    "builtinGroup": "組み込みアプリケーショングループ",
     "inactive": "無効",
     "reset": "パスワードをリセット",
     "resource": "リソース",

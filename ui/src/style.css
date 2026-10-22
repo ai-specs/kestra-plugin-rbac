@@ -18,6 +18,7 @@ input[type=checkbox] { accent-color: var(--ks-text-link); }
 .application-group-card-link:disabled { cursor: wait; }
 .application-group-card-title { font-size: 16px; font-weight: 600; }
 .application-group-card-id { color: var(--ks-text-secondary); overflow-wrap: anywhere; }
+.builtin-indicator { display: inline-block; margin-top: 4px; padding: 1px 8px; border: 1px solid var(--ks-border-default); border-radius: 9999px; font-size: 12px; color: var(--ks-text-secondary); background: var(--ks-bg-surface); width: fit-content; }
 .application-declaration { border: 1px solid var(--ks-border-default); border-radius: 8px; padding: 16px; margin: 16px 0; background: var(--ks-bg-surface); }
 .application-permission-row { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
 .application-permission-row label { flex: 1 1 200px; }

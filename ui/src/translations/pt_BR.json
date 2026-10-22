@@ -20,6 +20,7 @@
     "password": "Senha",
     "email": "E-mail",
     "active": "Ativo",
+    "builtinGroup": "Grupo de aplicativos integrado",
     "inactive": "Inativo",
     "reset": "Redefinir senha",
     "resource": "Recurso",

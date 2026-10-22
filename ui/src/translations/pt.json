@@ -20,6 +20,7 @@
     "password": "Palavra-passe",
     "email": "E-mail",
     "active": "Ativo",
+    "builtinGroup": "Grupo de aplicativos integrado",
     "inactive": "Inativo",
     "reset": "Repor palavra-passe",
     "resource": "Recurso",

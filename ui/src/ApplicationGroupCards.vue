@@ -58,6 +58,7 @@ watch(() => route.query, query => {if (!restoring) {try {sessionStorage.setItem(
         <button class="application-group-card-link" type="button" :disabled="busy" @click="emit('open', item)">
           <span class="application-group-card-title">{{ item.displayName || item.id }}</span>
           <span class="application-group-card-id">{{ item.id }}</span>
+          <span v-if="item.builtIn" class="builtin-indicator" data-test="builtin-group-card-indicator">{{ t('builtinGroup') }}</span>
         </button>
       </KsCard>
       <p v-if="!cards.length">{{ t('noRows') }}</p>

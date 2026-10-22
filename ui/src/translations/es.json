@@ -20,6 +20,7 @@
     "password": "Contraseña",
     "email": "Correo electrónico",
     "active": "Activo",
+    "builtinGroup": "Grupo de aplicaciones integrado",
     "inactive": "Inactivo",
     "reset": "Restablecer contraseña",
     "resource": "Recurso",
