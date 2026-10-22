@@ -70,6 +70,14 @@ const storageKey = computed(() => ['rbac-management-filters', props.context.tena
 const base = computed(() => 'application-groups/' + encodeURIComponent(projectId.value))
 const columns = computed(() => isUsers.value ? ['subject', 'name', 'email', 'active'] : !projectId.value ? ['id', 'displayName', 'issuer', 'active'] : tab.value === 'scopes' ? ['key','roleName','description'] : tab.value === 'applications' ? ['clientId', 'approved', 'audiences', 'supportedScopeKeys'] : ['subject', 'issuer', 'scopeKeys'])
 const showList = computed(() => !projectNew.value && (isUsers.value ? !detail.value : !projectId.value || tab.value !== 'overview' && tab.value !== 'declarations' && !detail.value))
+const backTarget = computed(() => {
+  if (isUsers.value) return user.value ? 'users' : ''
+  if (!projectId.value) return ''
+  if (identityScope.value) return base.value + '/scopes'
+  if (member.value) return base.value + '/applications'
+  if (assignment.value) return base.value + '/scope-grants'
+  return 'application-groups'
+})
 const selectedScope = computed(() => detail.value && !isNew.value && tab.value === 'scopes' ? decodeURIComponent(detail.value) : '')
 const localPolicyProject = () => view.value?.policy
 const runtimeScopes = computed(() => {
@@ -384,6 +392,7 @@ onBeforeUnmount(() => {disposed = true; generation++; password.value = ''; if (u
       <KsTabPane name="application-groups" :label="t('applicationGroups')" /><KsTabPane name="users" :label="t('users')" />
     </KsTabs>
     <header class="management-toolbar">
+      <KsButton v-if="backTarget" :disabled="busy" data-test="back" @click="navigate(backTarget)">{{ t('back') }}</KsButton>
       <div class="toolbar-status"><span v-if="projectId">{{ projectId }}</span></div>
       <KsButton :disabled="busy" @click="load">{{ t('reload') }}</KsButton>
       <KsButton v-if="showList && (isUsers ? caps?.userDirectory && identityAllowed : projectId ? tab === 'scopes' || identityAllowed : identityAllowed)" type="primary" :disabled="identityDisabled" @click="create">{{ t('create') }}</KsButton>
@@ -395,7 +404,6 @@ onBeforeUnmount(() => {disposed = true; generation++; password.value = ''; if (u
     <p v-if="notice" class="message" role="status">{{ notice }}</p>
     <template v-if="caps?.allowed && ready">
       <template v-if="projectId">
-        <KsButton :disabled="busy" @click="navigate('application-groups')">{{ t('back') }}</KsButton>
         <KsTabs type="box" :model-value="tab" :aria-label="t('applicationGroups')" @update:model-value="navigate(base + '/' + ($event === 'overview' ? '' : $event))">
           <KsTabPane v-for="name in ['overview', 'scopes', 'applications', 'declarations', 'scope-grants']" :key="name" :name="name" :label="t(name === 'applications' ? 'clients' : name === 'scope-grants' ? 'assignments' : name === 'declarations' ? 'applicationPermissions' : name)" />
         </KsTabs>
@@ -424,7 +432,6 @@ onBeforeUnmount(() => {disposed = true; generation++; password.value = ''; if (u
 
       </template>
       <template v-else-if="projectId && tab === 'scopes' && detail">
-        <KsButton :disabled="busy" @click="navigate(base + '/scopes')">{{ t('back') }}</KsButton>
         <section v-if="identityScope" aria-labelledby="identity-scope-title">
           <h2 id="identity-scope-title">{{ t('scopes') }}</h2>
           <form @submit.prevent="saveIdentityScope"><fieldset :disabled="identityDisabled">
@@ -439,7 +446,6 @@ onBeforeUnmount(() => {disposed = true; generation++; password.value = ''; if (u
 
       </template>
       <template v-else-if="member">
-        <KsButton :disabled="busy" @click="navigate(base + '/applications')">{{ t('back') }}</KsButton>
         <form @submit.prevent="saveMember"><fieldset :disabled="identityDisabled">
           <label>{{ t('clientId') }}<KsInput v-if="isNew" v-model="member.clientId" required name="member-client-id" /><output v-else>{{ member.clientId }}</output></label>
           <p>{{ t('objectRevision') }}: {{ isNew ? project?.revision : member.revision }}</p>
@@ -481,7 +487,6 @@ onBeforeUnmount(() => {disposed = true; generation++; password.value = ''; if (u
         </section>
       </template>
       <template v-else-if="assignment">
-        <KsButton :disabled="busy" @click="navigate(base + '/scope-grants')">{{ t('back') }}</KsButton>
         <form @submit.prevent="saveAssignment"><fieldset :disabled="identityDisabled">
           <label>{{ t('subject') }}<KsInput v-if="isNew" v-model="assignment.subject" required name="assignment-subject" /><output v-else>{{ assignment.subject }}</output></label>
           <p>{{ t('issuer') }}: {{ assignment.issuer }}</p><p>{{ t('objectRevision') }}: {{ isNew ? project?.revision : assignment.revision }}</p>
@@ -491,7 +496,6 @@ onBeforeUnmount(() => {disposed = true; generation++; password.value = ''; if (u
         <section v-if="savedAssignment" class="message"><h2>{{ t('saved') }}</h2><p>{{ t('subject') }}: {{ savedAssignment.subject }}</p><p>{{ t('scopeKeys') }}: {{ savedAssignment.scopeKeys.join(', ') }}</p><p>{{ t('objectRevision') }}: {{ savedAssignment.revision }} · {{ t('authorizationVersion') }}: {{ project?.authorizationVersion }}</p></section>
       </template>
       <template v-else-if="isUsers && user">
-        <KsButton :disabled="busy" @click="navigate('users')">{{ t('back') }}</KsButton>
         <form @submit.prevent="saveUser"><fieldset :disabled="usersDisabled">
           <label>{{ t('subject') }}<KsInput v-if="isNew" v-model="user.username" required autocomplete="off" /><output v-else>{{ user.subject }}</output></label>
           <label>{{ t('name') }}<KsInput v-model="user.name" required /></label><label>{{ t('email') }}<KsInput v-model="user.email" type="email" /></label>
