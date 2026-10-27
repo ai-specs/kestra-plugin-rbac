@@ -11,7 +11,7 @@ assert int(service.get('tests','0'))==13 and all(int(service.get(key,'0'))==0 fo
 service_output='\n'.join(service.itertext())
 assert 'Application group service backend: PostgreSQL' in service_output and 'Application group service backend: H2' not in service_output, 'Application group service requires PostgreSQL'
 print('PASS: applicationgroup.ApplicationGroupDirectoryServiceTest 13 PostgreSQL cases executed')
-for name, expected in [('store.PolicyDocumentValidatorTest', 6), ('store.JdbcPolicyStoreTest', 9), ('store.ApplicationGroupPolicyStoreTest', 5), ('store.ProjectMigrationReviewTest', 10), ('store.ApplicationGroupPolicyManagementTest', 7), ('store.ApplicationGroupStorageTest', 1), ('store.ApplicationGroupDirectoryStoreTest', 15), ('store.ApplicationScopeDeclarationCommandTest', 2), ('declaration.ApplicationScopeDeclarationStoreTest', 3)]:
+for name, expected in [('store.PolicyDocumentValidatorTest', 6), ('store.JdbcPolicyStoreTest', 9), ('store.ApplicationGroupPolicyStoreTest', 5), ('store.ProjectMigrationReviewTest', 10), ('store.ApplicationGroupPolicyManagementTest', 7), ('store.ApplicationGroupStorageTest', 1), ('store.ApplicationGroupDirectoryStoreTest', 16), ('store.ApplicationScopeDeclarationCommandTest', 2), ('declaration.ApplicationScopeDeclarationStoreTest', 3)]:
     path = directory / ('TEST-io.kestra.extensions.rbac.' + name + '.xml')
     if not path.is_file():
         raise SystemExit('FAIL: missing required report ' + name)
