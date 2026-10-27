@@ -218,6 +218,13 @@ new-install requiredTables。旧 `rbac_application_group_policy_head/snapshot` �
 RuntimePolicies 不再 fallback 到旧 store。BeanDiscoveryTest 和工厂测试检查此边界。
 CLI/历史迁移类仍可存在薄 jar，类存在不表示运行时 bean 或第二事实源。
 
+ApplicationScopeDeclarationMigration已退出生产MigrationScript自动发现，不能仅靠
+application-groups开关限制：功能关闭首装也不得建旧声明表。其类和历史scriptId/
+checksum保留用于明确历史入口；显式旧CLI与schema2 declaration-upgrade继续能读取
+原声明数据。新安装生产迁移回归必须设置repository=postgres，并覆盖feature-off
+（group开/关）、显式五表初始化、feature-on与再次关闭，检查实际MigrationScript
+bean集合及数据库表；仅检查旧store bean缺失不能证明不会建旧表。
+
 部署 requiredClasses 可新增 `applicationgroup/ApplicationPermission.class`、
 `management/ApplicationPermissionController.class`、`store/ApplicationPermissionUpgrade.class`、
 `store/ApplicationPermissionUpgradeCommand.class`（均带包前缀 `io/kestra/extensions/rbac/`）。

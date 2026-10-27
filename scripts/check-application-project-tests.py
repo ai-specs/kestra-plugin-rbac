@@ -29,6 +29,7 @@ REQUIRED['io.kestra.extensions.rbac.management.ClientCredentialManagementTest'] 
 REQUIRED['io.kestra.extensions.rbac.management.TemporaryAccountCommandsTest'] = 4
 REQUIRED['io.kestra.extensions.rbac.store.ManagementAuditStoreTest'] = 4
 REQUIRED['io.kestra.extensions.rbac.store.ManagementAuditSchemaCommandTest'] = 2
+REQUIRED['io.kestra.extensions.rbac.store.NewInstallMigrationTest'] = 3
 REQUIRED['io.kestra.extensions.rbac.management.PublishedUserDirectoryAccessTest'] = 8
 results=Path(sys.argv[1])
 for name,count in REQUIRED.items():

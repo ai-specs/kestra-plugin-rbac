@@ -41,3 +41,10 @@ assert {case.get('name','').removesuffix('()') for case in audit.findall('testca
 audit_output='\n'.join(audit.itertext())
 assert 'Management audit backend: PostgreSQL' in audit_output and 'Management audit backend: H2' not in audit_output, 'Audit requires PostgreSQL'
 print('PASS: store.ManagementAuditStoreTest 4 PostgreSQL named cases executed')
+new_install=ET.parse(directory/'TEST-io.kestra.extensions.rbac.store.NewInstallMigrationTest.xml').getroot()
+new_install_names={'featureOffProductionMigrationsDoNotCreateLegacyDeclarationStorage','featureOffInstallAndFeatureOnRestartKeepOnlyFiveUnifiedTables','explicitHistoricalMigrationAndStoreStillReadExistingSchema2Declarations'}
+assert int(new_install.get('tests','0'))==3 and all(int(new_install.get(key,'0'))==0 for key in ('failures','errors','skipped')), 'New-install migration suite must execute all 3 cases'
+assert {case.get('name','').removesuffix('()') for case in new_install.findall('testcase')}==new_install_names, 'New-install migration named cases differ'
+new_install_output='\n'.join(new_install.itertext())
+assert 'New-install migration backend: PostgreSQL' in new_install_output and 'New-install migration backend: H2' not in new_install_output, 'New-install migration suite requires PostgreSQL'
+print('PASS: store.NewInstallMigrationTest 3 PostgreSQL production-bean migration cases executed')

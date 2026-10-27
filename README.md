@@ -208,6 +208,12 @@ java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar'
 本轮真实 PG 发布门由 `scripts/check-declaration-upgrade-tests.py .evidence/postgres/results`
 检查；检查器末行 JSON 由部署仓消费，H2 报告或旧 schema1 结果不能替代。
 
+旧ApplicationScopeDeclarationMigration不再作为生产MigrationScript bean发现，即使
+功能关闭且repository=postgres也不会自动创建旧声明表。旧迁移类及其scriptId/checksum、
+显式ApplicationScopeDeclarationCommand和schema2升级读取保留，不能将它们作为默认
+新安装步骤。NewInstallMigrationTest对实际生产迁移集合执行feature-off、五表初始化、
+feature-on及再次关闭回归；PostgreSQL发布门还独立运行原declaration-upgrade八例。
+
 ### schema1 历史调查工具（非本轮 declaration-upgrade）
 
 以下工具仅在兼容正式宿主 executable 与本插件 jar 的 classpath 使用，不是生产 HTTP

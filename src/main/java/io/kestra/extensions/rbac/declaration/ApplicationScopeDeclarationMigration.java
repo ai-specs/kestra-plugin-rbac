@@ -2,12 +2,8 @@ package io.kestra.extensions.rbac.declaration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kestra.core.migration.MigrationScript;
-import io.micronaut.context.annotation.Requires;
-import jakarta.inject.Singleton;
 import javax.sql.DataSource;
 
-@Singleton
-@Requires(property = "kestra.repository.type", value = "postgres")
 public final class ApplicationScopeDeclarationMigration implements MigrationScript {
     private final DataSource source;
 
