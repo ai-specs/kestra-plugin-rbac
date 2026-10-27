@@ -12,9 +12,9 @@ final class ApplicationGroupTypedPolicy {
             if(op==null || op.contractVersion()!=TypedAuthorization.CONTRACT_VERSION || !"main".equals(op.tenant())
                 || op.resource()==null || op.action()==null || op.queryDomain()==null)return deny();
             var identity=context.identity();var policy=context.snapshot().policy();var local=policy.applicationGroups().get(identity.applicationGroupId());
-            if(local==null || !local.audiences().containsAll(identity.audiences()))return deny();
+            if(local==null || !context.hasTrustedLoginAudience() && !local.audiences().containsAll(identity.audiences()))return deny();
             var auth=new ApplicationGroupAuthorization(policy);var directory=context.directories().get(identity.applicationGroupId());
-            var id=new ApplicationGroupAuthorization.Identity(identity.subject(),identity.issuer(),identity.audiences().stream().sorted().findFirst().orElseThrow(),identity.applicationGroupId(),identity.directoryRevision(),identity.applicationGroupScopes(),identity.protocolScopes(),identity.tenant());
+            var id=new ApplicationGroupAuthorization.Identity(identity.subject(),identity.issuer(),identity.audiences().stream().sorted().findFirst().orElseThrow(),identity.applicationGroupId(),context.upperBound(identity.applicationGroupId()).applicationGroup().revision(),identity.applicationGroupScopes(),identity.protocolScopes(),identity.tenant(),context.hasTrustedLoginAudience());
             String resource=op.resource().name(),action=op.action().name();
             boolean query=op.coverage()==TypedAuthorization.Coverage.COMPLETE_QUERY;
             if(query && (!Set.of("READ","LIST").contains(action) || op.sideEffect()!=TypedAuthorization.SideEffect.READ_ONLY))return deny();

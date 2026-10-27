@@ -17,6 +17,12 @@ const componentPackage = lock.packages['node_modules/' + contract.designSystem.p
 if (contract.contractVersion !== 1 || componentPackage?.version !== contract.designSystem.version || componentPackage?.integrity !== contract.designSystem.integrity) {
   throw new Error('公开组件包与正式 UI SDK 的版本或 integrity 不匹配')
 }
+const compatibility = contract.overlayCompatibility
+if (compatibility?.contractVersion !== 1 || compatibility.status !== 'supported'
+  || JSON.stringify(compatibility.components) !== JSON.stringify(['KsDrawer', 'KsDialog', 'KsSelect', 'KsFilter'])
+  || ['element-plus', 'vue', 'vue-router'].some(name => lock.packages['node_modules/' + name]?.version !== compatibility[{'element-plus': 'elementPlus', vue: 'vue', 'vue-router': 'vueRouter'}[name]])) {
+  throw new Error('正式 overlayCompatibility 契约或公开运行依赖不匹配')
+}
 const shadowStyles = {
   name: 'rbac-shadow-styles',
   enforce: 'post',

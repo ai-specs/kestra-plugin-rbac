@@ -50,6 +50,10 @@ public final class ManagementController {
         BeanProvider<UserDirectoryAccess> users,BeanProvider<ApplicationDirectoryAccess> applications) {
         this.policies=policies;this.store=store;this.users=users;this.applications=applications;
     }
+    @jakarta.inject.Inject
+    public ManagementController(ApplicationGroupRuntimePolicies policies,BeanProvider<UserDirectoryAccess> users,BeanProvider<ApplicationDirectoryAccess> applications) {
+        this(policies,null,users,applications);
+    }
     private HttpResponse<?> request(String tenant,Authentication authentication,Function<ApplicationGroupRuntimePolicies.Context,HttpResponse<?>> action) {
         try {
             if (!"main".equals(tenant)) throw new Failure(404,"not_found");
@@ -61,7 +65,11 @@ public final class ManagementController {
         catch (ApplicationGroupPolicyStore.Unavailable failure) { return error(503,"policy_unavailable"); }
         catch (ApplicationGroupPolicyManagement.Missing failure) { return error(404,"not_found"); }
         catch (ApplicationGroupPolicyManagement.Exists failure) { return error(409,"already_exists"); }
-        catch (ApplicationDirectoryAccess.DirectoryFailure failure) { return error(failure.status(),failure.code()); }
+        catch (ApplicationDirectoryAccess.DirectoryFailure failure) {
+            if(!failure.references().isEmpty())return HttpResponse.status(HttpStatus.valueOf(failure.status()))
+                .body(Map.of("code",failure.code(),"references",failure.references())).header("Cache-Control","no-store");
+            return error(failure.status(),failure.code());
+        }
         catch (UserDirectoryAccess.DirectoryFailure failure) {
             return switch (failure.failure()) {
                 case INVALID -> error(400,"invalid_request");
@@ -152,7 +160,6 @@ public final class ManagementController {
             capabilities.put("mode","database");capabilities.put("readOnly",false);return ok(capabilities);
         });
     }
-    @Get("/application-groups/{id}/applications/{clientKey}/runtime-permissions")
     public HttpResponse<?> runtimePolicy(String tenant,String id,String clientKey,Authentication authentication) {
         return request(tenant,authentication,context -> {
             runtime(context,id,clientKey,READ);
@@ -162,46 +169,39 @@ public final class ManagementController {
             return ok(result).header("ETag","\""+context.snapshot().revision()+"\"");
         });
     }
-    @Post("/application-groups/{id}/applications/{clientKey}/runtime-permissions") @Consumes(MediaType.APPLICATION_JSON)
     public HttpResponse<?> createRuntimePolicy(String tenant,String id,String clientKey,Authentication authentication,@Header("If-Match") @Nullable String match,@Body byte[] bytes) {
         return request(tenant,authentication,context -> {
             long rev=revision(match);runtime(context,id,clientKey,MANAGE);
             return saved(service(context,id).createProject(rev,settingsBody(bytes,id),context.identity().subject()));
         });
     }
-    @Put("/application-groups/{id}/applications/{clientKey}/runtime-permissions") @Consumes(MediaType.APPLICATION_JSON)
     public HttpResponse<?> updateRuntimePolicy(String tenant,String id,String clientKey,Authentication authentication,@Header("If-Match") @Nullable String match,@Body byte[] bytes) {
         return request(tenant,authentication,context -> {
             long rev=revision(match);runtime(context,id,clientKey,MANAGE);
             return saved(service(context,id).updateProject(rev,id,settingsBody(bytes,id),context.identity().subject()));
         });
     }
-    @Get("/application-groups/{id}/applications/{clientKey}/runtime-permissions/scopes")
     public HttpResponse<?> runtimeScopes(String tenant,String id,String clientKey,Authentication authentication) {
         return request(tenant,authentication,context -> {runtime(context,id,clientKey,READ);return ok(context.visibleGroup(id).scopes());});
     }
-    @Get("/application-groups/{id}/applications/{clientKey}/runtime-permissions/scopes/{key}")
     public HttpResponse<?> runtimeScope(String tenant,String id,String clientKey,String key,Authentication authentication) {
         return request(tenant,authentication,context -> {
             runtime(context,id,clientKey,READ);var value=context.visibleGroup(id).scopes().get(scopeKey(key));
             if(value==null)throw new Failure(404,"not_found");return ok(value);
         });
     }
-    @Post("/application-groups/{id}/applications/{clientKey}/runtime-permissions/scopes") @Consumes(MediaType.APPLICATION_JSON)
     public HttpResponse<?> createRuntimeScope(String tenant,String id,String clientKey,Authentication authentication,@Header("If-Match") @Nullable String match,@Body byte[] bytes) {
         return request(tenant,authentication,context -> {
             long rev=revision(match);runtime(context,id,clientKey,MANAGE);
             return saved(service(context,id).createScope(rev,id,scopeBody(bytes),context.identity().subject()));
         });
     }
-    @Put("/application-groups/{id}/applications/{clientKey}/runtime-permissions/scopes/{key}") @Consumes(MediaType.APPLICATION_JSON)
     public HttpResponse<?> updateRuntimeScope(String tenant,String id,String clientKey,String key,Authentication authentication,@Header("If-Match") @Nullable String match,@Body byte[] bytes) {
         return request(tenant,authentication,context -> {
             long rev=revision(match);runtime(context,id,clientKey,MANAGE);String name=scopeKey(key);var node=scopeBody(bytes);same(name,node,"name");
             return saved(service(context,id).replaceScope(rev,id,name,node,context.identity().subject()));
         });
     }
-    @Delete("/application-groups/{id}/applications/{clientKey}/runtime-permissions/scopes/{key}")
     public HttpResponse<?> deleteRuntimeScope(String tenant,String id,String clientKey,String key,Authentication authentication,@Header("If-Match") @Nullable String match) {
         return request(tenant,authentication,context -> {
             long rev=revision(match);runtime(context,id,clientKey,MANAGE);
@@ -209,7 +209,7 @@ public final class ManagementController {
         });
     }
     @Get("/users{?page,size}")
-    public HttpResponse<?> users(String tenant,Authentication authentication,@QueryValue(defaultValue="1") int page,@QueryValue(defaultValue="20") int size) {
+    public HttpResponse<?> users(String tenant,Authentication authentication,@QueryValue(defaultValue="1") int page,@QueryValue(defaultValue="25") int size) {
         return request(tenant,authentication,context -> {identity(context,READ);page(page,size);return ok(users().list(page,size));});
     }
     @Get("/users/detail{?subject}")
@@ -219,12 +219,34 @@ public final class ManagementController {
     @Post("/users") @Consumes(MediaType.APPLICATION_JSON)
     public HttpResponse<?> createUser(String tenant,Authentication authentication,@Body byte[] bytes) {
         return request(tenant,authentication,context -> {
-            var node=input.body(bytes,Set.of("username","name","email","password"));identity(context,MANAGE);
-            return HttpResponse.created(users().create(subject(text(node,"username")),text(node,"name"),text(node,"email"),text(node,"password"))).header("Cache-Control","no-store");
+            var node=input.body(bytes,Set.of("username"),Set.of("name","email"));identity(context,MANAGE);
+            var command=new TemporaryAccountCommands.Create(subject(text(node,"username")),
+                node.has("name")?text(node,"name"):"",node.has("email")?text(node,"email"):"");
+            try(var mutation=io.kestra.extensions.rbac.applicationgroup.ApplicationGroupMutationContext.bind(context.identity())) {
+                var receipt=new TemporaryAccountCommands(users(),()->identity(context,MANAGE)).create(command);
+                return HttpResponse.created(receipt).header("ETag","\""+receipt.revision()+"\"").header("Cache-Control","no-store");
+            }
+        });
+    }
+    @Delete("/users/detail{?subject}")
+    public HttpResponse<?> deleteUser(String tenant,Authentication authentication,@QueryValue String subject,
+        @Header("If-Match") @Nullable String match) {
+        return request(tenant,authentication,context->{
+            long rev=revision(match);String target=subject(subject);identity(context,MANAGE);
+            if(context.identity().subject().equals(target))throw new Failure(403,"access_denied");
+            try(var mutation=io.kestra.extensions.rbac.applicationgroup.ApplicationGroupMutationContext.bind(context.identity())) {
+                new TemporaryAccountCommands(users(),()->identity(context,MANAGE)).delete(target,rev);
+                return HttpResponse.noContent();
+            }catch(UserDirectoryAccess.DirectoryFailure failure) {
+                if(failure.failure()==UserDirectoryAccess.Failure.CONFLICT)throw new Failure(412,"revision_conflict");
+                throw failure;
+            }
         });
     }
     private HttpResponse<?> account(ApplicationGroupRuntimePolicies.Context context,Supplier<UserDirectoryAccess.User> operation) {
-        try(var mutation=io.kestra.extensions.rbac.applicationgroup.ApplicationGroupMutationContext.bind(context.identity())) {return ok(operation.get());}catch(UserDirectoryAccess.DirectoryFailure failure) {
+        try(var mutation=io.kestra.extensions.rbac.applicationgroup.ApplicationGroupMutationContext.bind(context.identity())) {
+            var user=operation.get();return ok(Map.of("subject",user.subject(),"revision",user.revision())).header("ETag","\""+user.revision()+"\"");
+        }catch(UserDirectoryAccess.DirectoryFailure failure) {
             if(failure.failure()==UserDirectoryAccess.Failure.CONFLICT)throw new Failure(412,"revision_conflict");throw failure;
         }
     }
@@ -254,6 +276,16 @@ public final class ManagementController {
             if(!context.identity().issuer().equals(boundary.applicationGroup().issuer()))throw new Failure(403,"access_denied");
         }
         Object result=applications().invoke(new ApplicationDirectoryAccess.Request(resource,operation,context.identity(),id,key,page,size,revision,id==null?0:context.upperBound(id).applicationGroup().revision(),body));
+        if(!read) {
+            if(!(result instanceof Map<?,?> receipt))throw new Failure(503,"directory_unavailable");
+            String field=switch(resource){case GROUP->"id";case SCOPE->"key";case CLIENT->"clientId";case ASSIGNMENT->"subject";};
+            String expected=resource==ApplicationDirectoryAccess.Resource.GROUP?(id==null?text(body,"id"):id):key==null?text(body,field):key;
+            if(!receipt.keySet().equals(Set.of(field,"revision","parentRevision")) || !expected.equals(receipt.get(field))
+                || !(receipt.get("revision") instanceof Number objectRevision) || objectRevision.longValue()<1
+                || !(receipt.get("parentRevision") instanceof Number parentRevision) || parentRevision.longValue()<0)
+                throw new Failure(503,"directory_unavailable");
+            return ok(receipt).header("ETag","\""+objectRevision.longValue()+"\"");
+        }
         if(resource!=ApplicationDirectoryAccess.Resource.GROUP && operation!=ApplicationDirectoryAccess.Operation.DELETE) {
             if(operation==ApplicationDirectoryAccess.Operation.LIST) {
                 if(!(result instanceof ApplicationGroupDirectoryManagement.Page<?> values))throw new Failure(503,"directory_unavailable");
@@ -287,7 +319,7 @@ public final class ManagementController {
         throw new Failure(503,"directory_unavailable");
     }
     @Get("/application-groups{?page,size}")
-    public HttpResponse<?> applicationGroups(String tenant,Authentication authentication,@QueryValue(defaultValue="1") int page,@QueryValue(defaultValue="20") int size) {
+    public HttpResponse<?> applicationGroups(String tenant,Authentication authentication,@QueryValue(defaultValue="1") int page,@QueryValue(defaultValue="25") int size) {
         return request(tenant,authentication,c -> {page(page,size);return directory(c,ApplicationDirectoryAccess.Resource.GROUP,ApplicationDirectoryAccess.Operation.LIST,null,null,page,size,null,null);});
     }
     @Get("/application-groups/{id}")
@@ -296,12 +328,12 @@ public final class ManagementController {
     }
     @Post("/application-groups") @Consumes(MediaType.APPLICATION_JSON)
     public HttpResponse<?> createApplicationGroup(String tenant,Authentication authentication,@Body byte[] bytes) {
-        return request(tenant,authentication,c -> {Long rev=null;var n=input.body(bytes,Set.of("id","tenant","displayName"));if(!"main".equals(text(n,"tenant")))throw new Failure(400,"invalid_request");project(text(n,"id"));
+        return request(tenant,authentication,c -> {Long rev=null;var n=input.body(bytes,Set.of("id","tenant","displayName","description"));if(!"main".equals(text(n,"tenant")))throw new Failure(400,"invalid_request");project(text(n,"id"));
             return directory(c,ApplicationDirectoryAccess.Resource.GROUP,ApplicationDirectoryAccess.Operation.CREATE,null,null,1,1,rev,n);});
     }
     @Put("/application-groups/{id}") @Consumes(MediaType.APPLICATION_JSON)
     public HttpResponse<?> updateApplicationGroup(String tenant,String id,Authentication authentication,@Header("If-Match") @Nullable String match,@Body byte[] bytes) {
-        return request(tenant,authentication,c -> {long rev=revision(match);var n=input.body(bytes,Set.of("displayName","active"));
+        return request(tenant,authentication,c -> {long rev=revision(match);var n=input.body(bytes,Set.of("displayName","description","active"));
             return directory(c,ApplicationDirectoryAccess.Resource.GROUP,ApplicationDirectoryAccess.Operation.UPDATE,id,null,1,1,rev,n);});
     }
     @Delete("/application-groups/{id}")
@@ -310,7 +342,7 @@ public final class ManagementController {
             ApplicationDirectoryAccess.Operation.DELETE,project(id),null,1,1,revision(match),null));
     }
     @Get("/application-groups/{id}/scopes{?page,size}")
-    public HttpResponse<?> applicationGroupScopes(String tenant,String id,Authentication authentication,@QueryValue(defaultValue="1") int page,@QueryValue(defaultValue="20") int size) {
+    public HttpResponse<?> applicationGroupScopes(String tenant,String id,Authentication authentication,@QueryValue(defaultValue="1") int page,@QueryValue(defaultValue="25") int size) {
         return request(tenant,authentication,c -> {page(page,size);return directory(c,ApplicationDirectoryAccess.Resource.SCOPE,ApplicationDirectoryAccess.Operation.LIST,id,null,page,size,null,null);});
     }
     @Get("/application-groups/{id}/scopes/{key}")
@@ -333,7 +365,7 @@ public final class ManagementController {
             return directory(c,ApplicationDirectoryAccess.Resource.SCOPE,ApplicationDirectoryAccess.Operation.DELETE,id,scopeKey(key),1,1,rev,null);});
     }
     @Get("/application-groups/{id}/applications{?page,size}")
-    public HttpResponse<?> clients(String tenant,String id,Authentication authentication,@QueryValue(defaultValue="1") int page,@QueryValue(defaultValue="20") int size) {
+    public HttpResponse<?> clients(String tenant,String id,Authentication authentication,@QueryValue(defaultValue="1") int page,@QueryValue(defaultValue="25") int size) {
         return request(tenant,authentication,c -> {page(page,size);return directory(c,ApplicationDirectoryAccess.Resource.CLIENT,ApplicationDirectoryAccess.Operation.LIST,id,null,page,size,null,null);});
     }
     @Get("/application-groups/{id}/applications/{key}")
@@ -342,12 +374,12 @@ public final class ManagementController {
     }
     @Post("/application-groups/{id}/applications") @Consumes(MediaType.APPLICATION_JSON)
     public HttpResponse<?> clientsCreate(String tenant,String id,Authentication authentication,@Header("If-Match") @Nullable String match,@Body byte[] bytes) {
-        return request(tenant,authentication,c -> {Long rev=revision(match);var n=input.body(bytes,Set.of("clientId","approved","audiences","supportedScopeKeys"));
+        return request(tenant,authentication,c -> {Long rev=revision(match);var n=input.body(bytes,Set.of("clientId","description","audiences"));
             return directory(c,ApplicationDirectoryAccess.Resource.CLIENT,ApplicationDirectoryAccess.Operation.CREATE,id,null,1,1,rev,n);});
     }
     @Put("/application-groups/{id}/applications/{key}") @Consumes(MediaType.APPLICATION_JSON)
     public HttpResponse<?> clientsUpdate(String tenant,String id,String key,Authentication authentication,@Header("If-Match") @Nullable String match,@Body byte[] bytes) {
-        return request(tenant,authentication,c -> {long rev=revision(match);var n=input.body(bytes,Set.of("clientId","approved","audiences","supportedScopeKeys"));same(opaque(key),n,"clientId");
+        return request(tenant,authentication,c -> {long rev=revision(match);var n=input.body(bytes,Set.of("clientId","description","audiences"));same(opaque(key),n,"clientId");
             return directory(c,ApplicationDirectoryAccess.Resource.CLIENT,ApplicationDirectoryAccess.Operation.UPDATE,id,opaque(key),1,1,rev,n);});
     }
     @Delete("/application-groups/{id}/applications/{key}")
@@ -355,7 +387,7 @@ public final class ManagementController {
         return request(tenant,authentication,c -> {long rev=revision(match);return directory(c,ApplicationDirectoryAccess.Resource.CLIENT,ApplicationDirectoryAccess.Operation.DELETE,id,opaque(key),1,1,rev,null);});
     }
     @Get("/application-groups/{id}/scope-grants{?page,size}")
-    public HttpResponse<?> assignments(String tenant,String id,Authentication authentication,@QueryValue(defaultValue="1") int page,@QueryValue(defaultValue="20") int size) {
+    public HttpResponse<?> assignments(String tenant,String id,Authentication authentication,@QueryValue(defaultValue="1") int page,@QueryValue(defaultValue="25") int size) {
         return request(tenant,authentication,c -> {page(page,size);return directory(c,ApplicationDirectoryAccess.Resource.ASSIGNMENT,ApplicationDirectoryAccess.Operation.LIST,id,null,page,size,null,null);});
     }
     @Get("/application-groups/{id}/scope-grants/detail{?subject}")

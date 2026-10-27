@@ -16,7 +16,7 @@ public final class ApplicationGroupAuthorization {
     public record ScopeCatalog(String issuer, Set<String> audiences, boolean enabled,
                                long directoryRevision, java.util.Map<String, DirectoryScope> scopes) {
         public ScopeCatalog {
-            if (issuer == null || issuer.isBlank() || audiences == null || audiences.isEmpty()
+            if (issuer == null || issuer.isBlank() || audiences == null
                 || audiences.stream().anyMatch(audience -> audience == null || audience.isBlank())
                 || directoryRevision <= 0 || scopes == null)
                 throw new IllegalArgumentException("Invalid application group catalog");
@@ -34,7 +34,10 @@ public final class ApplicationGroupAuthorization {
     }
 
     public record Identity(String subject, String issuer, String audience, String project,
-                           long directoryRevision, Set<String> scopes, Set<String> protocolScopes, String tenant) {
+                           long directoryRevision, Set<String> scopes, Set<String> protocolScopes, String tenant,boolean trustedLogin) {
+        public Identity(String subject,String issuer,String audience,String project,long revision,Set<String> scopes,Set<String> protocols,String tenant) {
+            this(subject,issuer,audience,project,revision,scopes,protocols,tenant,false);
+        }
         public Identity(String subject, String issuer, String audience, String project, long directoryRevision, Set<String> scopes, Set<String> protocolScopes) {
             this(subject, issuer, audience, project, directoryRevision, scopes, protocolScopes, "main");
         }
@@ -142,7 +145,7 @@ public final class ApplicationGroupAuthorization {
         var upper = directory.upperBound();
         if (!local.enabled() || !upper.enabled() || identity.directoryRevision() != upper.directoryRevision()
             || !local.issuer().equals(identity.issuer())
-            || !local.issuer().equals(upper.issuer()) || !local.audiences().contains(identity.audience())
+            || !local.issuer().equals(upper.issuer()) || !identity.trustedLogin() && !local.audiences().contains(identity.audience())
             || !upper.audiences().containsAll(local.audiences())) return false;
         for (String protocol : identity.protocolScopes()) if (!directory.protocolScopes().contains(protocol)) return false;
         boolean allowed = false;
@@ -159,9 +162,9 @@ public final class ApplicationGroupAuthorization {
         if (!validIdentity(identity, request, directory)) return null;
         ApplicationGroupPolicy.ApplicationGroup local = policy.applicationGroups().get(identity.project());
         ScopeCatalog upper = directory.upperBound();
-        if (!local.issuer().equals(identity.issuer()) || !local.audiences().contains(identity.audience()) || !local.enabled() || !upper.enabled() || identity.directoryRevision() != upper.directoryRevision()
+        if (!local.issuer().equals(identity.issuer()) || !identity.trustedLogin() && !local.audiences().contains(identity.audience()) || !local.enabled() || !upper.enabled() || identity.directoryRevision() != upper.directoryRevision()
             || !local.issuer().equals(upper.issuer())
-            || !upper.audiences().contains(identity.audience()) || !upper.audiences().containsAll(local.audiences())) return null;
+            || !identity.trustedLogin() && !upper.audiences().contains(identity.audience()) || !upper.audiences().containsAll(local.audiences())) return null;
         for (String protocolScope : identity.protocolScopes()) if (!directory.protocolScopes().contains(protocolScope)) return null;
         List<ApplicationGroupPolicy.ScopeDefinition> scopes = new java.util.ArrayList<>();
         for (String scopeName : identity.scopes()) {

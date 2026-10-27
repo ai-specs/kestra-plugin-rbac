@@ -38,9 +38,9 @@ public final class ApplicationGroupDirectoryManagement implements ApplicationDir
         try {
             if(request.operation()==Operation.CREATE || request.operation()==Operation.UPDATE) {
                 var expected=switch(request.resource()) {
-                    case GROUP->request.operation()==Operation.CREATE?Set.of("id","tenant","displayName"):Set.of("displayName","active");
+                    case GROUP->request.operation()==Operation.CREATE?Set.of("id","tenant","displayName","description"):Set.of("displayName","description","active");
                     case SCOPE->Set.of("key","name","description");
-                    case CLIENT->Set.of("clientId","approved","audiences","supportedScopeKeys");
+                    case CLIENT->Set.of("clientId","description","audiences");
                     case ASSIGNMENT->Set.of("issuer","subject","scopeKeys");
                 };
                 if(request.body()==null || !request.body().isObject() || request.body().size()!=expected.size())throw new IllegalArgumentException("Exact management fields required");
@@ -57,12 +57,40 @@ public final class ApplicationGroupDirectoryManagement implements ApplicationDir
                             runtime?request.applicationGroupId():request.identity().applicationGroupId()))throw new DirectoryFailure(403,"access_denied");
                     if(request.applicationGroupId()!=null && directory.find(connection,request.applicationGroupId()).group().revision()!=request.directoryRevision())
                         throw new DirectoryFailure(409,"directory_changed");
-                    return switch(request.resource()) {
+                    Object result=switch(request.resource()) {
                         case GROUP->group(connection,request);
-                        case SCOPE->scope(connection,request);
-                        case CLIENT->application(connection,request);
+                        case SCOPE->{
+                            try {yield scope(connection,request);}
+                            catch(ApplicationGroupChanges.ScopeInUse failure) {
+                                boolean readIdentity=context.authorizeManagement(ApplicationGroupPolicy.ManagementDomain.IDENTITY,ApplicationGroupPolicy.ManagementAction.READ,request.applicationGroupId());
+                                boolean readPolicy=context.authorizeManagement(ApplicationGroupPolicy.ManagementDomain.LOCAL_POLICY,ApplicationGroupPolicy.ManagementAction.READ,request.applicationGroupId());
+                                var references=failure.references().stream().filter(value->readIdentity && (!"permission".equals(value.kind())
+                                    || directory.kind(value.clientId())==io.kestra.extensions.rbac.applicationgroup.ApplicationPermission.Kind.EXTERNAL_DECLARATION || readPolicy)).toList();
+                                throw new DirectoryFailure(409,"scope_in_use",references);
+                            }
+                        }
+                        case CLIENT->{
+                            if(request.operation()==Operation.UPDATE || request.operation()==Operation.DELETE) {
+                                var existing=directory.find(connection,request.applicationGroupId()).applications().stream()
+                                    .filter(value->value.clientId().equals(request.key())).findFirst().orElseThrow(ApplicationGroupChanges.NotFound::new);
+                                boolean policyChange=request.operation()==Operation.DELETE || !existing.audiences().equals(strings(request.body().get("audiences")));
+                                if(policyChange && directory.kind(existing.clientId())==io.kestra.extensions.rbac.applicationgroup.ApplicationPermission.Kind.KESTRA_POLICY
+                                    && !context.authorizeManagement(ApplicationGroupPolicy.ManagementDomain.LOCAL_POLICY,ApplicationGroupPolicy.ManagementAction.MANAGE,request.applicationGroupId()))
+                                    throw new DirectoryFailure(403,"access_denied");
+                            }
+                            yield application(connection,request);
+                        }
                         case ASSIGNMENT->grant(connection,request);
                     };
+                    if(request.operation()==Operation.LIST || request.operation()==Operation.FIND)return result;
+                    String field=switch(request.resource()){case GROUP->"id";case SCOPE->"key";case CLIENT->"clientId";case ASSIGNMENT->"subject";};
+                    String key=request.resource()==Resource.GROUP?(request.applicationGroupId()==null?text(request.body(),"id"):request.applicationGroupId()):
+                        request.key()==null?text(request.body(),field):request.key();
+                    long revision=result instanceof ApplicationGroupDirectoryReader.GroupView value?value.revision():
+                        result instanceof ApplicationGroupScope value?value.revision():result instanceof ApplicationGroupApplication value?value.revision():
+                        result instanceof ApplicationGroupScopeGrant value?value.revision():Math.addExact(request.revision(),1);
+                    long parent=request.resource()==Resource.GROUP?directory.catalogRevision(connection):directory.find(connection,request.applicationGroupId()).group().revision();
+                    return Map.of(field,key,"revision",revision,"parentRevision",parent);
                 }
             });
         }catch(ApplicationGroupChanges.NotFound failure){throw new DirectoryFailure(404,"not_found");}
@@ -80,24 +108,24 @@ public final class ApplicationGroupDirectoryManagement implements ApplicationDir
         return switch(request.operation()) {
             case LIST->{
                 var values=new java.util.ArrayList<ApplicationGroupDirectoryReader.GroupView>();
-                for(var snapshot:directory.snapshots(connection))values.add(directory.view(connection,snapshot));
+                for(var snapshot:directory.snapshots(connection).stream().sorted(java.util.Comparator.comparing(value->value.group().id())).toList())values.add(directory.view(connection,snapshot));
                 yield page(values,request,directory.catalogRevision(connection));
             }
             case FIND->directory.view(connection,directory.find(connection,request.applicationGroupId()));
             case CREATE->{
                 if(!"main".equals(text(request.body(),"tenant")))throw new IllegalArgumentException("Only main tenant supported");
-                var group=new ApplicationGroupDirectory.Group(project(text(request.body(),"id")),text(request.body(),"displayName"),true,1,1);
+                var group=new ApplicationGroupDirectory.Group(project(text(request.body(),"id")),text(request.body(),"displayName"),text(request.body(),"description"),true,1,1);
                 yield directory.view(connection,directory.create(connection,new ApplicationGroupDirectory.Snapshot(group,List.of(),List.of(),List.of())));
             }
             case UPDATE->directory.view(connection,directory.update(connection,request.applicationGroupId(),request.revision(),current->
-                groupMetadata(current,text(request.body(),"displayName"),bool(request.body(),"active"))));
+                groupMetadata(current,text(request.body(),"displayName"),text(request.body(),"description"),bool(request.body(),"active"))));
             case DELETE->{directory.delete(connection,request.applicationGroupId(),request.revision());yield Map.of("deleted",true);}
         };
     }
 
     private Object scope(Connection connection,Request request)throws SQLException {
         var current=directory.find(connection,request.applicationGroupId());
-        if(request.operation()==Operation.LIST)return page(current.scopes().stream().map(value->scope(current,value.key())).toList(),request,current.group().revision());
+        if(request.operation()==Operation.LIST)return page(current.scopes().stream().sorted(java.util.Comparator.comparing(ApplicationGroupDirectory.Scope::key)).map(value->scope(current,value.key())).toList(),request,current.group().revision());
         if(request.operation()==Operation.FIND)return scope(current,request.key());
         if(request.operation()==Operation.CREATE && request.revision()!=current.group().revision())throw new ApplicationGroupDirectoryStore.Conflict();
         String key=request.key()==null?text(request.body(),"key"):request.key();
@@ -113,14 +141,14 @@ public final class ApplicationGroupDirectoryManagement implements ApplicationDir
 
     private Object application(Connection connection,Request request)throws SQLException {
         var current=directory.find(connection,request.applicationGroupId());
-        if(request.operation()==Operation.LIST)return page(current.applications().stream().map(value->application(current,value.clientId())).toList(),request,current.group().revision());
+        if(request.operation()==Operation.LIST)return page(current.applications().stream().sorted(java.util.Comparator.comparing(ApplicationGroupDirectory.Application::clientId,ApplicationGroupDirectory::compareCodePoints)).map(value->application(current,value.clientId())).toList(),request,current.group().revision());
         if(request.operation()==Operation.FIND)return application(current,request.key());
         if(request.operation()==Operation.CREATE && request.revision()!=current.group().revision())throw new ApplicationGroupDirectoryStore.Conflict();
         String client=request.key()==null?text(request.body(),"clientId"):request.key();
         var saved=directory.update(connection,current.group().id(),current.group().revision(),snapshot->switch(request.operation()) {
-            case CREATE->registerApplication(snapshot,client,bool(request.body(),"approved"),strings(request.body().get("audiences")),strings(request.body().get("supportedScopeKeys")));
+            case CREATE->registerApplication(snapshot,client,text(request.body(),"description"),strings(request.body().get("audiences")));
             case UPDATE->{if(!client.equals(text(request.body(),"clientId")))throw new IllegalArgumentException("Application identifier is immutable");
-                yield applicationSupport(snapshot,client,request.revision(),bool(request.body(),"approved"),strings(request.body().get("audiences")),strings(request.body().get("supportedScopeKeys")));}
+                yield applicationMetadata(snapshot,client,request.revision(),text(request.body(),"description"),strings(request.body().get("audiences")));}
             case DELETE->removeApplication(snapshot,client,request.revision());
             default->throw new IllegalArgumentException("Unsupported application operation");
         });
@@ -129,7 +157,8 @@ public final class ApplicationGroupDirectoryManagement implements ApplicationDir
 
     private Object grant(Connection connection,Request request)throws SQLException {
         var current=directory.find(connection,request.applicationGroupId());
-        if(request.operation()==Operation.LIST)return page(current.userGrants().stream().map(value->grant(current,value.issuer(),value.subject())).toList(),request,current.group().revision());
+        if(request.operation()==Operation.LIST)return page(current.userGrants().stream().sorted(java.util.Comparator.comparing(ApplicationGroupDirectory.UserGrant::subject,ApplicationGroupDirectory::compareCodePoints)
+            .thenComparing(ApplicationGroupDirectory.UserGrant::issuer,ApplicationGroupDirectory::compareCodePoints)).map(value->grant(current,value.issuer(),value.subject())).toList(),request,current.group().revision());
         String issuer=request.identity().issuer();
         if(request.operation()==Operation.FIND)return grant(current,issuer,request.key());
         if(request.operation()==Operation.CREATE && request.revision()!=current.group().revision())throw new ApplicationGroupDirectoryStore.Conflict();
@@ -149,9 +178,9 @@ public final class ApplicationGroupDirectoryManagement implements ApplicationDir
         var value=snapshot.scopes().stream().filter(scope->scope.key().equals(key)).findFirst().orElseThrow(ApplicationGroupChanges.NotFound::new);
         return new ApplicationGroupScope(snapshot.group().id(),value.key(),value.name(),value.description(),value.revision());
     }
-    private static ApplicationGroupApplication application(ApplicationGroupDirectory.Snapshot snapshot,String clientId) {
+    private ApplicationGroupApplication application(ApplicationGroupDirectory.Snapshot snapshot,String clientId) {
         var value=snapshot.applications().stream().filter(application->application.clientId().equals(clientId)).findFirst().orElseThrow(ApplicationGroupChanges.NotFound::new);
-        return new ApplicationGroupApplication(snapshot.group().id(),value.clientId(),value.approved(),value.audiences(),value.supportedScopeKeys(),value.revision());
+        return new ApplicationGroupApplication(snapshot.group().id(),value.clientId(),value.description(),value.audiences(),value.supportedScopeKeys(),value.revision(),directory.kind(value.clientId()));
     }
     private static ApplicationGroupScopeGrant grant(ApplicationGroupDirectory.Snapshot snapshot,String issuer,String subject) {
         var value=snapshot.userGrants().stream().filter(grant->grant.issuer().equals(issuer)&&grant.subject().equals(subject)).findFirst().orElseThrow(ApplicationGroupChanges.NotFound::new);

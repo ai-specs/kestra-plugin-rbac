@@ -24,7 +24,7 @@ class ApplicationGroupDirectoryModelTest {
     }
 
     @Test void eligibleScopesAreOnlyApprovedApplicationSupportIntersectedWithUserGrants() {
-        var app=new Application("current-app",true,Set.of("current-app"),Set.of("reader","writer"),1);
+        var app=io.kestra.extensions.rbac.applicationgroup.TestApplicationFactory.application("current-app",true,Set.of("current-app"),Set.of("reader","writer"),1);
         var grant=new UserGrant("https://issuer.example","user",Set.of("reader","auditor"),1);
         var snapshot=new Snapshot(group,List.of(reader,writer,auditor),List.of(app),List.of(grant));
         assertEquals(Set.of("reader"),snapshot.eligibleScopeKeys("current-app",grant.issuer(),grant.subject()));
@@ -33,25 +33,25 @@ class ApplicationGroupDirectoryModelTest {
         for(String client:List.of("admin","kestra-ui","unknown"))assertEquals(Set.of(),snapshot.eligibleScopeKeys(client,grant.issuer(),grant.subject()));
         assertEquals(Set.of(),snapshot.eligibleScopeKeys("current-app","https://other.example","user"));
         assertEquals(Set.of(),snapshot.eligibleScopeKeys("current-app",grant.issuer(),"other-user"));
-        var unapproved=new Snapshot(group,List.of(reader),List.of(new Application("current-app",false,Set.of(),Set.of("reader"),1)),List.of(new UserGrant(grant.issuer(),"user",Set.of("reader"),1)));
-        assertEquals(Set.of(),unapproved.eligibleScopeKeys("current-app",grant.issuer(),"user"));
+        var unsupported=new Snapshot(group,List.of(reader),List.of(new Application("current-app","",Set.of("current-app"),List.of(),1)),List.of(new UserGrant(grant.issuer(),"user",Set.of("reader"),1)));
+        assertEquals(Set.of(),unsupported.eligibleScopeKeys("current-app",grant.issuer(),"user"));
     }
 
     @Test void duplicateKeysNamesClientsUsersAndUndefinedReferencesAreRejected() {
         assertThrows(IllegalArgumentException.class,()->new Snapshot(group,List.of(reader,reader),List.of(),List.of()));
         assertThrows(IllegalArgumentException.class,()->new Snapshot(group,List.of(reader,new Scope("other",reader.name(),"",1)),List.of(),List.of()));
         assertDoesNotThrow(()->new Snapshot(group,List.of(new Scope("first","Role","",1),new Scope("second","role","",1)),List.of(),List.of()));
-        var app=new Application("app",true,Set.of("app"),Set.of("reader"),1);
+        var app=io.kestra.extensions.rbac.applicationgroup.TestApplicationFactory.application("app",true,Set.of("app"),Set.of("reader"),1);
         assertThrows(IllegalArgumentException.class,()->new Snapshot(group,List.of(reader),List.of(app,app),List.of()));
-        assertThrows(IllegalArgumentException.class,()->new Snapshot(group,List.of(reader),List.of(new Application("app",true,Set.of("app"),Set.of("unknown"),1)),List.of()));
+        assertThrows(IllegalArgumentException.class,()->new Snapshot(group,List.of(reader),List.of(io.kestra.extensions.rbac.applicationgroup.TestApplicationFactory.application("app",true,Set.of("app"),Set.of("unknown"),1)),List.of()));
         var grant=new UserGrant("https://issuer.example","user",Set.of("reader"),1);
         assertThrows(IllegalArgumentException.class,()->new Snapshot(group,List.of(reader),List.of(),List.of(grant,grant)));
         assertThrows(IllegalArgumentException.class,()->new Snapshot(group,List.of(reader),List.of(),List.of(new UserGrant(grant.issuer(),"user",Set.of("unknown"),1))));
-        assertThrows(IllegalArgumentException.class,()->new Application("app",true,Set.of("*"),Set.of(),1));
+        assertThrows(IllegalArgumentException.class,()->io.kestra.extensions.rbac.applicationgroup.TestApplicationFactory.application("app",true,Set.of("*"),Set.of(),1));
     }
 
     @Test void snapshotsOwnTheirCollectionsAndDisabledGroupsCannotYieldScopes() {
-        var keys=new HashSet<>(Set.of("reader"));var app=new Application("app",true,Set.of("app"),keys,1);
+        var keys=new HashSet<>(Set.of("reader"));var app=io.kestra.extensions.rbac.applicationgroup.TestApplicationFactory.application("app",true,Set.of("app"),keys,1);
         var scopes=new ArrayList<>(List.of(reader));var applications=new ArrayList<>(List.of(app));
         var grant=new UserGrant("https://issuer.example","user",keys,1);
         var snapshot=new Snapshot(group,scopes,applications,List.of(grant));

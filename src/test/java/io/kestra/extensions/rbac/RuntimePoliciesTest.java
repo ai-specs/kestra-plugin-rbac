@@ -15,11 +15,12 @@ class RuntimePoliciesTest {
         final ApplicationGroupPolicyStore store=mock(ApplicationGroupPolicyStore.class);
         final ApplicationGroupDirectoryReader directory=mock(ApplicationGroupDirectoryReader.class);
         final TrustedIdentityV1 identities=mock(TrustedIdentityV1.class);
-        final ApplicationGroupRuntimePolicies runtime=new ApplicationGroupRuntimePolicies(store,directory,identities);
+        final ApplicationGroupRuntimePolicies runtime=new ApplicationGroupRuntimePolicies(directory,identities);
         ApplicationGroupPolicy policy;
         Fixture(Map<String,ApplicationGroupPolicy.ScopeDefinition> scopes){
             policy=new ApplicationGroupPolicy(2,Map.of("p",new ApplicationGroupPolicy.ApplicationGroup("https://issuer.example",Set.of("ui","api"),true,scopes)));
             when(store.readCurrent()).thenReturn(snapshot(1,policy));
+            when(directory.runtimePolicy()).thenAnswer(call->store.readCurrent());
             var shared=new ArrayList<ApplicationGroupDirectoryReader.ScopeView>();
             for(var entry:scopes.entrySet()){
                 shared.add(new ApplicationGroupDirectoryReader.ScopeView("p",entry.getKey(),"Scope","",1));
@@ -50,6 +51,17 @@ class RuntimePoliciesTest {
         verify(f.store,times(1)).readCurrent();verify(f.directory,times(1)).boundaries();
         evaluation.close().toCompletableFuture().join();assertFalse(evaluation.authorize(op(Resource.FLOW,Action.READ,"a","x",false)).toCompletableFuture().join().allowed());
         assertThrows(RuntimeException.class,()->provider.begin(f.identity("read"),"main").toCompletableFuture().join());
+    }
+    @Test void pinnedEvaluationExpiresWithinAcceptedRevocationBound(){
+        var fixture=new Fixture(Map.of("read",scope("a","x","READ")));
+        var clock=new java.util.concurrent.atomic.AtomicLong();
+        var runtime=new ApplicationGroupRuntimePolicies(fixture.directory,fixture.identities,60,clock::get);
+        var provider=new ConfiguredEvaluationProvider(runtime,Runnable::run);
+        var evaluation=provider.begin(fixture.identity("read"),"main").toCompletableFuture().join();
+        assertTrue(evaluation.authorize(op(Resource.FLOW,Action.READ,"a","x",false)).toCompletableFuture().join().allowed());
+        clock.set(java.util.concurrent.TimeUnit.SECONDS.toNanos(60));
+        assertFalse(evaluation.authorize(op(Resource.FLOW,Action.READ,"a","x",false)).toCompletableFuture().join().allowed());
+        evaluation.close().toCompletableFuture().join();
     }
     @Test void unknownMixedScopeAndWrongEpochDeny(){
         var f=new Fixture(Map.of("read",scope("a","x","READ")));

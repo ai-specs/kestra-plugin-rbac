@@ -39,7 +39,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
-@Controller("/api/v1/{tenant}/extensions/rbac/application-groups")
 @Produces(MediaType.APPLICATION_JSON)
 @ExecuteOn(TaskExecutors.IO)
 @Secured(SecurityRule.IS_AUTHENTICATED)

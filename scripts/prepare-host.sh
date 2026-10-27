@@ -24,12 +24,19 @@ with zipfile.ZipFile(path) as jar:
     assert 'io/kestra/core/models/executions/Execution.class' in names
     for name in ['io/kestra/webserver/oidc/UserDirectoryV1.class','io/kestra/webserver/oidc/ApplicationGroupProtocolProjectionV1.class','io/kestra/webserver/oidc/OidcProtocolStateV1.class','io/kestra/webserver/oidc/OidcProtocolStateV1$PendingClient.class','io/kestra/webserver/oidc/IdentityLifecycleGuardV1.class','io/kestra/webserver/oidc/TrustedIdentityV1.class','io/kestra/webserver/ui/UiExtensionProviderV1.class','io/kestra/webserver/ui/UiExtensionDescriptorV1.class']:
         assert name in names, f'Missing management contract: {name}'
+    for name in ['UserDirectoryV2','UserDirectoryV2$TemporaryUser','TrustedIdentityV2','IdentityLifecycleParticipantV1','IdentityLifecycleParticipantV1$Change','ClientCredentialsV1','ClientCredentialsV1$CredentialStatus','ClientCredentialsV1$IssuedCredential','ApplicationGroupProtocolProjectionV2','ApplicationGroupProtocolProjectionV2$Projection','ApplicationGroupProtocolProjectionV2$Result']:
+        entry='io/kestra/webserver/oidc/'+name+'.class'
+        assert jar.namelist().count(entry)==1, f'Missing or duplicated published protocol: {name}'
     for name in ['ApplicationDirectoryV1','ApplicationGroupManagementV1']:
         assert not any(entry.startswith('io/kestra/webserver/oidc/'+name) for entry in names), f'Obsolete host business contract: {name}'
     prefix='META-INF/kestra/ui-sdk/v1/'
-    required={'index.d.ts','contract.json','locales.mjs','check-translations.mjs','shadow-styles.mjs','README.md'}
+    required={'index.d.ts','contract.json','locales.mjs','check-translations.mjs','shadow-styles.mjs','README.md','shadow-overlays.mjs','shadow-overlays.d.mts','probe-matrix.mjs','probe-matrix.d.mts'}
     sdk_names={name.removeprefix(prefix) for name in names if name.startswith(prefix) and not name.endswith('/')}
     assert required.issubset(sdk_names), 'Incomplete published UI SDK'
+    contract=json.loads(jar.read(prefix+'contract.json'))
+    compatibility=contract.get('overlayCompatibility',{})
+    assert compatibility.get('contractVersion')==1 and compatibility.get('status')=='supported', 'Published overlay compatibility required'
+    assert compatibility.get('components')==['KsDrawer','KsDialog','KsSelect','KsFilter'], 'Unexpected overlay component contract'
     target=pathlib.Path(sdk_output)
     target.mkdir()
     for name in sorted(sdk_names):

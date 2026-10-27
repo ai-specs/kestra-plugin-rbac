@@ -34,24 +34,38 @@ public record ApplicationGroupInstallationPlan(int formatVersion,String installa
     }
 
     public ApplicationGroupInstallationPlan {
-        if(formatVersion!=1 || installationId==null || !UUID.fromString(installationId).toString().equals(installationId)
+        if(formatVersion!=2 || installationId==null || !UUID.fromString(installationId).toString().equals(installationId)
             || issuer==null || uiClientId==null || uiClientId.isBlank() || builtInApplicationGroupId==null
             || applicationGroups==null || applicationGroups.size()!=1)
             throw new IllegalArgumentException("One builtin application group required for new installation");
         new ApplicationGroupDirectory.UserGrant(issuer,"installation-validation",java.util.Set.of(),1);
         applicationGroups=List.copyOf(applicationGroups);
         var entry=applicationGroups.getFirst();var group=entry.applicationGroup();
+        var scopeKeys=entry.scopes().stream().map(ApplicationGroupDirectory.Scope::key).collect(java.util.stream.Collectors.toSet());
+        for(var application:entry.applications())for(var permission:application.permissions()) {
+            permission.validate(application.clientId().equals(uiClientId)?ApplicationPermission.Kind.KESTRA_POLICY:ApplicationPermission.Kind.EXTERNAL_DECLARATION,scopeKeys);
+            if(permission.revision()!=1)throw new IllegalArgumentException("Initial permission revision must be one");
+        }
         if(!builtInApplicationGroupId.equals(group.id()) || !group.active()
             || group.revision()!=1 || group.authorizationVersion()!=1)
             throw new IllegalArgumentException("Invalid builtin application group identity");
         var login=entry.applications().stream().filter(application->application.clientId().equals(uiClientId)).findFirst()
             .orElseThrow(()->new IllegalArgumentException("Configured login application registration required"));
-        if(!login.approved() || login.supportedScopeKeys().isEmpty()
+        if(login.supportedScopeKeys().isEmpty()
             || entry.scopes().stream().anyMatch(scope->scope.revision()!=1)
             || entry.applications().stream().anyMatch(application->application.revision()!=1)
             || entry.userGrants().stream().anyMatch(grant->!issuer.equals(grant.issuer()) || grant.revision()!=1)
             || entry.userGrants().stream().noneMatch(grant->grant.scopeKeys().stream().anyMatch(login.supportedScopeKeys()::contains)))
             throw new IllegalArgumentException("Initial support and user scope grants required");
+        var policy=ApplicationPermission.project(login.permissions(),ApplicationPermission.Kind.KESTRA_POLICY);
+        for(var domain:List.of(ApplicationGroupPolicy.ManagementDomain.IDENTITY,ApplicationGroupPolicy.ManagementDomain.LOCAL_POLICY)) {
+            boolean administrator=entry.userGrants().stream().flatMap(grant->entry.snapshot().eligibleScopeKeys(uiClientId,issuer,grant.subject()).stream())
+                .map(policy::get).filter(java.util.Objects::nonNull).flatMap(scope->scope.managementGrants().stream())
+                .anyMatch(grant->grant.domain()==domain && grant.actions().contains(ApplicationGroupPolicy.ManagementAction.MANAGE)
+                    && (domain==ApplicationGroupPolicy.ManagementDomain.IDENTITY
+                        || ApplicationGroupAuthorization.resolvedTargets(grant,group.id()).contains(group.id())));
+            if(!administrator)throw new IllegalArgumentException("Initial enabled typed administrators required");
+        }
     }
 
     public static ApplicationGroupInstallationPlan parse(byte[] bytes) {

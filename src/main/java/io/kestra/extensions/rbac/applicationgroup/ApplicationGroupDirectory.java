@@ -8,17 +8,20 @@ import java.util.Set;
 public final class ApplicationGroupDirectory {
     private ApplicationGroupDirectory() {}
 
-    public record Group(String id,String displayName,boolean active,long revision,long authorizationVersion) {
+    public record Group(String id,String displayName,String description,boolean active,long revision,long authorizationVersion) {
+        public Group(String id,String displayName,boolean active,long revision,long authorizationVersion) {
+            this(id,displayName,"",active,revision,authorizationVersion);
+        }
         public Group {
             if(id==null || !id.matches("[A-Za-z0-9][A-Za-z0-9_-]{0,127}") || displayName==null || displayName.isBlank()
-                || revision<=0 || authorizationVersion<=0)throw new IllegalArgumentException("Invalid application group");
+                || !text(displayName,256) || !text(description,4096) || revision<=0 || authorizationVersion<=0)throw new IllegalArgumentException("Invalid application group");
         }
     }
 
     public record Scope(String key,String name,String description,long revision) {
         public Scope {
             scopeKey(key);
-            if(name==null || name.isBlank() || description==null || revision<=0)
+            if(name==null || name.isBlank() || !text(name,256) || !text(description,4096) || revision<=0)
                 throw new IllegalArgumentException("Invalid group scope metadata");
         }
 
@@ -27,16 +30,17 @@ public final class ApplicationGroupDirectory {
         }
     }
 
-    public record Application(String clientId,boolean approved,Set<String> audiences,Set<String> supportedScopeKeys,long revision) {
+    public record Application(String clientId,String description,Set<String> audiences,List<ApplicationPermission> permissions,long revision) {
         public Application {
             opaque(clientId);
-            if(audiences==null || supportedScopeKeys==null || revision<=0)throw new IllegalArgumentException("Invalid group application");
-            audiences=Set.copyOf(audiences);supportedScopeKeys=Set.copyOf(supportedScopeKeys);
+            if(!text(description,4096) || audiences==null || permissions==null || revision<=0)throw new IllegalArgumentException("Invalid group application");
+            audiences=Set.copyOf(audiences);permissions=List.copyOf(permissions);
             audiences.forEach(ApplicationGroupDirectory::opaque);
             if(audiences.stream().anyMatch(value->value.contains("*")))throw new IllegalArgumentException("Exact application audience required");
-            supportedScopeKeys.forEach(ApplicationGroupDirectory::scopeKey);
-            if(approved && audiences.isEmpty())throw new IllegalArgumentException("An approved application requires an audience");
+            if(permissions.stream().map(ApplicationPermission::key).distinct().count()!=permissions.size())
+                throw new IllegalArgumentException("Duplicate application permission key");
         }
+        public Set<String> supportedScopeKeys() { return ApplicationPermission.supportedScopes(permissions); }
     }
 
     public record UserGrant(String issuer,String subject,Set<String> scopeKeys,long revision) {
@@ -70,12 +74,29 @@ public final class ApplicationGroupDirectory {
 
         public Set<String> eligibleScopeKeys(String clientId,String issuer,String subject) {
             if(!group.active())return Set.of();
-            var application=applications.stream().filter(value->value.clientId().equals(clientId)&&value.approved()).findFirst();
+            var application=applications.stream().filter(value->value.clientId().equals(clientId)).findFirst();
             var grant=userGrants.stream().filter(value->value.issuer().equals(issuer)&&value.subject().equals(subject)).findFirst();
             if(application.isEmpty() || grant.isEmpty())return Set.of();
             var eligible=new HashSet<>(application.get().supportedScopeKeys());eligible.retainAll(grant.get().scopeKeys());
             return Set.copyOf(eligible);
         }
+
+        public Counts counts() { return new Counts(scopes.size(),applications.size(),userGrants.size()); }
+    }
+
+    public record Counts(long scopes,long applications,long subjects) {}
+
+    public static boolean text(String value,int maximum) {
+        return value!=null && value.codePointCount(0,value.length())<=maximum;
+    }
+
+    public static int compareCodePoints(String left,String right) {
+        var leftPoints=left.codePoints().iterator();var rightPoints=right.codePoints().iterator();
+        while(leftPoints.hasNext() && rightPoints.hasNext()) {
+            int comparison=Integer.compare(leftPoints.nextInt(),rightPoints.nextInt());
+            if(comparison!=0)return comparison;
+        }
+        return Boolean.compare(leftPoints.hasNext(),rightPoints.hasNext());
     }
 
     private static void scopeKey(String key) {

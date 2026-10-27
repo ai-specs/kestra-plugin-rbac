@@ -60,6 +60,7 @@ public final class ApplicationGroupDirectoryStore {
                 statement.execute("CREATE TABLE IF NOT EXISTS rbac_application_group_retired (group_id VARCHAR(128) PRIMARY KEY)");
                 statement.executeUpdate("INSERT INTO rbac_application_group_bootstrap(singleton_id,builtin_group_id,catalog_revision) VALUES(1,NULL,0) ON CONFLICT DO NOTHING");
             }
+            ManagementAuditStore.initializeSchema(connection);
     }
 
     public Snapshot initializeBuiltin(Snapshot initial) {
@@ -132,8 +133,8 @@ public final class ApplicationGroupDirectoryStore {
                 || proposed.group().authorizationVersion()!=current.group().authorizationVersion())
                 throw new IllegalArgumentException("Directory controls identity and versions");
             var group=proposed.group();
-            var next=new Snapshot(new Group(group.id(),group.displayName(),group.active(),
-                Math.addExact(expectedRevision,1),Math.addExact(group.authorizationVersion(),1)),
+            var next=new Snapshot(new Group(group.id(),group.displayName(),group.description(),group.active(),
+                Math.addExact(expectedRevision,1),authorizationChanged(current,proposed)?Math.addExact(group.authorizationVersion(),1):group.authorizationVersion()),
                 proposed.scopes(),proposed.applications(),proposed.userGrants());
             requireUniqueClients(connection,next);
             try(var statement=prepare(connection,"UPDATE rbac_application_group_state SET revision=?,authorization_version=?,document_json=? WHERE group_id=? AND revision=?")) {
@@ -144,6 +145,44 @@ public final class ApplicationGroupDirectoryStore {
             invalidate(connection,next);
             advanceCatalog(connection);
             return next;
+    }
+
+    private static boolean authorizationChanged(Snapshot previous,Snapshot next) {
+        if(previous.group().active()!=next.group().active())return true;
+        var previousClients=previous.applications().stream().map(value->value.clientId()).collect(java.util.stream.Collectors.toSet());
+        var nextClients=next.applications().stream().map(value->value.clientId()).collect(java.util.stream.Collectors.toSet());
+        if(!previousClients.equals(nextClients))return true;
+        var before=new java.util.TreeMap<String,java.util.Set<String>>();
+        var after=new java.util.TreeMap<String,java.util.Set<String>>();
+        previous.applications().stream().filter(value->!value.supportedScopeKeys().isEmpty()).forEach(value->before.put(value.clientId(),value.supportedScopeKeys()));
+        next.applications().stream().filter(value->!value.supportedScopeKeys().isEmpty()).forEach(value->after.put(value.clientId(),value.supportedScopeKeys()));
+        if(!before.equals(after))return true;
+        var oldAudiences=new java.util.TreeMap<String,java.util.Set<String>>();
+        var newAudiences=new java.util.TreeMap<String,java.util.Set<String>>();
+        previous.applications().stream().filter(value->!value.supportedScopeKeys().isEmpty()).forEach(value->oldAudiences.put(value.clientId(),value.audiences()));
+        next.applications().stream().filter(value->!value.supportedScopeKeys().isEmpty()).forEach(value->newAudiences.put(value.clientId(),value.audiences()));
+        if(!oldAudiences.equals(newAudiences))return true;
+        var oldGrants=new java.util.HashMap<java.util.List<String>,java.util.Set<String>>();
+        var newGrants=new java.util.HashMap<java.util.List<String>,java.util.Set<String>>();
+        previous.userGrants().stream().filter(value->!value.scopeKeys().isEmpty()).forEach(value->oldGrants.put(java.util.List.of(value.issuer(),value.subject()),value.scopeKeys()));
+        next.userGrants().stream().filter(value->!value.scopeKeys().isEmpty()).forEach(value->newGrants.put(java.util.List.of(value.issuer(),value.subject()),value.scopeKeys()));
+        return !oldGrants.equals(newGrants);
+    }
+
+    public int removeUserGrants(Connection connection,String issuer,String subject)throws SQLException {
+        Objects.requireNonNull(issuer);Objects.requireNonNull(subject);
+        if(issuer.isBlank() || subject.isBlank())throw new IllegalArgumentException("Account identity required");
+        lock(connection);
+        int affected=0;
+        for(var snapshot:readAll(connection)) {
+            var remaining=snapshot.userGrants().stream()
+                .filter(grant->!issuer.equals(grant.issuer()) || !subject.equals(grant.subject())).toList();
+            if(remaining.size()==snapshot.userGrants().size())continue;
+            update(connection,snapshot.group().id(),snapshot.group().revision(),current->
+                new Snapshot(current.group(),current.scopes(),current.applications(),remaining));
+            affected++;
+        }
+        return affected;
     }
 
     public void delete(String groupId,long expectedRevision) {

@@ -1,10 +1,31 @@
 # kestra-plugin-rbac
 
-> 应用组、scope、应用支持、用户授予、内置/退役约束和业务存储由本仓实现；宿主仅提供标准 OIDC 与只读协议输入机制。旧宿主组 CRUD 代理已删除。实施与验收状态见 `docs/application-groups.md`。
+> 应用组、scope、统一应用权限、派生支持集、用户授予、内置/退役约束和业务存储由本仓实现；宿主提供标准 OIDC 与公开协议机制。当前 R21 候选设计、DTO 和初始化输入见 `docs/application-groups.md` 顶部。
 
 > 当前目标以维护者应用组模型为准；本仓自足契约见 `docs/application-groups.md` 和 `docs/management-api.md`。正式 CI 及 root 组合验收必须对应最终提交，历史记录不能替代。
 
-当前未发布的应用组设计和候选 API 见 `docs/application-groups.md`。候选实际策略接口已改为具体应用的 `runtime-permissions` 路径；旧全局策略与完整恢复入口已从候选源码删除。只有匹配宿主正式发布后重新编译、通过本仓 CI 并发布的插件才可用于最终部署；本文后续旧路径示例不得作为新模型接入说明。
+设计来源限定：R24同借用连接原子清理、R25配置登录client部署维护轮换是主控在维护者
+授权范围内补充的设计裁决，属于“维护者可复核设计”，不表示维护者已逐项批准。
+插件消费边界以ai-specs/kestra-overlay正式README的“账号与client凭据V2”和“受限
+维护CLI”公开契约为准，具体发布输入由host-contract.properties固定。
+
+当前未发布候选采用应用下独立 `permissions` CRUD，同一实体保存 Kestra typed grants 或外部 details。
+旧 `scope-declarations` 与 `runtime-permissions` 路由不注册，无兼容转发。当前代码不表示
+新契约 CI、PG、宿主 F3/F4 或 Compose 验收通过；只有匹配正式宿主重新编译、独立 CI
+及发布通过的产物才可部署。历史测试记录不能证明本轮 R21 行为。
+
+当前候选检查点：description为可选HTTP字段、权限列表先按key排序再分页，默认25；
+新安装候选为目录四表加管理审计表，生产不注册旧policy/declaration store bean。已消费正式
+协议44镜像（64c4498/run40523539018，固定digest见host-contract.properties），真实V2
+适配及空资源audiences登记已进入本地Java/PG验证，不补clientId。当前pin已升级正式
+2906d795/run40576953734的91827c9d…a2e6镜像，公开SDK overlayCompatibility经helper
+支持四个组件；新导航/overlay接线已通过本地clean check，真实插件UI/Compose仍须验收。
+具体输入、缺口和版本证据入口见 `docs/application-groups.md`；本地候选测试不是发布结论。
+
+账号候选HTTP只接受username/name/email创建并提供强修订DELETE入口；Published适配器
+消费正式UserDirectoryV2，唯一参与者借用连接完成全组清理、可信actor复查、最后管理员
+与提交审计。凭据HTTP已接正式ClientCredentialsV1。缺失/重复组件失败关闭；候选本地
+PG不是正式插件CI、浏览器或Compose交付，旧SDK检查不作为新组件正式支持。
 
 Independent, database-backed authorization extension for the Kestra OSS overlay. The business policy lives in this repository. Output: **`build/libs/kestra-rbac-authorizer.jar`**. The jar is thin, includes Micronaut generated bean indexes, and contains no Kestra, Micronaut, Jackson or other dependency classes.
 
@@ -21,7 +42,7 @@ are extracted from the immutable published image, independently of any overlay s
 当前设计见 [应用组与 Kestra 权限实施设计](docs/application-groups.md)，HTTP 和修订语义见
 [管理接口实施契约](docs/management-api.md)。schema2 使用 applicationGroups 保存 Kestra
 实际策略，scope 可映射应用自身的资源与管理授权。应用组业务及其存储属于插件；标准账号
-通过 UserDirectoryV1 管理，签发投影与生命周期检查使用正式协议 SPI，不查询宿主身份表。
+通过 UserDirectoryV2 管理，签发投影与生命周期检查使用正式协议 SPI，不查询宿主身份表。
 宿主公开契约必须先通过正式发布门，再运行下方 prepare-host 取得固定编译输入；源码
 或候选 jar 不能作为正式构建依赖。插件本轮 CI、发布及 Compose 状态以实际报告为准。
 
@@ -56,7 +77,30 @@ with packages:read; no personal token or cross-repository source deploy key is r
 前端框架来自固定 npm 依赖；UI SDK 从同一个已发布宿主镜像的 executable 提取，写入
 被忽略的 `.integration/ui-sdk`。SDK 缺失时构建失败，不从相邻仓补文件。
 
+原生Element Plus文案通过公开locale模块消费正式context.locale，使用SDK相同的
+13语言、pt-BR/zh-CN别名与en回退。根ElConfigProvider随宿主locale更新，使Select
+空态、无匹配与加载文案和业务vue-i18n同语言；分页复用相同解析函数。没有复制
+宿主私有翻译。真实组件可见文案、主题和Esc栈行为仍必须通过生产浏览器矩阵验证。
+
 ## 数据库管理模式
+
+账号生命周期另设必需PostgreSQL发布门；H2默认test不执行该suite，也不将其计为跳过。
+CI必须在公开测试数据库执行以下独立入口，并保留失败报告：
+
+```bash
+RBAC_STORE_TEST_JDBC=jdbc:postgresql://localhost:5432/postgres \
+  ./gradlew lifecyclePostgresTest --console=plain
+python3 scripts/check-lifecycle-tests.py build/test-results/lifecyclePostgresTest
+```
+
+suite为`io.kestra.extensions.rbac.applicationgroup.AccountLifecyclePostgresTest`，6个具名用例。
+真实插件目录、统一权限投影、身份复查、最后管理员检查与清理都在同一PG连接执行；
+标准账号、可信身份与参与者调度来自固定正式镜像，生产插件适配器/参与者实际接线。
+同任务另执行PublishedManagementPostgresTest的9项真实管理集成。检查器同时核对
+两个suite的精确名称集合、PostgreSQL及hostImage/executable hash；摘要gatePassed仅
+表示此门通过，不表示整仓可发布。正式HTTP/CSRF、插件浏览器及Compose仍须独立验收。
+CI证据入口为`.evidence/lifecycle/results/TEST-io.kestra.extensions.rbac.applicationgroup.AccountLifecyclePostgresTest.xml`
+及`.evidence/lifecycle/summary.json`；根仓T6必须核对具名用例、实际PostgreSQL和最终提交。
 
 正式使用要求：选择已通过宿主完整发布门的固定镜像，独立插件 CI/产物发布通过，并完成
 部署仓 Compose 验收。公开契约的正式输入由 host-contract.properties 和提取 provenance
@@ -85,8 +129,11 @@ subjects、role-mapping、instance-admin-roles 和 management-admin-subjects；�
 应用组、scope、应用支持登记、用户 scope 授予和应用权限声明由插件自己的数据库与
 `/ui/main/extensions/rbac` 管理页面维护。scope 使用不可改的 `key`、可改的角色 `name`
 与 `description`。应用支持范围与用户授予求交，决定用户在该应用可获得的 scope。
-应用权限声明只供查看与 OAuth2 授权页展示，不作为 Kestra 实际资源授权的事实来源。
-声明缺失或变更不会自行收窄 scope；撤销支持与用户授予会推进组撤权版本。
+应用支持集由全部权限的 scopeKeys 并集推导，不提供独立写入口，不保留插件 approved。
+当前配置 Kestra client 的同一权限实体是实际 typed 策略唯一来源；外部 details 仅是纯文本
+说明，不授予本实例资源权限。enabled 只控制 Kestra 执行，不改变支持集。有效支持或
+用户授予变化推进组 epoch；纯 name/description/details 不推进，真实 grants 变化只更新
+策略版本。新评估读取同连接当前快照，固定评估快照最长60秒后失败关闭，不无限复用旧允许。
 
 IDENTITY、LOCAL_POLICY 和 BUSINESS_INSTANCE 是机器契约的三个独立管理域，READ 与
 MANAGE 不互含。用户界面分别称用户及应用组管理、Kestra 实际权限和实例资源管理。
@@ -94,7 +141,7 @@ LOCAL_POLICY 的空 `applicationGroupIds` 只指所属应用组，非空集合�
 BUSINESS_INSTANCE 不授予另外两个管理域。新增账号不自动授予任何 scope。
 
 应用组入口是卡片。点击卡片先进入只读详情，显式点击编辑后修改。scope、应用支持和
-用户授予使用各自对象修订；创建子对象使用组修订。Kestra 实际权限使用全局策略修订。
+用户授予使用各自对象修订；创建组子对象使用组修订，创建权限用应用修订，修改权限用权限修订。
 写入必须发送强 If-Match。查看与修改分开检查，保存回执不附带未经 READ 授权的策略。
 
 宿主签发、refresh、账号/client 生命周期与插件业务写入复用正式公开协议安全锁。
@@ -114,15 +161,18 @@ scope 名称和说明不授予资源权限。旧项目路径、完整恢复和�
 `RBAC_POLICY_JDBC_PASSWORD` 和宿主完整 `KESTRA_CONFIGURATION`；它通过公开协议服务
 核对 issuer、真实安装凭据、标准安装 ID、账号可登录性及已注册的应用。
 
-`group-plan.json` 包含 `formatVersion:1`、`installationId`、`issuer`、`uiClientId`、
+`group-plan.json` 包含 `formatVersion:2`、`installationId`、`issuer`、`uiClientId`、
 `builtInApplicationGroupId` 与一个 `applicationGroups` 项。该项包含 `applicationGroup`
-（`id/displayName/active/revision/authorizationVersion`）、`scopes`（`key/name/description/revision`）、
-`applications`（`clientId/approved/audiences/supportedScopeKeys/revision`）及 `userGrants`
+（`id/displayName/description/active/revision/authorizationVersion`）、`scopes`（`key/name/description/revision`）、
+`applications`（`clientId/description/audiences/permissions/revision`）及 `userGrants`
 （`issuer/subject/scopeKeys/revision`）。`subject` 是成员的登录用户名（账号表 `username`
 列），不是安装回执 UUID 或账号内部标识；安装校验与管理 API 都按登录用户名查询账号。
 初始修订和撤权版本均为 1。UI client 是普通应用成员。
 不接受 `firstPartyUi`、`projects`、旧 scope 字段或恢复快照。初始账号必须获授实际管理策略
-所用的 scope；完整管理员可达性还需随后初始化 Kestra 实际策略并通过真实登录验证。
+所用的 scope。权限字段、enabled 和完整示例见 `docs/application-groups.md` 的“初始化 CLI
+输入”段落。一次事务初始化目录及全部权限，不再运行策略或声明初始化 CLI；安装计划
+必须提供实际 IDENTITY 与 LOCAL_POLICY 管理 grants，不按管理员名称推断。真实登录
+仍属于部署验收，离线初始化不能证明会话/撤权已通过。
 
 ```bash
 java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar' \
@@ -133,21 +183,32 @@ java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar'
 
 preview 不创建表或更改数据库，输出规范计划与完整计划的 SHA-256。apply 必须提供审查过的
 同一 hash，并在协议安全锁内再次核对安装状态，只允许空目录初始化。它原子保存内置组、
-scope、应用支持、用户授予与撤权版本；不能覆盖已安装目录。之后初始化实际策略与可选的
-权限声明，启用上述配置并启动 JVM，完成部署仓的真实 new-install 验收。
+scope、应用内全部权限、用户授予与撤权版本；不能覆盖已安装目录。启用上述配置并启动
+JVM，完成部署仓的真实 new-install 验收。
 
 ## 离线 schema2 维护与显式迁移
 
-应用组新安装还需为当前 Kestra 应用登记支持 scope 的权限声明元数据。此登记用于签发范围与授权页展示，不替代下方 Kestra 实际资源策略。先从成功宿主 CI 的固定镜像运行 `./scripts/prepare-host.sh`，再编译插件 jar 或下载成功插件 CI 的 jar，最后用同一 PostgreSQL 连接执行以下命令；`declarations.json` 含 `applicationGroupId`、`clientId` 与 `scopes:[{key,permissions:[{key,name}]}]`。`initialize` 在一个事务中写入全部声明，重复或无效 key 拒绝，不修改已有记录。
+旧 schema2 升级使用独立 declaration-upgrade，不并入 schema1 历史迁移。维护窗口停写，
+使用正式产物和同一数据库环境，先导出 sourceHash，编写完整显式映射，再 preview/apply。
+映射字段、冲突规则和初始版本见 `docs/application-groups.md` 的“schema2 declaration-upgrade
+命令与显式映射”。不得从显示名或外部 details 推断 Kestra grants。
 
 ```bash
 java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar' \
-  io.kestra.extensions.rbac.store.ApplicationScopeDeclarationCommand validate <declarations.json>
+  io.kestra.extensions.rbac.store.ApplicationPermissionUpgradeCommand source
 java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar' \
-  io.kestra.extensions.rbac.store.ApplicationScopeDeclarationCommand initialize <declarations.json>
+  io.kestra.extensions.rbac.store.ApplicationPermissionUpgradeCommand preview mapping.json
+java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar' \
+  io.kestra.extensions.rbac.store.ApplicationPermissionUpgradeCommand apply mapping.json <reviewed-approval-hash>
 ```
 
-命令读取下方相同的 `RBAC_POLICY_JDBC_URL`、`RBAC_POLICY_JDBC_USER` 和 `RBAC_POLICY_JDBC_PASSWORD` 环境变量。应用可申请范围由插件应用支持登记与用户授予决定；声明不是额外的签发或授权开关，新增或删除声明不会改写 Kestra 资源策略。当前应用组功能仍是部分候选，完整安装与组合验收须以根仓目标模型为准。
+命令读取相同的 `RBAC_POLICY_JDBC_URL`、`RBAC_POLICY_JDBC_USER`、`RBAC_POLICY_JDBC_PASSWORD`
+及完整 `KESTRA_CONFIGURATION`。旧策略/声明初始化命令不再作为新安装流程，旧表不再是
+另一份运行事实源。升级后重新登录，验证真实允许/拒绝和旧凭据没有自动扩权，再结束维护窗口。
+本轮真实 PG 发布门由 `scripts/check-declaration-upgrade-tests.py .evidence/postgres/results`
+检查；检查器末行 JSON 由部署仓消费，H2 报告或旧 schema1 结果不能替代。
+
+### schema1 历史调查工具（非本轮 declaration-upgrade）
 
 以下工具仅在兼容正式宿主 executable 与本插件 jar 的 classpath 使用，不是生产 HTTP
 首次引导接口，也不自动创建登录账号或授予 scope。凭据必须放入环境变量或被忽略的
@@ -158,8 +219,6 @@ export RBAC_POLICY_JDBC_URL RBAC_POLICY_JDBC_USER RBAC_POLICY_JDBC_PASSWORD
 export RBAC_POLICY_OPERATOR_SUBJECT
 java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar' \
   io.kestra.extensions.rbac.store.ApplicationGroupPolicyCommand validate <schema2-policy.json>
-java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar' \
-  io.kestra.extensions.rbac.store.ApplicationGroupPolicyCommand initialize <schema2-policy.json>
 java -cp '.integration/host-webserver.jar:build/libs/kestra-rbac-authorizer.jar' \
   io.kestra.extensions.rbac.store.ApplicationGroupPolicyCommand preview-migration \
   <schema2-policy.json> <role-decisions.json> <new-review.json>

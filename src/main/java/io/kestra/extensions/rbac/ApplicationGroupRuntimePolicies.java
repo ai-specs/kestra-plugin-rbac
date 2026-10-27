@@ -23,12 +23,23 @@ public final class ApplicationGroupRuntimePolicies {
         public Rejected(Failure failure) { super(failure.name()); this.failure=failure; }
         public Failure failure() { return failure; }
     }
-    private final ApplicationGroupPolicyStore store;
     private final ApplicationGroupDirectoryReader directory;
     private final TrustedIdentityV1 identities;
+    private final long maximumSnapshotAgeNanos;
+    private final java.util.function.LongSupplier clock;
+    public ApplicationGroupRuntimePolicies(ApplicationGroupDirectoryReader directory, TrustedIdentityV1 identities) {
+        this(directory,identities,60,System::nanoTime);
+    }
     @jakarta.inject.Inject
-    public ApplicationGroupRuntimePolicies(ApplicationGroupPolicyStore store, ApplicationGroupDirectoryReader directory, TrustedIdentityV1 identities) {
-        this.store=Objects.requireNonNull(store);this.directory=Objects.requireNonNull(directory);this.identities=Objects.requireNonNull(identities);
+    public ApplicationGroupRuntimePolicies(ApplicationGroupDirectoryReader directory,TrustedIdentityV1 identities,
+        @io.micronaut.context.annotation.Value("${kestra.rbac.policy-snapshot-max-age-seconds:60}") long maximumAgeSeconds) {
+        this(directory,identities,maximumAgeSeconds,System::nanoTime);
+    }
+    public ApplicationGroupRuntimePolicies(ApplicationGroupDirectoryReader directory,TrustedIdentityV1 identities,
+        long maximumAgeSeconds,java.util.function.LongSupplier clock) {
+        if(maximumAgeSeconds<1)throw new IllegalArgumentException("Positive policy snapshot lifetime required");
+        this.directory=Objects.requireNonNull(directory);this.identities=Objects.requireNonNull(identities);
+        this.maximumSnapshotAgeNanos=Math.multiplyExact(maximumAgeSeconds,1_000_000_000L);this.clock=Objects.requireNonNull(clock);
     }
     public Context open(Authentication authentication,String tenant) {
         if(authentication==null)throw new Rejected(Failure.INVALID_IDENTITY);
@@ -37,16 +48,27 @@ public final class ApplicationGroupRuntimePolicies {
         return open(identity,tenant);
     }
     public Context open(TrustedIdentityV1.Identity identity,String tenant) {
+        if(directory instanceof ApplicationGroupDirectoryService service) {
+            try {return service.transaction(connection->open(connection,identity,tenant));}
+            catch(Rejected failure){throw failure;}
+            catch(RuntimeException failure){throw new Rejected(Failure.DIRECTORY_UNAVAILABLE);}
+        }
         List<ApplicationGroupDirectoryReader.Boundary> boundaries;
         try { boundaries=List.copyOf(directory.boundaries()); }
         catch(RuntimeException error){throw new Rejected(Failure.DIRECTORY_UNAVAILABLE);}
         ApplicationGroupPolicyStore.Snapshot snapshot;
-        try {snapshot=store.readCurrent();}catch(RuntimeException error){throw new Rejected(Failure.POLICY_UNAVAILABLE);}
+        try {snapshot=directory.runtimePolicy();}catch(RuntimeException error){throw new Rejected(Failure.POLICY_UNAVAILABLE);}
         return context(identity,tenant,boundaries,snapshot);
     }
     public Context open(java.sql.Connection connection,TrustedIdentityV1.Identity identity,String tenant)throws java.sql.SQLException {
-        directory.verifyIdentity(connection,identity);
-        return context(identity,tenant,directory.boundaries(connection),store.readCurrent(connection));
+        List<ApplicationGroupDirectoryReader.Boundary> boundaries;
+        try {directory.verifyIdentity(connection,identity);boundaries=directory.boundaries(connection);}
+        catch(io.kestra.webserver.oidc.IdentityLifecycleGuardV1.Rejected failure){throw new Rejected(Failure.INVALID_IDENTITY);}
+        catch(RuntimeException failure){throw new Rejected(Failure.DIRECTORY_UNAVAILABLE);}
+        ApplicationGroupPolicyStore.Snapshot snapshot;
+        try {snapshot=directory.runtimePolicy(connection);}
+        catch(RuntimeException failure){throw new Rejected(Failure.POLICY_UNAVAILABLE);}
+        return context(identity,tenant,boundaries,snapshot);
     }
     public void validatePolicyChange(java.sql.Connection connection,TrustedIdentityV1.Identity identity,long expectedRevision,String target,ApplicationGroupPolicy candidate)throws java.sql.SQLException {
         try(var context=open(connection,identity,"main")) {
@@ -64,13 +86,13 @@ public final class ApplicationGroupRuntimePolicies {
         for(var boundary:boundaries)if(raw.putIfAbsent(boundary.applicationGroup().id(),boundary)!=null)throw new Rejected(Failure.INVALID_DIRECTORY);
         var current=raw.get(identity.applicationGroupId());
         if(current==null || !current.applicationGroup().active() || !tenant.equals(current.applicationGroup().tenant())
-            || !identity.issuer().equals(current.applicationGroup().issuer()) || identity.directoryRevision()!=current.applicationGroup().revision()
+            || !identity.issuer().equals(current.applicationGroup().issuer())
             || identity.authorizationVersion()!=current.applicationGroup().authorizationVersion()
-            || identity.audiences().isEmpty() || !current.audiences().containsAll(identity.audiences()))
+            || identity.audiences().isEmpty() || !(identity.clientId().equals(current.loginClientId()) && identity.audiences().equals(Set.of(identity.clientId()))) && !current.audiences().containsAll(identity.audiences()))
             throw new Rejected(Failure.INVALID_IDENTITY);
         return new Context(identity,snapshot,Map.copyOf(raw));
     }
-    public static final class Context implements AutoCloseable {
+    public final class Context implements AutoCloseable {
         private final TrustedIdentityV1.Identity identity;
         private final ApplicationGroupPolicyStore.Snapshot snapshot;
         private final Map<String,ApplicationGroupDirectoryReader.Boundary> boundaries;
@@ -78,6 +100,7 @@ public final class ApplicationGroupRuntimePolicies {
         private final Map<String,ApplicationGroupManagementSafety.DirectoryState> states;
         private final Set<String> managementTargets;
         private boolean closed;
+        private final long openedAt=clock.getAsLong();
         private Context(TrustedIdentityV1.Identity identity,ApplicationGroupPolicyStore.Snapshot snapshot,
             Map<String,ApplicationGroupDirectoryReader.Boundary> boundaries) {
             this.identity=identity;this.snapshot=snapshot;this.boundaries=boundaries;
@@ -87,7 +110,7 @@ public final class ApplicationGroupRuntimePolicies {
             directories.forEach((id,bound)->values.put(id,new ApplicationGroupManagementSafety.DirectoryState(bound,boundaries.get(id).reachableManagementScopes())));
             states=Map.copyOf(values);
         }
-        private void check(){if(closed)throw new Rejected(Failure.CLOSED);}
+        private void check(){if(closed || clock.getAsLong()-openedAt>=maximumSnapshotAgeNanos)throw new Rejected(Failure.CLOSED);}
         public TrustedIdentityV1.Identity identity(){check();return identity;}
         public ApplicationGroupPolicyStore.Snapshot snapshot(){check();return snapshot;}
         public Map<String,ApplicationGroupAuthorization.Directory> directories(){check();return directories;}
@@ -97,16 +120,20 @@ public final class ApplicationGroupRuntimePolicies {
         /** Binding options require a usable target audience; identity-directory reads use upperBound instead. */
         public ApplicationGroupDirectoryReader.Boundary bindingBoundary(String target){
             var boundary=upperBound(target);
-            if(boundary.audiences().isEmpty())throw new Rejected(Failure.INVALID_CANDIDATE);
+            if(boundary.audiences().isEmpty() && boundary.loginClientId()==null)throw new Rejected(Failure.INVALID_CANDIDATE);
             return boundary;
         }
         private boolean acceptedAudiences(){
             var local=snapshot.policy().applicationGroups().get(identity.applicationGroupId());
-            return local!=null && local.audiences().containsAll(identity.audiences());
+            return local!=null && (hasTrustedLoginAudience() || local.audiences().containsAll(identity.audiences()));
+        }
+        public boolean hasTrustedLoginAudience() {
+            check();var boundary=boundaries.get(identity.applicationGroupId());
+            return boundary!=null && identity.clientId().equals(boundary.loginClientId()) && identity.audiences().equals(Set.of(identity.clientId()));
         }
         private ApplicationGroupAuthorization.Identity localIdentity(){
             return new ApplicationGroupAuthorization.Identity(identity.subject(),identity.issuer(),identity.audiences().stream().sorted().findFirst().orElseThrow(),
-                identity.applicationGroupId(),identity.directoryRevision(),identity.applicationGroupScopes(),identity.protocolScopes(),identity.tenant());
+                identity.applicationGroupId(),boundaries.get(identity.applicationGroupId()).applicationGroup().revision(),identity.applicationGroupScopes(),identity.protocolScopes(),identity.tenant(),hasTrustedLoginAudience());
         }
         public boolean authorizeManagement(ApplicationGroupPolicy.ManagementDomain domain,ApplicationGroupPolicy.ManagementAction action,String target){
             check();var destination=boundaries.get(target);
@@ -173,7 +200,7 @@ public final class ApplicationGroupRuntimePolicies {
             var boundary=entry.getValue();var shared=boundary.applicationGroup();
             if(!entry.getKey().equals(shared.id()) || !shared.id().matches("[A-Za-z0-9][A-Za-z0-9_-]{0,127}")
                 || !"main".equals(shared.tenant()) || shared.revision()<=0 || shared.authorizationVersion()<=0
-                || shared.issuer()==null || shared.issuer().isBlank() || boundary.audiences().isEmpty())throw new Rejected(Failure.INVALID_DIRECTORY);
+                || shared.issuer()==null || shared.issuer().isBlank() || boundary.audiences().isEmpty() && boundary.loginClientId()==null)throw new Rejected(Failure.INVALID_DIRECTORY);
             var issuer=java.net.URI.create(shared.issuer());
             if(!Set.of("https","http").contains(issuer.getScheme()) || issuer.getHost()==null || issuer.getUserInfo()!=null
                 || issuer.getQuery()!=null || issuer.getFragment()!=null)throw new Rejected(Failure.INVALID_DIRECTORY);

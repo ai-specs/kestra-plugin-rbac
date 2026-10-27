@@ -1,7 +1,8 @@
-import {memberInput, managementAccess, requiresReauthentication, loginEntry, managementGrantInput, isRuntimeApplication, applicationPermissionModel, runtimePolicyView, runtimeScopeDefinition} from '../src/application-group-model.js'
+import {memberInput, managementAccess, requiresReauthentication, loginEntry, managementGrantInput, isRuntimeApplication} from '../src/application-group-model.js'
+import {permissionDraft, availableScopeOptions, collectPermissions, permissionInput} from '../src/access-control-model.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {canonicalPath, collectPages, groupScopeInput, scopeInput, selectGrantResource, splitLines, availableDeclarationScopes} from '../src/application-group-model.js'
+import {canonicalPath, collectPages, groupScopeInput, typedGrantsInput, selectGrantResource, splitLines} from '../src/application-group-model.js'
 
 test('empty paths enter application groups and legacy paths are not redirected into new authority', () => {
   for (const path of ['', '/']) assert.equal(canonicalPath(path), 'application-groups')
@@ -39,9 +40,9 @@ test('group scope input contains only the stable key and human readable metadata
   for(const scope of ['Bad','has space','a:b','x'.repeat(65),'']) assert.throws(()=>groupScopeInput({key:scope,name:'Reader',description:''}),error=>error.code==='invalid_scope')
   for(const name of ['', ' ']) assert.throws(()=>groupScopeInput({key:'reader',name,description:''}),error=>error.code==='invalid_scope')
 })
-test('a local scope input retains each complete grant without combining ranges or actions', () => {
-  const source = {scopeKey: 'opaque', description: '', enabled: true, revision: 44, grants: [{scope: 'NAMESPACE', tenant: 'main', namespace: 'A', descendants: false, resource: 'FLOW', actions: ['READ', 'LIST'], allIds: true, ids: ['stale']}, {scope: 'NAMESPACE', tenant: 'main', namespace: 'B', descendants: true, resource: 'FLOW', actions: ['UPDATE'], allIds: false, ids: 'flow/二\nflow,one'}]}
-  const result = scopeInput(source)
+test('N14/T3: typed permission content retains complete grants without combining ranges or actions', () => {
+  const source = {key: 'opaque', scopeKeys:['reader'], description: '', enabled: true, revision: 44, grants: [{scope: 'NAMESPACE', tenant: 'main', namespace: 'A', descendants: false, resource: 'FLOW', actions: ['READ', 'LIST'], allIds: true, ids: ['stale']}, {scope: 'NAMESPACE', tenant: 'main', namespace: 'B', descendants: true, resource: 'FLOW', actions: ['UPDATE'], allIds: false, ids: 'flow/二\nflow,one'}]}
+  const result = typedGrantsInput(source)
   assert.deepEqual(result.grants[0].actions, ['READ', 'LIST'])
   assert.equal(result.grants[0].namespace, 'A')
   assert.deepEqual(result.grants[0].ids, [])
@@ -53,7 +54,7 @@ test('a local scope input retains each complete grant without combining ranges o
 })
 
 test('Kestra management grants remain independent of group metadata and do not expand domains', () => {
-  const result = scopeInput({scopeKey: 'opaque-admin-text', description: '', enabled: true, grants: [], managementGrants: [{domain: 'LOCAL_POLICY', actions: ['READ']}]})
+  const result = typedGrantsInput({description: '', enabled: true, grants: [], managementGrants: [{domain: 'LOCAL_POLICY', actions: ['READ']}]})
   assert.deepEqual(result.grants, [])
   assert.deepEqual(result.managementGrants, [{domain: 'LOCAL_POLICY', actions: ['READ'], applicationGroupIds: []}])
   assert.equal(result.managementIntents, undefined)
@@ -63,7 +64,7 @@ test('METADATA has a fixed read-only tenant range and cannot carry business or m
   const grant = {scope: 'NAMESPACE', tenant: 'main', namespace: 'A', descendants: true, resource: 'METADATA', actions: ['READ', 'LIST', 'UPDATE', 'MANAGE'], ids: ['x'], allIds: false}
   selectGrantResource(grant)
   assert.deepEqual(grant, {scope: 'TENANT', tenant: 'main', namespace: null, descendants: false, resource: 'METADATA', actions: ['READ', 'LIST'], ids: [], allIds: true})
-  const input = scopeInput({scopeKey: 's', description: '', enabled: true, grants: [grant], managementGrants: []})
+  const input = typedGrantsInput({description: '', enabled: true, grants: [grant], managementGrants: []})
   assert.deepEqual(input.grants, [grant])
   grant.resource = 'FLOW'
   selectGrantResource(grant)
@@ -81,7 +82,7 @@ test('actual LF and CRLF separate IDs, audiences and scope sets without splittin
 })
 
 test('unsupported tenant business and instance grants cannot be silently turned into normal permissions', () => {
-  for (const scope of ['TENANT', 'INSTANCE', 'SYSTEM']) assert.throws(() => scopeInput({scopeKey: 's', description: '', enabled: true, grants: [{scope, tenant: 'main', resource: 'FLOW', actions: ['READ'], ids: [], allIds: true}]}), error => error.code === 'invalid_grant')
+  for (const scope of ['TENANT', 'INSTANCE', 'SYSTEM']) assert.throws(() => typedGrantsInput({description: '', enabled: true, grants: [{scope, tenant: 'main', resource: 'FLOW', actions: ['READ'], ids: [], allIds: true}]}), error => error.code === 'invalid_grant')
 })
 
 
@@ -91,18 +92,18 @@ test('MCP server configuration is an explicit tenant resource with independent I
   assert.equal(grant.scope,'TENANT')
   assert.equal(grant.namespace,null)
   assert.deepEqual(grant.actions,['READ','LIST','UPDATE'])
-  const input=scopeInput({scopeKey:'server-reader',description:'',enabled:true,grants:[grant]})
+  const input=typedGrantsInput({description:'',enabled:true,grants:[grant]})
   assert.deepEqual(input.grants[0].ids,['default'])
   assert.equal(input.grants[0].allIds,false)
-  assert.throws(()=>scopeInput({scopeKey:'bad',description:'',enabled:true,grants:[{...grant,actions:['EXECUTE']}]}),error=>error.code==='invalid_grant')
+  assert.throws(()=>typedGrantsInput({description:'',enabled:true,grants:[{...grant,actions:['EXECUTE']}]}),error=>error.code==='invalid_grant')
 })
 
-test('application support registration has stable scope keys and cannot supply the host UI flag', () => {
+test('N11/T3: application metadata cannot write derived support, protocol approval or host UI flag', () => {
   for (const clientId of ['ui','kestra-ui','admin','mcp']) {
-    assert.deepEqual(memberInput({clientId,approved:false,firstPartyUi:true,audiences:'ui\nmcp',supportedScopeKeys:'scope-a\nscope-b'}),{clientId,approved:false,audiences:['ui','mcp'],supportedScopeKeys:['scope-a','scope-b']})
+    assert.deepEqual(memberInput({clientId,description:'Application',approved:false,firstPartyUi:true,audiences:'ui\nmcp',supportedScopeKeys:'scope-a\nscope-b'}),{clientId,description:'Application',audiences:['ui','mcp']})
   }
-  for (const supportedScopeKeys of [['BAD'],['a:a'],['reader','reader']]) assert.throws(()=>memberInput({clientId:'ui',approved:true,supportedScopeKeys}),error=>error.code==='invalid_scope')
-  assert.throws(() => memberInput({clientId:'ui',approved:'true',firstPartyUi:true}),error => error.code === 'invalid_client_flags')
+  for (const supportedScopeKeys of [['BAD'],['a:a'],['reader','reader']]) assert.equal(Object.hasOwn(memberInput({clientId:'ui',description:'',approved:true,supportedScopeKeys}), 'supportedScopeKeys'), false)
+  for (const description of [undefined, 42, 'x'.repeat(4097)]) assert.throws(() => memberInput({clientId:'ui',description,approved:'true',firstPartyUi:true}),error => error.code === 'invalid_client_metadata')
 })
 test('application policy management cannot revive stale identity or grant group directory management', () => {
   const localOnly={allowed:true,localPolicyManagement:true,identityManagement:false}
@@ -117,8 +118,8 @@ test('stale identity errors require production sign-in while ordinary forbidden 
   assert.equal(requiresReauthentication({status:401}),true)
   assert.equal(requiresReauthentication({code:'identity_epoch_changed',status:403}),true)
   assert.equal(requiresReauthentication({code:'forbidden',status:403}),false)
-  assert.equal(loginEntry('/kestra/api/v1/main'),'/kestra/ui/')
-  assert.equal(loginEntry('/api/v1/main'),'/ui/')
+  assert.equal(loginEntry('/kestra/api/v1/main'),'/kestra/oidc/logout')
+  assert.equal(loginEntry('/api/v1/main'),'/oidc/logout')
   for (const path of ['//evil.invalid/api/v1/main','https://evil.invalid/api/v1/main','/unknown']) assert.throws(() => loginEntry(path))
 })
 
@@ -130,7 +131,7 @@ test('management project targets are exact, explicit and limited to LOCAL_POLICY
 })
 test('group metadata cannot supply the application runtime management targets', () => {
   const shared=groupScopeInput({key:'s',name:'Reader',description:'',managementIntents:[{domain:'LOCAL_POLICY',actions:['MANAGE'],applicationGroupIds:['shared-target']}]})
-  const local=scopeInput({scopeKey:'s',description:'',enabled:true,grants:[],managementGrants:[{domain:'LOCAL_POLICY',actions:['READ'],applicationGroupIds:['local-target']}]})
+  const local=typedGrantsInput({description:'',enabled:true,grants:[],managementGrants:[{domain:'LOCAL_POLICY',actions:['READ'],applicationGroupIds:['local-target']}]})
   assert.equal(shared.managementIntents,undefined)
   assert.deepEqual(local.managementGrants[0].applicationGroupIds,['local-target'])
   assert.equal(shared.managementGrants,undefined)
@@ -149,7 +150,7 @@ test('management target IDs enforce the frozen 128-character grammar', () => {
 
 test('malformed complete grants fail before writing rather than silently changing input', () => {
   const base={scope:'NAMESPACE',tenant:'main',namespace:'a',descendants:false,resource:'FLOW',actions:['READ'],allIds:true,ids:[]}
-  const encode=grant=>scopeInput({scopeKey:'s',enabled:true,grants:[grant]})
+  const encode=grant=>typedGrantsInput({enabled:true,grants:[grant]})
   for (const override of [{actions:[]},{actions:['READ','READ']},{actions:['MANAGE']},{resource:'UNKNOWN'},{namespace:''},{allIds:false,ids:[]},{descendants:'false'},{allIds:'true'}]) assert.throws(()=>encode({...base,...override}),error=>error.code==='invalid_grant')
   const metadata={...base,scope:'TENANT',namespace:null,resource:'METADATA'}
   assert.equal(encode(metadata).grants[0].resource,'METADATA')
@@ -168,29 +169,31 @@ test('only the explicitly configured current application receives its runtime po
   assert.equal(isRuntimeApplication({...capabilities,runtimeApplicationClientId:''},'group','configured-ui'),false)
   assert.equal(isRuntimeApplication({allowed:true,applicationGroupId:'group',firstPartyUi:true},'group','configured-ui'),false)
 })
-test('scope metadata cannot populate or enable application resource permissions', () => {
+test('N14/T3: scope metadata cannot populate or enable a new application permission', () => {
   const metadata={key:'reader',name:'Administrator',description:'May update everything',enabled:true,grants:[{actions:['UPDATE']}],managementGrants:[{domain:'IDENTITY',actions:['MANAGE']}]}
-  assert.deepEqual(applicationPermissionModel(metadata),{scopeKey:'reader',description:'',enabled:false,grants:[],managementGrants:[]})
-  assert.throws(()=>applicationPermissionModel({...metadata,key:'BAD'}),error=>error.code==='invalid_scope')
+  const draft = permissionDraft(null, 'kestra-policy')
+  assert.deepEqual(draft,{key:'',name:'',scopeKeys:[],description:'',enabled:true,grants:[],managementGrants:[]})
+  assert.deepEqual(draft.grants, []); assert.deepEqual(draft.managementGrants, [])
+  assert.equal(metadata.grants[0].actions[0], 'UPDATE')
   assert.throws(()=>groupScopeInput({scope:'reader',name:'Reader',description:''}),error=>error.code==='invalid_scope')
 })
 
-test('application declarations select registered supported scopes without an obsolete active flag', () => {
+test('N13/T3: unified permission scope options include every group scope, even already used scopes', () => {
   const reader={key:'reader',name:'Reader',description:''}
   const writer={key:'writer',name:'Writer',description:''}
   const outside={key:'outside',name:'Outside',description:''}
   const scopes=[reader,writer,outside,{key:'BAD',name:'Invalid',description:''}]
-  assert.deepEqual(availableDeclarationScopes(scopes,['reader','writer','missing','BAD'],[{scopeKey:'writer'}]),[reader])
-  assert.deepEqual(availableDeclarationScopes(scopes,[],[]),[])
-  assert.deepEqual(availableDeclarationScopes(scopes,['reader'],[{scopeKey:'reader'}]),[])
+  assert.deepEqual(availableScopeOptions(scopes),[outside, reader, writer])
+  assert.deepEqual(availableScopeOptions([]),[])
+  assert.deepEqual(availableScopeOptions([reader]),[reader])
   assert.equal(Object.hasOwn(reader,'active'),false)
   assert.deepEqual(scopes,[reader,writer,outside,{key:'BAD',name:'Invalid',description:''}])
 })
-test('runtime permission editing copies only the application policy and preserves its complete grants', () => {
+test('N14/T3: unified permission editing copies actual grants without scope metadata', () => {
   const metadata={key:'reader',name:'Reader',description:'Group description'}
-  const policy={description:'Kestra policy',enabled:true,grants:[{resource:'FLOW',namespace:'allowed',actions:['READ']}],managementGrants:[]}
-  const editor=applicationPermissionModel(metadata,policy)
-  assert.equal(editor.scopeKey,'reader')
+  const policy={key:'p',name:'Read',scopeKeys:['reader'],implementationKind:'kestra-policy',description:'Kestra policy',enabled:true,grants:[{resource:'FLOW',namespace:'allowed',actions:['READ']}],managementGrants:[]}
+  const editor=permissionDraft(policy,'kestra-policy')
+  assert.deepEqual(editor.scopeKeys,['reader'])
   assert.equal(editor.description,'Kestra policy')
   assert.deepEqual(editor.grants,policy.grants)
   editor.grants[0].actions.push('UPDATE')
@@ -198,22 +201,19 @@ test('runtime permission editing copies only the application policy and preserve
   assert.equal(metadata.description,'Group description')
 })
 
-test('runtime policy reads require the exact application and group without a legacy global policy wrapper', () => {
-  const value={revision:7,applicationGroupId:'group',clientId:'client',policy:{issuer:'https://issuer',audiences:['ui'],enabled:true,scopes:{reader:{description:'',enabled:true,grants:[],managementGrants:[]}}}}
-  const result=runtimePolicyView(value,'group','client')
-  result.policy.audiences.push('other')
-  assert.deepEqual(value.policy.audiences,['ui'])
-  assert.equal(runtimePolicyView({...value,policy:null},'group','client').policy,null)
-  for(const change of [{revision:0},{revision:'7'},{applicationGroupId:'other'},{clientId:'other'},{policy:{schemaVersion:2,applicationGroups:{}}},{policy:{...value.policy,directoryRevision:2}},{policy:undefined}]) assert.throws(()=>runtimePolicyView({...value,...change},'group','client'),error=>error.code==='invalid_runtime_policy')
+test('N14/N19/T3: unified reads reject a legacy global wrapper and wrong parent snapshot', async () => {
+  const value={items:[{key:'p',parentRevision:7}],total:1,page:1,size:100,parentRevision:7}
+  assert.deepEqual(await collectPermissions(async()=>value,undefined,7), value.items)
+  for(const change of [{parentRevision:0},{parentRevision:'7'},{parentRevision:8},{items:[{key:'p',parentRevision:8}]},{items:undefined}]) await assert.rejects(collectPermissions(async()=>({...value,...change}),undefined,7))
+  await assert.rejects(collectPermissions(async()=>({revision:7,policy:{applicationGroups:{}}}),undefined,7))
 })
 
-test('a scope named constructor is not an existing runtime policy through object inheritance', () => {
-  assert.equal(runtimeScopeDefinition({scopes:{}},'constructor'),null)
-  const definition={description:'Actual policy',enabled:true,grants:[],managementGrants:[]}
-  assert.equal(runtimeScopeDefinition({scopes:{constructor:definition}},'constructor'),definition)
-  const result=applicationPermissionModel({key:'constructor',name:'Constructor',description:''},runtimeScopeDefinition({scopes:{}},'constructor'))
-  assert.equal(result.scopeKey,'constructor');assert.equal(result.enabled,false)
-  assert.throws(()=>scopeInput({name:'reader',enabled:true,grants:[]}),error=>error.code==='invalid_scope')
+test('N13/N14/T3: constructor scope stays plain data and cannot acquire inherited grants', () => {
+  const metadata={key:'constructor',name:'Constructor',description:''}
+  assert.deepEqual(availableScopeOptions([metadata]),[metadata])
+  const result=permissionDraft({key:'constructor',name:'Constructor',scopeKeys:['constructor'],implementationKind:'kestra-policy',grants:[],managementGrants:[],enabled:false},'kestra-policy')
+  assert.deepEqual(result.scopeKeys,['constructor']);assert.equal(result.enabled,false);assert.deepEqual(result.grants,[])
+  assert.throws(()=>permissionInput({name:'reader',enabled:true,grants:[]},'kestra-policy',[]),error=>error.code==='invalid_permission')
 })
 
 test('project directory pagination rejects same-total revision changes and missing revisions', async () => {

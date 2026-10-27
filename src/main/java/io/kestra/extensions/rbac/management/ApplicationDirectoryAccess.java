@@ -20,9 +20,12 @@ public interface ApplicationDirectoryAccess {
     final class DirectoryFailure extends RuntimeException {
         private final int status;
         private final String code;
-        public DirectoryFailure(int status,String code) { super(code);this.status=status;this.code=code; }
+        private final java.util.List<?> references;
+        public DirectoryFailure(int status,String code) {this(status,code,java.util.List.of());}
+        public DirectoryFailure(int status,String code,java.util.List<?> references) { super(code);this.status=status;this.code=code;this.references=java.util.List.copyOf(references); }
         public int status() {return status;}
         public String code() {return code;}
+        public java.util.List<?> references() {return references;}
     }
     Object invoke(Request request);
 }

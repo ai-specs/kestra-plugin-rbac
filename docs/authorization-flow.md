@@ -1,8 +1,20 @@
 # OAuth2/OIDC 到 RBAC 的运行机制
 
-当前运行时策略来源固定为 PostgreSQL，管理身份来自精确 management-admin-subjects。
-本文中的旧 YAML 角色名和 instance-admin-roles 描述保留为历史机制说明，不是当前部署入口；
-旧配置模式已移除。数据库 roleMapping 映射可信身份角色到普通角色，不得授予实例管理身份。
+当前运行时策略来自插件应用组目录中当前Kestra应用的统一权限实体。管理身份来自
+有效组scope所激活的实际managementGrants，不来自management-admin-subjects、旧角色
+映射或永久subject旁路。下方roles、role-mapping、instance-admin-roles和subjects绑定的
+示例仅保留为历史机制说明，不是当前部署入口，也不能作为新模式授权或验收依据。
+
+当前路径为：宿主校验标准账号/client和签名，建立可信应用组身份；插件在当前事务
+快照中核对issuer、应用、audience、组状态、epoch、支持与授予，再按同scope完整
+授权规则评估typed操作。统一权限的scopeKeys形成支持并集，与用户持久授予求交；
+外部details不参与本实例执行授权。纯metadata修订不误撤权，实际策略快照最长
+60秒后失败关闭。具体模型及候选/正式边界见 `application-groups.md`。
+
+账号删除的目标路径为：宿主安全锁与可信actor重验 → 同连接插件参与者复查权限、
+拒绝自身、清理全组授予并保护最后管理员 → 宿主物理删除账号和撤销协议凭据 →
+一次提交。任一异常全部回滚。当前插件内部清理方法已有独立测试，宿主V2适配仍
+等待正式产物，不能把内部方法存在当作生产删除已经可用。
 
 本文解释一次请求从登录到业务执行如何经过 OAuth2/OIDC、宿主授权上下文、MCP 能力 scope
 和 RBAC policy。本文描述运行时机制和边界，不是安装步骤、配置参考或测试清单。

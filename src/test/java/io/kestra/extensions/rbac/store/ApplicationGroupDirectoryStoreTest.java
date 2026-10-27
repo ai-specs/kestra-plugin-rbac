@@ -42,6 +42,21 @@ class ApplicationGroupDirectoryStoreTest {
         return new Snapshot(new Group(id,id,true,1,1),List.of(),List.of(),List.of());
     }
 
+    @Test void emptySupportApplicationRemovalAndReentryAdvanceEpochButMetadataDoesNot() {
+        var store=new ApplicationGroupDirectoryStore(database());store.initializeSchema();store.initializeBuiltin(empty("first"));
+        var added=store.update("first",1,current->ApplicationGroupChanges.registerApplication(current,"client","",Set.of("resource")));
+        assertEquals(2,added.group().authorizationVersion());
+        var renamed=store.update("first",2,current->ApplicationGroupChanges.applicationMetadata(current,"client",1,"Changed",Set.of("resource")));
+        assertEquals(2,renamed.group().authorizationVersion());
+        var removed=store.update("first",3,current->ApplicationGroupChanges.removeApplication(current,"client",2));
+        assertEquals(3,removed.group().authorizationVersion());
+        var reentered=store.update("first",4,current->ApplicationGroupChanges.registerApplication(current,"client","",Set.of("resource")));
+        assertEquals(4,reentered.group().authorizationVersion());
+        assertTrue(reentered.applications().getFirst().permissions().isEmpty());
+        assertTrue(reentered.applications().getFirst().supportedScopeKeys().isEmpty());
+        assertEquals(5,reentered.group().revision());
+    }
+
     @Test void builtinPersistsAndRetiredGroupsCannotReappear() {
         var source=database();var store=new ApplicationGroupDirectoryStore(source);
         store.initializeSchema();store.initializeSchema();
@@ -60,7 +75,7 @@ class ApplicationGroupDirectoryStoreTest {
     @Test void referencesAndClientUniquenessAreTransactional() {
         var source=database();var store=new ApplicationGroupDirectoryStore(source);store.initializeSchema();
         var scope=new Scope("read","Reader","Read access",1);
-        var app=new Application("client",true,Set.of("resource"),Set.of("read"),1);
+        var app=io.kestra.extensions.rbac.applicationgroup.TestApplicationFactory.application("client",true,Set.of("resource"),Set.of("read"),1);
         var grant=new UserGrant("https://issuer.example","subject",Set.of("read"),1);
         var initial=new Snapshot(empty("first").group(),List.of(scope),List.of(app),List.of(grant));
         store.initializeBuiltin(initial);store.create(empty("other"));
@@ -147,7 +162,7 @@ class ApplicationGroupDirectoryStoreTest {
                 assertTrue(start.await(5,TimeUnit.SECONDS));
                 try {
                     store.update(groupId,1,current->new Snapshot(current.group(),List.of(),
-                        List.of(new Application("client",true,Set.of("resource"),Set.of(),1)),List.of()));
+                        List.of(io.kestra.extensions.rbac.applicationgroup.TestApplicationFactory.application("client",true,Set.of("resource"),Set.of(),1)),List.of()));
                     return true;
                 }catch(IllegalArgumentException expected){return false;}
             }));
@@ -160,10 +175,10 @@ class ApplicationGroupDirectoryStoreTest {
     @Test void businessChangesArePersistedTogetherWithRevocationAndRejectStaleDeletion() throws Exception {
         var source=database();var store=new ApplicationGroupDirectoryStore(source);store.initializeSchema();store.initializeBuiltin(empty("first"));
         var scoped=store.update("first",1,current->ApplicationGroupChanges.createScope(current,"read","Reader","Read access"));
-        var supported=store.update("first",scoped.group().revision(),current->ApplicationGroupChanges.registerApplication(current,"client",true,Set.of("resource"),Set.of("read")));
+        var supported=store.update("first",scoped.group().revision(),current->io.kestra.extensions.rbac.applicationgroup.TestApplicationFactory.registerApplication(current,"client",true,Set.of("resource"),Set.of("read")));
         var assigned=store.update("first",supported.group().revision(),current->ApplicationGroupChanges.grantUser(current,"https://issuer.example","subject",Set.of("read")));
         assertEquals(Set.of("read"),assigned.eligibleScopeKeys("client","https://issuer.example","subject"));
-        assertThrows(ApplicationGroupChanges.Conflict.class,()->store.update("first",assigned.group().revision(),
+        assertThrows(ApplicationGroupChanges.ScopeInUse.class,()->store.update("first",assigned.group().revision(),
             current->ApplicationGroupChanges.deleteScope(current,"read",1)));
         assertEquals(List.of(assigned),store.readAll());
         var revoked=store.update("first",assigned.group().revision(),current->ApplicationGroupChanges.revokeUser(current,"https://issuer.example","subject",1));

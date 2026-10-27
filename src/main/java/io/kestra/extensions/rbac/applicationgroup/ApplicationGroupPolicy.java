@@ -12,7 +12,7 @@ public record ApplicationGroupPolicy(int schemaVersion, Map<String, ApplicationG
     }
     public record ApplicationGroup(String issuer, Set<String> audiences, boolean enabled, Map<String, ScopeDefinition> scopes) {
         public ApplicationGroup {
-            if (issuer == null || issuer.isBlank() || audiences == null || audiences.isEmpty() || audiences.stream().anyMatch(a -> a == null || a.isBlank()) || scopes == null) throw new IllegalArgumentException("Invalid application group");
+            if (issuer == null || issuer.isBlank() || audiences == null || audiences.stream().anyMatch(a -> a == null || a.isBlank()) || scopes == null) throw new IllegalArgumentException("Invalid application group");
             audiences = Set.copyOf(audiences);
             scopes = Map.copyOf(scopes);
             for (String audience : audiences) if (!audience.equals(audience.trim()) || audience.contains("*") || audience.chars().anyMatch(Character::isISOControl)) throw new IllegalArgumentException("Exact audience required");

@@ -52,7 +52,7 @@ public final class ApplicationGroupPolicyParser {
     }
     private ApplicationGroupPolicy.ApplicationGroup project(JsonNode node) {
         fields(node, Set.of("issuer", "audiences", "enabled", "scopes"));
-        Set<String> audiences = strings(node.get("audiences"));
+        Set<String> audiences = strings(node.get("audiences"),true);
         Map<String, ApplicationGroupPolicy.ScopeDefinition> scopes = new TreeMap<>();
         object(node.get("scopes"));
         node.get("scopes").fields().forEachRemaining(entry -> {

@@ -53,7 +53,16 @@ tasks.register('prepareTestHost') {
     }
 }
 compileTestJava.dependsOn prepareTestHost
-test { useJUnitPlatform(); dependsOn prepareTestHost }
+test { useJUnitPlatform { excludeTags 'postgres-lifecycle' }; dependsOn prepareTestHost }
+tasks.register('lifecyclePostgresTest', Test) {
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'postgres-lifecycle' }
+    dependsOn prepareTestHost
+    doFirst {
+        if (!System.getenv('RBAC_STORE_TEST_JDBC')) throw new GradleException('RBAC_STORE_TEST_JDBC required for lifecycle PostgreSQL suite')
+    }
+}
 jar {
     archiveFileName = 'kestra-rbac-authorizer.jar'
     preserveFileTimestamps = false

@@ -3,16 +3,16 @@ export const actions = ['READ', 'LIST', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE',
 export const splitLines = value => Array.isArray(value) ? [...value] : String(value ?? '').split(/\r?\n/).map(item => item.trim()).filter(Boolean)
 export const copy = value => JSON.parse(JSON.stringify(value))
 export const newGrant = () => ({scope: 'NAMESPACE', tenant: 'main', namespace: '', descendants: false, resource: 'FLOW', actions: [], ids: [], allIds: true})
+import {withinTextLimit, textLimits} from './text-limits.js'
 export function groupScopeInput(value) {
   if (typeof value.key !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(value.key)
-      || typeof value.name !== 'string' || !value.name.trim() || typeof value.description !== 'string')
+      || !withinTextLimit(value.name, textLimits.name, true) || !withinTextLimit(value.description, textLimits.description))
     throw Object.assign(new Error('invalid_scope'), {code:'invalid_scope',status:400})
   return {key:value.key,name:value.name,description:value.description}
 }
-export function scopeInput(value) {
-  if (typeof value.scopeKey !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(value.scopeKey)) throw Object.assign(new Error('invalid_scope'), {code:'invalid_scope',status:400})
+export function typedGrantsInput(value) {
   if (!Array.isArray(value.grants)) throw Object.assign(new Error('invalid_grant'), {code:'invalid_grant',status:400})
-  return {scopeKey:value.scopeKey,description: value.description, enabled: value.enabled, managementGrants: (value.managementGrants ?? []).map(managementGrantInput), grants: value.grants.map(item => {
+  return {description: value.description, enabled: value.enabled, managementGrants: (value.managementGrants ?? []).map(managementGrantInput), grants: value.grants.map(item => {
     const invalid = () => {throw Object.assign(new Error('invalid_grant'), {code:'invalid_grant',status:400})}
     if (!resources.includes(item.resource) || !Array.isArray(item.actions) || !item.actions.length || item.actions.some(action => !actions.includes(action)) || new Set(item.actions).size !== item.actions.length || typeof item.allIds !== 'boolean' || typeof item.descendants !== 'boolean' || !item.allIds && !splitLines(item.ids).length) invalid()
     if (item.resource === 'MCP_SERVER') {
@@ -60,10 +60,8 @@ export function canonicalPath(value) {
 }
 
 export function memberInput(value) {
-  if (typeof value.approved !== 'boolean') throw Object.assign(new Error('invalid_client_flags'), {code:'invalid_client_flags',status:400})
-  const supportedScopeKeys=splitLines(value.supportedScopeKeys)
-  if (new Set(supportedScopeKeys).size !== supportedScopeKeys.length || supportedScopeKeys.some(key=>!/^[a-z][a-z0-9-]{0,63}$/.test(key))) throw Object.assign(new Error('invalid_scope'),{code:'invalid_scope',status:400})
-  return {clientId:value.clientId,approved:value.approved,audiences:splitLines(value.audiences),supportedScopeKeys}
+  if (typeof value.clientId !== 'string' || !value.clientId || !withinTextLimit(value.description, textLimits.description)) throw Object.assign(new Error('invalid_client_metadata'), {code:'invalid_client_metadata',status:400})
+  return {clientId: value.clientId, description: value.description, audiences: splitLines(value.audiences)}
 }
 export function managementAccess(capabilities, reauthenticationRequired = false) {
   const trusted = !reauthenticationRequired && capabilities?.allowed === true
@@ -74,39 +72,23 @@ export function isRuntimeApplication(capabilities, applicationGroupId, clientId)
     && typeof capabilities.runtimeApplicationClientId === 'string' && capabilities.runtimeApplicationClientId.length > 0
     && typeof clientId === 'string' && capabilities.runtimeApplicationClientId === clientId
 }
-export function applicationPermissionModel(scope, policy) {
-  groupScopeInput(scope)
-  return {scopeKey:scope.key,description:policy?.description ?? '',enabled:policy?.enabled ?? false,
-    grants:copy(policy?.grants ?? []),managementGrants:copy(policy?.managementGrants ?? [])}
-}
-export function runtimePolicyView(value,applicationGroupId,clientId) {
-  const invalid = () => {throw Object.assign(new Error('invalid_runtime_policy'),{code:'invalid_runtime_policy',status:503})}
-  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !['revision','applicationGroupId','clientId','policy'].includes(key))
-      || !Number.isSafeInteger(value.revision) || value.revision < 1 || typeof applicationGroupId !== 'string' || !applicationGroupId || value.applicationGroupId !== applicationGroupId
-      || typeof clientId !== 'string' || !clientId || value.clientId !== clientId || !Object.hasOwn(value,'policy')) invalid()
-  if (value.policy !== null && (typeof value.policy !== 'object' || Array.isArray(value.policy)
-      || Object.keys(value.policy).some(key => !['issuer','audiences','enabled','scopes'].includes(key))
-      || typeof value.policy.issuer !== 'string' || !Array.isArray(value.policy.audiences)
-      || typeof value.policy.enabled !== 'boolean' || !value.policy.scopes || typeof value.policy.scopes !== 'object' || Array.isArray(value.policy.scopes))) invalid()
-  return copy(value)
-}
-export function runtimeScopeDefinition(policy,key) {
-  return policy?.scopes && Object.hasOwn(policy.scopes,key) ? policy.scopes[key] : null
-}
-export function availableDeclarationScopes(scopes,supported,declarations) {
-  const allowed = new Set(supported)
-  const existing = new Set(declarations.map(declaration => declaration.scopeKey))
-  return scopes.filter(scope => typeof scope.key === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(scope.key)
-    && allowed.has(scope.key) && !existing.has(scope.key))
-}
 export function requiresReauthentication(failure) {
   return failure?.status === 401 || ['directory_revision_changed','identity_epoch_changed','stale_identity','session_expired'].includes(failure?.code)
 }
 export function loginEntry(apiBase) {
-  if (typeof apiBase !== 'string' || !apiBase.startsWith('/') || apiBase.startsWith('//')) throw new Error('invalid_api_base')
-  const index = apiBase.indexOf('/api/v1/')
-  if (index < 0) throw new Error('invalid_api_base')
-  return apiBase.slice(0,index) + '/ui/'
+  if (typeof apiBase !== 'string' || !/^\/(?:[A-Za-z0-9_-]+\/)*api\/v1\/[A-Za-z0-9_-]+\/?$/.test(apiBase)) throw new Error('invalid_api_base')
+  return apiBase.slice(0, apiBase.indexOf('/api/v1/')) + '/oidc/logout'
+}
+export function permissionScopeKeys(keys, scopes, enumerate) {
+  if (!Array.isArray(keys) || keys.length > 1000 || new Set(keys).size !== keys.length || keys.some(key => typeof key !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(key))) throw Object.assign(new Error('invalid_scope'), {code: 'invalid_scope', status: 400})
+  const available = enumerate ? scopes.map(scope => scope.key) : keys
+  if (keys.some(key => !available.includes(key))) throw Object.assign(new Error('invalid_scope'), {code: 'invalid_scope', status: 400})
+  return available
+}
+export async function permissionParentRevision(api, groupId, clientId) {
+  const metadata = await api.permissionMutationMetadata(groupId, clientId)
+  if (metadata?.clientId !== clientId || !Number.isSafeInteger(metadata.revision) || metadata.revision < 1 || !Array.isArray(metadata.actions) || !metadata.actions.includes('MANAGE')) throw new Error('invalid_mutation_metadata')
+  return metadata.revision
 }
 
 export function managementGrantInput(value) {

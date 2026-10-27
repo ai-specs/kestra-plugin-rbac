@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 import static io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectory.*;
 import static io.kestra.extensions.rbac.applicationgroup.ApplicationGroupChanges.*;
 import static org.junit.jupiter.api.Assertions.*;
+import static io.kestra.extensions.rbac.applicationgroup.TestApplicationFactory.registerApplication;
+import static io.kestra.extensions.rbac.applicationgroup.TestApplicationFactory.applicationSupport;
 
 class ApplicationGroupChangesTest {
     private static final String ISSUER="https://issuer.example";
@@ -41,11 +43,11 @@ class ApplicationGroupChangesTest {
         var supported=registerApplication(scopes(),"client-a",true,Set.of("resource-a"),Set.of("read"));
         var both=registerApplication(supported,"client-b",false,Set.of(),Set.of("read"));
         var assigned=grantUser(both,ISSUER,"subject",Set.of("read"));
-        assertThrows(Conflict.class,()->deleteScope(assigned,"read",1));
+        assertThrows(ScopeInUse.class,()->deleteScope(assigned,"read",1));
         var firstRemoved=applicationSupport(assigned,"client-a",1,true,Set.of("resource-a"),Set.of());
-        assertThrows(Conflict.class,()->deleteScope(firstRemoved,"read",1));
+        assertThrows(ScopeInUse.class,()->deleteScope(firstRemoved,"read",1));
         var allRemoved=removeApplication(firstRemoved,"client-b",1);
-        assertThrows(Conflict.class,()->deleteScope(allRemoved,"read",1));
+        assertThrows(ScopeInUse.class,()->deleteScope(allRemoved,"read",1));
         var released=userScopes(allRemoved,ISSUER,"subject",1,Set.of());
         var deleted=deleteScope(released,"read",1);
         assertEquals(List.of("write"),deleted.scopes().stream().map(Scope::key).toList());

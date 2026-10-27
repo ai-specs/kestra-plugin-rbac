@@ -53,7 +53,7 @@ class ApplicationScopeDeclarationControllerTest {
         when(policies.open(any(java.sql.Connection.class),any(TrustedIdentityV1.Identity.class),eq("main"))).thenReturn(context);
         var snapshot=new ApplicationGroupDirectory.Snapshot(new ApplicationGroupDirectory.Group("group","Group",true,1,1),
             List.of(new ApplicationGroupDirectory.Scope("reader","Reader","",1)),
-            List.of(new ApplicationGroupDirectory.Application("client",true,Set.of("client"),supportsScope?Set.of("reader"):Set.of(),1)),List.of());
+            List.of(io.kestra.extensions.rbac.applicationgroup.TestApplicationFactory.application("client",true,Set.of("client"),supportsScope?Set.of("reader"):Set.of(),1)),List.of());
         when(directory.find(any(),eq("group"))).thenReturn(snapshot);
         return new Fixture(new ApplicationScopeDeclarationController(policies,store,directory),store,context,directory,authentication);
         }catch(Exception failure){throw new AssertionError(failure);}

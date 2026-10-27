@@ -1,6 +1,7 @@
 package io.kestra.extensions.rbac.management;
 
 import io.kestra.webserver.oidc.UserDirectoryV1;
+import io.kestra.webserver.oidc.UserDirectoryV2;
 import io.kestra.webserver.oidc.IdentityLifecycleGuardV1;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Requires;
@@ -61,6 +62,19 @@ public final class PublishedUserDirectoryAccess implements UserDirectoryAccess {
     }
     @Override public User update(String subject, long revision, String name, String email) {
         return invoke(directory -> copy(directory.update(subject, revision, name, email)));
+    }
+    @Override public TemporaryAccountCommands.Created createTemporary(TemporaryAccountCommands.Create input) {
+        return invoke(directory->{
+            if(!(directory instanceof UserDirectoryV2 published))throw new DirectoryFailure(Failure.UNAVAILABLE);
+            var result=published.createTemporary(input.username(),input.name(),input.email());
+            return new TemporaryAccountCommands.Created(result.user().subject(),result.user().revision(),result.temporaryPassword());
+        });
+    }
+    @Override public void delete(String subject,long revision) {
+        invoke(directory->{
+            if(!(directory instanceof UserDirectoryV2 published))throw new DirectoryFailure(Failure.UNAVAILABLE);
+            published.delete(subject,revision);return null;
+        });
     }
     @Override public User setActive(String subject, long revision, boolean active) {
         return invoke(directory -> copy(directory.setActive(subject, revision, active)));

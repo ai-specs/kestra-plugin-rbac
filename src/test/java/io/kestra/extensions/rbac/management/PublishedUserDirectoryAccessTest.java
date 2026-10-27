@@ -21,6 +21,20 @@ class PublishedUserDirectoryAccessTest {
         when(provider.isUnique()).thenReturn(true);
         when(provider.get()).thenReturn(directory);
     }
+    @Test void publishedV2TemporaryReceiptAndDeletionNeverFallBackToCallerPassword() {
+        var v2=mock(io.kestra.webserver.oidc.UserDirectoryV2.class);
+        when(provider.isUnique()).thenReturn(true);when(provider.get()).thenReturn(v2);
+        when(v2.createTemporary("exact/用户","Name","mail")).thenReturn(new io.kestra.webserver.oidc.UserDirectoryV2.TemporaryUser(hostUser,"isolated-temporary-only"));
+        var result=access.createTemporary(new TemporaryAccountCommands.Create("exact/用户","Name","mail"));
+        assertEquals(hostUser.subject(),result.subject());assertEquals(37,result.revision());assertEquals("isolated-temporary-only",result.temporaryPassword());
+        access.delete(hostUser.subject(),37);verify(v2).delete(hostUser.subject(),37);verify(v2,never()).create(any(),any(),any(),any());
+    }
+    @Test void oldV1ProviderCannotPerformTemporaryCreationOrDeletion() {
+        unique();
+        assertEquals(UserDirectoryAccess.Failure.UNAVAILABLE,assertThrows(UserDirectoryAccess.DirectoryFailure.class,()->access.createTemporary(new TemporaryAccountCommands.Create("account","",""))).failure());
+        assertEquals(UserDirectoryAccess.Failure.UNAVAILABLE,assertThrows(UserDirectoryAccess.DirectoryFailure.class,()->access.delete("account",0)).failure());
+        verifyNoInteractions(directory);
+    }
 
     @Test void copiesEveryUserAndPageFieldAndPreservesMissingIdentity() {
         unique();

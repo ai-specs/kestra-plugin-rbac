@@ -48,11 +48,10 @@ class ApplicationScopeDeclarationStoreTest {
             () -> store.create("group", "kestra-ui", "writer", permissions("Same key in another scope")));
         assertTrue(store.list("group", "other-app").isEmpty());
         assertTrue(store.list("another-group", "kestra-ui").isEmpty());
-        var provider = new ApplicationScopeDeclarationProvider(store);
-        assertEquals(List.of("reader"), provider.current("group", "kestra-ui").supportedScopeKeys().stream().toList());
+        assertEquals(List.of("reader"), store.list("group", "kestra-ui").stream().map(ApplicationScopeDeclarationStore.StoredScope::scopeKey).toList());
         try (var connection = source.getConnection()) {
-            assertEquals("View flows", provider.current(connection, "group", "kestra-ui")
-                .scopes().getFirst().permissions().getFirst().name());
+            assertEquals("View flows", store.list(connection, "group", "kestra-ui")
+                .getFirst().permissions().getFirst().name());
         }
         var renamed = store.replace("group", "kestra-ui", "reader", 1, permissions("Read flows"));
         assertEquals(2, renamed.revision());
@@ -63,7 +62,7 @@ class ApplicationScopeDeclarationStoreTest {
             () -> store.delete("group", "kestra-ui", "reader", 1));
         assertEquals(1, store.list("group", "kestra-ui").size());
         store.delete("group", "kestra-ui", "reader", 2);
-        assertTrue(provider.current("group", "kestra-ui").supportedScopeKeys().isEmpty());
+        assertTrue(store.list("group", "kestra-ui").isEmpty());
     }
 
     @Test

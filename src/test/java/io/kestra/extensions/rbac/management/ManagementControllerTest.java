@@ -59,10 +59,13 @@ class ManagementControllerTest {
             if(request==null)return null;
             if(request.resource()==ApplicationDirectoryAccess.Resource.CLIENT && request.operation()==ApplicationDirectoryAccess.Operation.FIND
                 && "console".equals(request.applicationGroupId()) && "kestra-ui".equals(request.key()))
-                return new ApplicationGroupApplication("console","kestra-ui",true,Set.of("kestra-ui"),Set.of(MANAGER),1);
+                return new ApplicationGroupApplication("console","kestra-ui","",Set.of("kestra-ui"),Set.of(MANAGER),1);
             return null;
         });
-        var runtime=new ApplicationGroupRuntimePolicies(store,directory,identities);
+        when(directory.runtimePolicy()).thenAnswer(call->store.readCurrent());
+        try {when(directory.runtimePolicy(any(java.sql.Connection.class))).thenAnswer(call->store.readCurrent(call.getArgument(0)));}
+        catch(java.sql.SQLException failure){throw new AssertionError(failure);}
+        var runtime=new ApplicationGroupRuntimePolicies(directory,identities);
         var controller=new ManagementController(runtime,store,provider(users),provider(applications));
         try {
             var enabled=ManagementController.class.getDeclaredField("applicationGroups");enabled.setAccessible(true);enabled.set(controller,true);
@@ -146,7 +149,7 @@ class ManagementControllerTest {
             assertFalse(route.contains("reconciliation") || route.contains("binding-options"),route);
         }
         var runtime=routes.stream().filter(route->route.contains("runtime-permissions")).toList();
-        assertEquals(8,runtime.size());
+        assertEquals(0,runtime.size());
         assertTrue(runtime.stream().allMatch(route->route.startsWith("/application-groups/{id}/applications/{clientKey}/runtime-permissions")));
     }
     @Test void directoryTargetAndBodyCannotChangeIssuerOrOpaqueScope() {
@@ -156,6 +159,91 @@ class ManagementControllerTest {
         assertEquals(403,s.controller.assignmentsCreate("main","console",owner(),"\"3\"",json("{\"issuer\":\"https://other.invalid\",\"subject\":\"user\",\"scopeKeys\":[]}")).code());
         verifyNoInteractions(s.applications);
     }
+    @Test void temporaryAccountCreateRejectsCallerPasswordAndReturnsExactNoStoreReceipt() {
+        var s=setup(3,Set.of(MANAGER));
+        assertEquals(400,s.controller.createUser("main",owner(),json("{\"username\":\"target\",\"password\":\"caller-password\"}")).code());
+        verifyNoInteractions(s.users);
+        when(s.users.createTemporary(new TemporaryAccountCommands.Create("target","","")))
+            .thenReturn(new TemporaryAccountCommands.Created("target",0,"temporary-test-only"));
+        var created=s.controller.createUser("main",owner(),json("{\"username\":\"target\"}"));
+        assertEquals(201,created.code());assertEquals("no-store",created.header("Cache-Control"));assertEquals("\"0\"",created.header("ETag"));
+        assertEquals(Set.of("subject","revision","temporaryPassword"),MAPPER.convertValue(created.body(),java.util.Map.class).keySet());
+        verify(s.users,never()).create(any(),any(),any(),any());
+    }
+
+    @Test void accountDeleteRequiresStrongRevisionRejectsSelfAndReturns204WithoutRead() {
+        var s=setup(3,Set.of(MANAGER));
+        assertEquals(428,s.controller.deleteUser("main",owner(),"target",null).code());
+        assertEquals(400,s.controller.deleteUser("main",owner(),"target","W/\"0\"").code());
+        assertEquals(403,s.controller.deleteUser("main",owner(),"owner","\"0\"").code());
+        verifyNoInteractions(s.users);
+        var deleted=s.controller.deleteUser("main",owner(),"target","\"0\"");
+        assertEquals(204,deleted.code());assertNull(deleted.body());
+        verify(s.users).delete("target",0);verifyNoMoreInteractions(s.users);
+    }
+
+    @Test void missingPublishedAccountV2FailsClosedWithoutCallingOldCreate() {
+        var s=setup(3,Set.of(MANAGER));
+        doCallRealMethod().when(s.users).createTemporary(any());doCallRealMethod().when(s.users).delete(any(),anyLong());
+        assertEquals(503,s.controller.createUser("main",owner(),json("{\"username\":\"target\"}")).code());
+        assertEquals(503,s.controller.deleteUser("main",owner(),"target","\"0\"").code());
+        verify(s.users,never()).create(any(),any(),any(),any());
+    }
+
+    @Test void manageOnlyAccountCommandsDoNotReadDirectoryAndConflictsStayExact()throws Exception {
+        var s=setup(3,Set.of(MANAGER));
+        var policy=(com.fasterxml.jackson.databind.node.ObjectNode)MAPPER.readTree(POLICY);
+        var grants=(com.fasterxml.jackson.databind.node.ArrayNode)policy.path("applicationGroups").path("console").path("scopes").path(MANAGER).path("managementGrants");
+        for(var grant:grants)((com.fasterxml.jackson.databind.node.ObjectNode)grant).putArray("actions").add("MANAGE");
+        s.store.replace(1,json(policy.toString()),"installer");
+        assertEquals(403,s.controller.users("main",owner(),1,25).code());
+        when(s.users.createTemporary(any())).thenReturn(new TemporaryAccountCommands.Created("target",1,"temporary-test-only"));
+        assertEquals(201,s.controller.createUser("main",owner(),json("{\"username\":\"target\"}")).code());
+        doThrow(new UserDirectoryAccess.DirectoryFailure(UserDirectoryAccess.Failure.CONFLICT)).when(s.users).delete("target",1);
+        assertEquals(412,s.controller.deleteUser("main",owner(),"target","\"1\"").code());
+        verify(s.users,never()).list(anyInt(),anyInt());verify(s.users,never()).find(any());
+    }
+
+    @Test void readOnlyAccountCommandsNeverReachDirectoryMutation()throws Exception {
+        var s=setup(3,Set.of(MANAGER));
+        var policy=(com.fasterxml.jackson.databind.node.ObjectNode)MAPPER.readTree(POLICY);
+        var grants=(com.fasterxml.jackson.databind.node.ArrayNode)policy.path("applicationGroups").path("console").path("scopes").path(MANAGER).path("managementGrants");
+        for(var grant:grants)((com.fasterxml.jackson.databind.node.ObjectNode)grant).putArray("actions").add("READ");
+        s.store.replace(1,json(policy.toString()),"installer");
+        assertEquals(403,s.controller.createUser("main",owner(),json("{\"username\":\"target\"}")).code());
+        assertEquals(403,s.controller.deleteUser("main",owner(),"target","\"0\"").code());
+        verifyNoInteractions(s.users);
+    }
+
+    @Test void missingParticipantAndAbortedDeleteReturnNoReceiptOrInternalDetail() {
+        var s=setup(3,Set.of(MANAGER));
+        doThrow(new UserDirectoryAccess.DirectoryFailure(UserDirectoryAccess.Failure.UNAVAILABLE)).when(s.users).delete("target",0);
+        var missing=s.controller.deleteUser("main",owner(),"target","\"0\"");
+        assertEquals(503,missing.code());assertEquals("directory_unavailable",response(missing).path("code").textValue());
+        assertEquals("no-store",missing.header("Cache-Control"));
+        doThrow(new IllegalStateException("private database detail")).when(s.users).delete("target",0);
+        var aborted=s.controller.deleteUser("main",owner(),"target","\"0\"");
+        assertEquals(500,aborted.code());assertFalse(response(aborted).toString().contains("private database detail"));
+        assertEquals(1,response(aborted).size());verify(s.users,times(2)).delete("target",0);
+        verify(s.users,never()).find(any());verify(s.users,never()).list(anyInt(),anyInt());
+    }
+
+    @Test void profileStateAndPasswordReturnOnlySubjectRevisionAndEtag() {
+        var s=setup(3,Set.of(MANAGER));
+        var user=new UserDirectoryAccess.User("target","Private name","private@example.invalid",true,8);
+        when(s.users.update("target",7,"Name","mail")).thenReturn(user);
+        when(s.users.setActive("target",7,false)).thenReturn(user);
+        when(s.users.resetPassword("target",7,"test-password-only")).thenReturn(user);
+        var responses=List.of(s.controller.profile("main",owner(),"\"7\"",json("{\"subject\":\"target\",\"name\":\"Name\",\"email\":\"mail\"}")),
+            s.controller.state("main",owner(),"\"7\"",json("{\"subject\":\"target\",\"active\":false}")),
+            s.controller.password("main",owner(),"\"7\"",json("{\"subject\":\"target\",\"password\":\"test-password-only\"}")));
+        for(var saved:responses) {
+            assertEquals(200,saved.code());assertEquals("\"8\"",saved.header("ETag"));assertEquals("no-store",saved.header("Cache-Control"));
+            assertEquals(2,response(saved).size());assertEquals("target",response(saved).path("subject").textValue());
+            assertEquals(8,response(saved).path("revision").longValue());
+        }
+    }
+
     @Test void lastAdministratorUserGuardPreserves409AndAccountConflictPreserves412() {
         var s=setup(3,Set.of(MANAGER));
         when(s.users.setActive("last",0,false)).thenThrow(new UserDirectoryAccess.DirectoryFailure(UserDirectoryAccess.Failure.LAST_ADMIN));
@@ -265,12 +353,12 @@ class ManagementControllerTest {
     }
     @Test void memberAndUserGrantProjectionsHaveOnlyApplicationGroupFieldsAndExactTargets() {
         var setup=setup(3,Set.of(MANAGER));
-        var member=new ApplicationGroupApplication("console","api-client",true,Set.of("api"),Set.of("reader"),4);
+        var member=new ApplicationGroupApplication("console","api-client","",Set.of("api"),Set.of("reader"),4);
         String applicationKey="~"+Base64.getUrlEncoder().withoutPadding().encodeToString(json("api-client"));
         when(setup.applications.invoke(any())).thenReturn(member);
         var detail=setup.controller.clientsDetail("main","console",applicationKey,owner());
         assertEquals(200,detail.code());var application=response(detail);
-        assertEquals(6,application.size());assertEquals("console",application.path("applicationGroupId").textValue());
+        assertEquals(7,application.size());assertEquals("console",application.path("applicationGroupId").textValue());
         assertEquals("api-client",application.path("clientId").textValue());assertEquals("reader",application.path("supportedScopeKeys").get(0).textValue());
         for(String field:List.of("projectId","allowedProjectScopes","firstPartyUi"))assertFalse(application.has(field));
         when(setup.applications.invoke(any())).thenReturn(new ApplicationGroupDirectoryManagement.Page<>(List.of(member),1,1,20,3));
@@ -292,7 +380,7 @@ class ManagementControllerTest {
             when(setup.applications.invoke(any())).thenReturn(wrong);
             assertEquals(503,setup.controller.assignmentsDetail("main","console","user",owner()).code());
         }
-        when(setup.applications.invoke(any())).thenReturn(new ApplicationGroupApplication("other","api-client",true,Set.of("api"),Set.of("reader"),4));
+        when(setup.applications.invoke(any())).thenReturn(new ApplicationGroupApplication("other","api-client","",Set.of("api"),Set.of("reader"),4));
         assertEquals(503,setup.controller.clientsDetail("main","console",applicationKey,owner()).code());
         assertEquals(1,setup.store.readCurrent().revision());
     }
@@ -316,8 +404,8 @@ class ManagementControllerTest {
         when(invalidMember.applicationGroupId()).thenReturn("console");when(invalidMember.clientId()).thenReturn("kestra-ui");
         when(invalidMember.revision()).thenReturn(0L);
         for(var invalid:List.of(
-            new ApplicationGroupApplication("other","kestra-ui",true,Set.of("kestra-ui"),Set.of(MANAGER),1),
-            new ApplicationGroupApplication("console","other-application",true,Set.of("kestra-ui"),Set.of(MANAGER),1),
+            new ApplicationGroupApplication("other","kestra-ui","",Set.of("kestra-ui"),Set.of(MANAGER),1),
+            new ApplicationGroupApplication("console","other-application","",Set.of("kestra-ui"),Set.of(MANAGER),1),
             invalidMember)) {
             doReturn(invalid).when(setup.applications).invoke(any());
             assertEquals(503,setup.controller.runtimePolicy("main","console",clientKey(),owner()).code());

@@ -14,6 +14,8 @@ import java.util.Set;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
+import static io.kestra.extensions.rbac.applicationgroup.TestApplicationFactory.registerApplication;
+import static io.kestra.extensions.rbac.applicationgroup.TestApplicationFactory.applicationSupport;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static io.kestra.extensions.rbac.applicationgroup.ApplicationGroupChanges.*;
@@ -23,7 +25,7 @@ class ApplicationGroupDirectoryServiceTest {
     private static final String ISSUER="https://issuer.example";
     private static final Set<String> ADMIN=Set.of("manager","policy-manager");
 
-    private static final class Fixture {
+    static final class Fixture {
         final javax.sql.DataSource source;
         final OidcProtocolStateV1 protocol=mock(OidcProtocolStateV1.class);
         final ApplicationGroupDirectoryStore store;
@@ -57,15 +59,15 @@ class ApplicationGroupDirectoryServiceTest {
             };
             store=new ApplicationGroupDirectoryStore(source,guard);store.initializeSchema();
             var all=Set.of("manager","policy-manager","reader");
-            store.initializeBuiltin(new Snapshot(new Group("group","Group",true,1,1),
-                List.of(new Scope("manager","Identity manager","",1),new Scope("policy-manager","Policy manager","",1),new Scope("reader","Reader","",1)),
-                List.of(new Application("ui",true,Set.of("ui"),all,1)),
-                List.of(new UserGrant(ISSUER,"first",all,1),new UserGrant(ISSUER,"second",all,1))));
-            policies=new ApplicationGroupPolicyStore(source,new ApplicationGroupPolicyParser(),guard);policies.initializeSchema();
             var identity=new ApplicationGroupPolicy.ScopeDefinition("Identity manager",true,List.of(),List.of(new ApplicationGroupPolicy.ManagementGrant(
                 ApplicationGroupPolicy.ManagementDomain.IDENTITY,Set.of(ApplicationGroupPolicy.ManagementAction.READ,ApplicationGroupPolicy.ManagementAction.MANAGE))));
             var policy=new ApplicationGroupPolicy.ScopeDefinition("Policy manager",true,List.of(),List.of(new ApplicationGroupPolicy.ManagementGrant(
                 ApplicationGroupPolicy.ManagementDomain.LOCAL_POLICY,Set.of(ApplicationGroupPolicy.ManagementAction.READ,ApplicationGroupPolicy.ManagementAction.MANAGE))));
+            store.initializeBuiltin(new Snapshot(new Group("group","Group",true,1,1),
+                List.of(new Scope("manager","Identity manager","",1),new Scope("policy-manager","Policy manager","",1),new Scope("reader","Reader","",1)),
+                List.of(TestApplicationFactory.withPolicy(TestApplicationFactory.application("ui",true,Set.of("ui"),all,1),Map.of("manager",identity,"policy-manager",policy))),
+                List.of(new UserGrant(ISSUER,"first",all,1),new UserGrant(ISSUER,"second",all,1))));
+            policies=new ApplicationGroupPolicyStore(source,new ApplicationGroupPolicyParser(),guard);policies.initializeSchema();
             var document=new ApplicationGroupPolicy(2,Map.of("group",new ApplicationGroupPolicy.ApplicationGroup(ISSUER,Set.of("ui"),true,Map.of("manager",identity,"policy-manager",policy))));
             policies.initialize(new ApplicationGroupPolicyParser().canonicalJson(document).getBytes(java.nio.charset.StandardCharsets.UTF_8),"installer");
             when(protocol.client(any(),eq(ISSUER),eq("ui"))).thenReturn(Optional.of(new OidcProtocolStateV1.Client(ISSUER,"ui",true,Set.of("openid","kestra:application-group-scopes"),true)));
@@ -92,7 +94,9 @@ class ApplicationGroupDirectoryServiceTest {
         var fixture=new Fixture();
         fixture.service.transaction(connection->{
             var request=new ApplicationGroupProtocolProjectionV1.Request(ISSUER,"main","ui","first","group");
-            var result=fixture.service.current(connection,request);assertTrue(result.activated());
+            var result=fixture.service.currentResources(connection,request);assertTrue(result.activated());
+            assertEquals(2,result.contractVersion());
+            assertThrows(java.sql.SQLException.class,()->fixture.service.current(connection,request));
             assertEquals(Set.of("manager","policy-manager","reader"),result.projection().orElseThrow().eligibleScopeKeys(request));
             verify(fixture.protocol,never()).account(eq(connection),anyString(),anyString());
             assertFalse(connection.isClosed());assertFalse(connection.getAutoCommit());return null;
@@ -101,29 +105,29 @@ class ApplicationGroupDirectoryServiceTest {
 
     @Test void projectionRejectsForeignIssuerWrongGroupAndDuplicateClientMembership()throws Exception {
         var fixture=new Fixture();var before=fixture.current();
-        assertThrows(IllegalArgumentException.class,()->fixture.service.transaction(connection->fixture.service.current(connection,
+        assertThrows(IllegalArgumentException.class,()->fixture.service.transaction(connection->fixture.service.currentResources(connection,
             new ApplicationGroupProtocolProjectionV1.Request("https://other.example","main","ui","first",null))));
-        assertThrows(IllegalArgumentException.class,()->fixture.service.transaction(connection->fixture.service.current(connection,
+        assertThrows(IllegalArgumentException.class,()->fixture.service.transaction(connection->fixture.service.currentResources(connection,
             new ApplicationGroupProtocolProjectionV1.Request(ISSUER,"main","ui","first","other"))));
         assertThrows(IllegalArgumentException.class,()->fixture.store.create(new Snapshot(new Group("other","Other",true,1,1),before.scopes(),before.applications(),List.of())));
         assertEquals(List.of(before),fixture.store.readAll());
     }
 
-    @Test void metadataUpdateKeepsStableKeyAndAdvancesStoredRevocation()throws Exception {
+    @Test void metadataUpdateKeepsStableKeyWithoutRevokingCredentials()throws Exception {
         var fixture=new Fixture();var before=fixture.current();
         var saved=fixture.update(current->scopeMetadata(current,"reader",1,"Observer","Changed description"));
         var reader=saved.scopes().stream().filter(scope->scope.key().equals("reader")).findFirst().orElseThrow();
         assertEquals("Observer",reader.name());assertEquals(2,reader.revision());
         assertEquals(before.applications(),saved.applications());assertEquals(before.userGrants(),saved.userGrants());
-        assertEquals(2,saved.group().revision());assertEquals(2,saved.group().authorizationVersion());
+        assertEquals(2,saved.group().revision());assertEquals(before.group().authorizationVersion(),saved.group().authorizationVersion());
     }
 
     @Test void scopeDeletionRequiresEveryApplicationAndUserToReleaseTheReference()throws Exception {
         var fixture=new Fixture();var before=fixture.current();
-        assertThrows(ApplicationGroupChanges.Conflict.class,()->fixture.update(current->deleteScope(current,"reader",1)));
+        assertThrows(ApplicationGroupChanges.ScopeInUse.class,()->fixture.update(current->deleteScope(current,"reader",1)));
         assertEquals(before,fixture.current());
         fixture.update(current->applicationSupport(current,"ui",1,true,Set.of("ui"),ADMIN));
-        assertThrows(ApplicationGroupChanges.Conflict.class,()->fixture.update(current->deleteScope(current,"reader",1)));
+        assertThrows(ApplicationGroupChanges.ScopeInUse.class,()->fixture.update(current->deleteScope(current,"reader",1)));
         fixture.update(current->userScopes(current,ISSUER,"first",1,ADMIN));
         fixture.update(current->userScopes(current,ISSUER,"second",1,ADMIN));
         var saved=fixture.update(current->deleteScope(current,"reader",1));

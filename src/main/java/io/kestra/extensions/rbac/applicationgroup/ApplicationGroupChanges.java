@@ -10,12 +10,22 @@ import static io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirecto
 public final class ApplicationGroupChanges {
     public static final class NotFound extends IllegalArgumentException {}
     public static final class Conflict extends IllegalStateException {}
+    public record ScopeReference(String kind,String clientId,String permissionKey,String issuer,String subject) {}
+    public static final class ScopeInUse extends IllegalStateException {
+        private final List<ScopeReference> references;
+        public ScopeInUse(List<ScopeReference> references) {super("scope_in_use");this.references=List.copyOf(references);}
+        public List<ScopeReference> references() {return references;}
+    }
 
     private ApplicationGroupChanges() {}
 
     public static Snapshot groupMetadata(Snapshot current,String displayName,boolean active) {
+        return groupMetadata(current,displayName,current.group().description(),active);
+    }
+
+    public static Snapshot groupMetadata(Snapshot current,String displayName,String description,boolean active) {
         var group=current.group();
-        return new Snapshot(new Group(group.id(),displayName,active,group.revision(),group.authorizationVersion()),
+        return new Snapshot(new Group(group.id(),displayName,description,active,group.revision(),group.authorizationVersion()),
             current.scopes(),current.applications(),current.userGrants());
     }
 
@@ -36,24 +46,36 @@ public final class ApplicationGroupChanges {
     public static Snapshot deleteScope(Snapshot current,String key,long expectedRevision) {
         var target=current.scopes().stream().filter(value->value.key().equals(key)).findFirst().orElseThrow(NotFound::new);
         revision(target.revision(),expectedRevision);
-        if(current.applications().stream().anyMatch(value->value.supportedScopeKeys().contains(key))
-            || current.userGrants().stream().anyMatch(value->value.scopeKeys().contains(key)))throw new Conflict();
+        var references=new ArrayList<ScopeReference>();
+        for(var application:current.applications())for(var permission:application.permissions())
+            if(permission.scopeKeys().contains(key))references.add(new ScopeReference("permission",application.clientId(),permission.key(),null,null));
+        for(var grant:current.userGrants())if(grant.scopeKeys().contains(key))
+            references.add(new ScopeReference("subject",null,null,grant.issuer(),grant.subject()));
+        if(!references.isEmpty())throw new ScopeInUse(references);
         return new Snapshot(current.group(),current.scopes().stream().filter(value->!value.key().equals(key)).toList(),
             current.applications(),current.userGrants());
     }
 
-    public static Snapshot registerApplication(Snapshot current,String clientId,boolean approved,Set<String> audiences,Set<String> supportedScopeKeys) {
+    public static Snapshot registerApplication(Snapshot current,String clientId,String description,Set<String> audiences) {
         if(current.applications().stream().anyMatch(value->value.clientId().equals(clientId)))throw new Conflict();
         var applications=new ArrayList<>(current.applications());
-        applications.add(new Application(clientId,approved,audiences,supportedScopeKeys,1));
+        applications.add(new Application(clientId,description,audiences,List.of(),1));
         return new Snapshot(current.group(),current.scopes(),applications,current.userGrants());
     }
 
-    public static Snapshot applicationSupport(Snapshot current,String clientId,long expectedRevision,
-        boolean approved,Set<String> audiences,Set<String> supportedScopeKeys) {
+    public static Snapshot applicationMetadata(Snapshot current,String clientId,long expectedRevision,
+        String description,Set<String> audiences) {
         var applications=replace(current.applications(),value->value.clientId().equals(clientId),value->{
             revision(value.revision(),expectedRevision);
-            return new Application(value.clientId(),approved,audiences,supportedScopeKeys,Math.addExact(value.revision(),1));
+            return new Application(value.clientId(),description,audiences,value.permissions(),Math.addExact(value.revision(),1));
+        });
+        return new Snapshot(current.group(),current.scopes(),applications,current.userGrants());
+    }
+
+    public static Snapshot permissions(Snapshot current,String clientId,long expectedRevision,List<ApplicationPermission> permissions) {
+        var applications=replace(current.applications(),value->value.clientId().equals(clientId),value->{
+            revision(value.revision(),expectedRevision);
+            return new Application(value.clientId(),value.description(),value.audiences(),permissions,Math.addExact(value.revision(),1));
         });
         return new Snapshot(current.group(),current.scopes(),applications,current.userGrants());
     }

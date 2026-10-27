@@ -24,29 +24,32 @@ export function createClient(currentContext) {
       const error = new Error(body?.code || 'request_failed')
       error.code = body?.code
       error.status = response?.status
+      if (body?.code === 'scope_in_use' && Array.isArray(body.references)) error.references = body.references
       throw error
     }
     return body
   }
   const write = (path, method, body, revision) => {
     if (revision === undefined || revision === null) throw new Error('revision_required')
-    return call(path, {method, headers: {'If-Match': '"' + revision + '"'}, ...(body === undefined ? {} : {body: JSON.stringify(body)})})
+    return call(path, {method, cache: 'no-store', headers: {'If-Match': '"' + revision + '"'}, ...(body === undefined ? {} : {body: JSON.stringify(body)})})
   }
   const group = id => '/application-groups/' + encodeURIComponent(id)
   const page = (path, current = 1, size = 100) => call(path + '?page=' + current + '&size=' + size)
   const assignment = (id, subject) => group(id) + '/scope-grants/detail?subject=' + encodeURIComponent(subject)
-  const declarations = (group, clientId) => '/application-groups/' + encodeURIComponent(group) + '/applications/' + encodeKey(clientId) + '/scope-declarations'
-  const runtime = (group,clientId) => '/application-groups/' + encodeURIComponent(group) + '/applications/' + encodeKey(clientId) + '/runtime-permissions'
+  const permissions = (id, clientId) => group(id) + '/applications/' + encodeKey(clientId) + '/permissions'
   return {
     capabilities: applicationGroupId => call('/capabilities' + (applicationGroupId ? '?applicationGroupId=' + encodeURIComponent(applicationGroupId) : '')),
-    runtimePolicy: (group,clientId) => call(runtime(group,clientId)),
-    createRuntimePolicy: (group,clientId,value,revision) => write(runtime(group,clientId),'POST',value,revision),
-    updateRuntimePolicy: (group,clientId,value,revision) => write(runtime(group,clientId),'PUT',value,revision),
-    runtimeScopes: (group,clientId) => call(runtime(group,clientId) + '/scopes'),
-    runtimeScope: (group,clientId,key) => call(runtime(group,clientId) + '/scopes/' + encodeURIComponent(key)),
-    createRuntimeScope: (group,clientId,value,revision) => write(runtime(group,clientId) + '/scopes','POST',value,revision),
-    updateRuntimeScope: (group,clientId,key,value,revision) => write(runtime(group,clientId) + '/scopes/' + encodeURIComponent(key),'PUT',value,revision),
-    deleteRuntimeScope: (group,clientId,key,revision) => write(runtime(group,clientId) + '/scopes/' + encodeURIComponent(key),'DELETE',undefined,revision),
+    permissions: (id, clientId, current, size) => page(permissions(id, clientId), current, size),
+    permission: (id, clientId, key) => call(permissions(id, clientId) + '/' + encodeURIComponent(key)),
+    permissionMutationMetadata: (id, clientId) => call(permissions(id, clientId) + '/-/mutation-metadata', {cache: 'no-store'}),
+    createPermission: (id, clientId, value, revision) => write(permissions(id, clientId), 'POST', value, revision),
+    updatePermission: (id, clientId, key, value, revision) => {
+      if (value.key !== key) throw new Error('permission_key_immutable')
+      return write(permissions(id, clientId) + '/' + encodeURIComponent(key), 'PUT', value, revision)
+    },
+    deletePermission: (id, clientId, key, revision) => write(permissions(id, clientId) + '/' + encodeURIComponent(key), 'DELETE', undefined, revision),
+    credentials: (id, clientId) => call(group(id) + '/applications/' + encodeKey(clientId) + '/credentials', {cache: 'no-store'}),
+    rotateCredentials: (id, clientId, revision) => write(group(id) + '/applications/' + encodeKey(clientId) + '/credentials/rotate', 'POST', undefined, revision),
     applicationGroups: (current, size) => page('/application-groups', current, size),
     applicationGroup: id => call(group(id)),
     createApplicationGroup: value => call('/application-groups', {method: 'POST', body: JSON.stringify(value)}),
@@ -57,10 +60,6 @@ export function createClient(currentContext) {
     createApplicationGroupScope: (id, value, revision) => write(group(id) + '/scopes', 'POST', value, revision),
     updateApplicationGroupScope: (id, name, value, revision) => write(group(id) + '/scopes/' + encodeURIComponent(name), 'PUT', value, revision),
     deleteApplicationGroupScope: (id, name, revision) => write(group(id) + '/scopes/' + encodeURIComponent(name), 'DELETE', undefined, revision),
-    applicationScopeDeclarations: (group, clientId) => call(declarations(group, clientId)),
-    createApplicationScopeDeclaration: (group, clientId, scope, permissions) => call(declarations(group, clientId) + '/' + encodeURIComponent(scope), {method: 'POST', body: JSON.stringify({permissions})}),
-    updateApplicationScopeDeclaration: (group, clientId, scope, permissions, revision) => write(declarations(group, clientId) + '/' + encodeURIComponent(scope), 'PUT', {permissions}, revision),
-    deleteApplicationScopeDeclaration: (group, clientId, scope, revision) => write(declarations(group, clientId) + '/' + encodeURIComponent(scope), 'DELETE', undefined, revision),
     applications: (id, current, size) => page(group(id) + '/applications', current, size),
     application: (id, clientId) => call(group(id) + '/applications/' + encodeKey(clientId)),
     createApplication: (id, value, revision) => write(group(id) + '/applications', 'POST', memberInput(value), revision),
@@ -76,7 +75,8 @@ export function createClient(currentContext) {
     deleteScopeGrant: (id, subject, revision) => write(assignment(id, subject), 'DELETE', undefined, revision),
     users: (current, size) => page('/users', current, size),
     user: subject => call('/users/detail?subject=' + encodeURIComponent(subject)),
-    createUser: value => call('/users', {method: 'POST', body: JSON.stringify(value)}),
+    createUser: value => call('/users', {method: 'POST', cache: 'no-store', body: JSON.stringify({username: value.username, name: value.name, email: value.email})}),
+    deleteUser: (subject, revision) => write('/users/detail?subject=' + encodeURIComponent(subject), 'DELETE', undefined, revision),
     updateProfile: (value, revision) => write('/users/profile', 'PUT', value, revision),
     updateState: (subject, active, revision) => write('/users/state', 'PUT', {subject, active}, revision),
     resetPassword: (subject, password, revision) => write('/users/password', 'PUT', {subject, password}, revision)

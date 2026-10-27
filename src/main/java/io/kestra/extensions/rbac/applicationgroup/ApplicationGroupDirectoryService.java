@@ -23,9 +23,8 @@ import static io.kestra.extensions.rbac.applicationgroup.ApplicationGroupPolicy.
 @Requires(property="kestra.rbac.enabled",value="true")
 @Requires(property="kestra.rbac.application-groups.enabled",value="true")
 public final class ApplicationGroupDirectoryService implements ApplicationGroupDirectoryReader,
-    ApplicationGroupProtocolProjectionV1,IdentityLifecycleGuardV1 {
+    io.kestra.webserver.oidc.ApplicationGroupProtocolProjectionV2,IdentityLifecycleGuardV1 {
     private final ApplicationGroupDirectoryStore store;
-    private final ApplicationGroupPolicyStore policies;
     private final OidcProtocolStateV1 protocol;
     private final String issuer;
     private final String loginClientId;
@@ -34,10 +33,15 @@ public final class ApplicationGroupDirectoryService implements ApplicationGroupD
         new ProtocolScope("offline_access","OIDC"),new ProtocolScope("mcp:flows:read","MCP"),
         new ProtocolScope("mcp:executions:write","MCP"),new ProtocolScope("kestra:application-group-scopes","SELECTOR"));
 
-    public ApplicationGroupDirectoryService(ApplicationGroupDirectoryStore store,ApplicationGroupPolicyStore policies,
+    @jakarta.inject.Inject
+    public ApplicationGroupDirectoryService(ApplicationGroupDirectoryStore store,
         OidcProtocolStateV1 protocol,@Value("${kestra.oidc.issuer}") String issuer,
         @Value("${micronaut.security.oauth2.clients.kestra.client-id}") String loginClientId) {
-        this.store=store;this.policies=policies;this.protocol=protocol;this.issuer=issuer;this.loginClientId=loginClientId;
+        this.store=store;this.protocol=protocol;this.issuer=issuer;this.loginClientId=loginClientId;
+    }
+    public ApplicationGroupDirectoryService(ApplicationGroupDirectoryStore store,ApplicationGroupPolicyStore unused,
+        OidcProtocolStateV1 protocol,String issuer,String loginClientId) {
+        this(store,protocol,issuer,loginClientId);
     }
 
     public <Target> Target transaction(ApplicationGroupDirectoryStore.Work<Target> work) { return store.transaction(work); }
@@ -47,31 +51,25 @@ public final class ApplicationGroupDirectoryService implements ApplicationGroupD
             .orElseThrow(ApplicationGroupChanges.NotFound::new);
     }
     public GroupView view(Connection connection,Snapshot snapshot)throws SQLException {
-        var group=snapshot.group();return new GroupView(group.id(),"main",issuer,group.displayName(),group.active(),group.revision(),group.authorizationVersion(),group.id().equals(store.builtinGroupId(connection)));
+        var group=snapshot.group();return new GroupView(group.id(),"main",issuer,group.displayName(),group.active(),group.revision(),group.authorizationVersion(),group.id().equals(store.builtinGroupId(connection)),group.description(),snapshot.counts());
     }
     public String builtinGroupId(Connection connection)throws SQLException { return store.builtinGroupId(connection); }
     public long catalogRevision(Connection connection)throws SQLException { return store.catalogRevision(connection); }
 
-    @Override public Result current(Connection connection,Request request)throws SQLException {
-        try { return readCurrent(connection, request); }
-        catch(SQLException failure) { throw ApplicationGroupDirectoryStore.reclassified(failure); }
-    }
-    private Result readCurrent(Connection connection,Request request)throws SQLException {
+    @Override public io.kestra.webserver.oidc.ApplicationGroupProtocolProjectionV2.Result currentResources(Connection connection,Request request)throws SQLException {
         if(!issuer.equals(request.issuer()) || !"main".equals(request.tenant()))throw new IllegalArgumentException("Protocol target mismatch");
-        if(store.builtinGroupId(connection)==null)return new Result(1,false,Optional.empty());
-        ApplicationGroupProtocolProjectionV1.Projection result=null;
+        if(store.builtinGroupId(connection)==null)return new io.kestra.webserver.oidc.ApplicationGroupProtocolProjectionV2.Result(2,false,Optional.empty());
+        io.kestra.webserver.oidc.ApplicationGroupProtocolProjectionV2.Projection result=null;
         for(var snapshot:snapshots(connection))for(var application:snapshot.applications()) {
             if(!application.clientId().equals(request.clientId()))continue;
             if(result!=null)throw new IllegalStateException("Application belongs to multiple groups");
-            var group=snapshot.group();var grant=snapshot.userGrants().stream()
-                .filter(value->value.issuer().equals(request.issuer())&&value.subject().equals(request.subject())).findFirst();
-            result=new ApplicationGroupProtocolProjectionV1.Projection(group.id(),"main",issuer,application.clientId(),request.subject(),
-                group.active(),application.approved(),group.revision(),group.authorizationVersion(),application.audiences(),
-                snapshot.scopes().stream().map(scope->new ApplicationGroupProtocolProjectionV1.Scope(scope.key(),scope.name(),scope.description())).toList(),
+            var group=snapshot.group();var grant=snapshot.userGrants().stream().filter(value->value.issuer().equals(request.issuer()) && value.subject().equals(request.subject())).findFirst();
+            result=new io.kestra.webserver.oidc.ApplicationGroupProtocolProjectionV2.Projection(group.id(),"main",issuer,application.clientId(),request.subject(),group.active(),true,
+                group.revision(),group.authorizationVersion(),application.audiences(),snapshot.scopes().stream().map(scope->new ApplicationGroupProtocolProjectionV1.Scope(scope.key(),scope.name(),scope.description())).toList(),
                 application.supportedScopeKeys(),grant.map(UserGrant::scopeKeys).orElse(Set.of()));
             result.eligibleScopeKeys(request);
         }
-        return new Result(1,true,Optional.ofNullable(result));
+        return new io.kestra.webserver.oidc.ApplicationGroupProtocolProjectionV2.Result(2,true,Optional.ofNullable(result));
     }
 
     @Override public List<Boundary> boundaries() { return transaction(this::boundaries); }
@@ -86,9 +84,9 @@ public final class ApplicationGroupDirectoryService implements ApplicationGroupD
         var application=snapshot.applications().stream().filter(value->value.clientId().equals(identity.clientId())).findFirst();
         if(account.isEmpty() || !account.get().active() || !account.get().canLogin()
             || account.get().authenticationVersion()!=identity.authenticationVersion() || client.isEmpty() || !client.get().active()
-            || !snapshot.group().active() || snapshot.group().revision()!=identity.directoryRevision()
-            || snapshot.group().authorizationVersion()!=identity.authorizationVersion() || application.isEmpty() || !application.get().approved()
-            || identity.audiences().isEmpty() || !application.get().audiences().containsAll(identity.audiences())
+            || !snapshot.group().active()
+            || snapshot.group().authorizationVersion()!=identity.authorizationVersion() || application.isEmpty()
+            || identity.audiences().isEmpty() || !(client.get().configuredLoginClient() && identity.clientId().equals(loginClientId) && identity.audiences().equals(Set.of(identity.clientId()))) && !application.get().audiences().containsAll(identity.audiences())
             || !snapshot.eligibleScopeKeys(identity.clientId(),issuer,identity.subject()).containsAll(identity.applicationGroupScopes()))
             throw new IdentityLifecycleGuardV1.Rejected(IdentityLifecycleGuardV1.Failure.FORBIDDEN);
     }
@@ -97,7 +95,6 @@ public final class ApplicationGroupDirectoryService implements ApplicationGroupD
         for(var snapshot:snapshots(connection)) {
             var audiences=new HashSet<String>();var reachable=new HashSet<String>();
             for(var application:snapshot.applications()) {
-                if(!application.approved())continue;
                 audiences.addAll(application.audiences());
                 var client=protocol.client(connection,issuer,application.clientId());
                 if(!application.clientId().equals(loginClientId) || client.isEmpty() || !client.get().active()
@@ -111,7 +108,7 @@ public final class ApplicationGroupDirectoryService implements ApplicationGroupD
             }
             result.add(new Boundary(view(connection,snapshot),snapshot.scopes().stream()
                 .map(scope->new ScopeView(snapshot.group().id(),scope.key(),scope.name(),scope.description(),scope.revision())).toList(),
-                audiences,reachable,PROTOCOL_SCOPES));
+                audiences,reachable,PROTOCOL_SCOPES,loginClientId));
         }
         return List.copyOf(result);
     }
@@ -122,7 +119,7 @@ public final class ApplicationGroupDirectoryService implements ApplicationGroupD
             var next=change.apply(current);var candidates=new ArrayList<Snapshot>();
             try {
                 for(var snapshot:snapshots(connection))candidates.add(snapshot.group().id().equals(groupId)?next:snapshot);
-                requireAdministrators(connection,candidates,policies.readCurrent(connection).policy(),null,null);
+                requireAdministrators(connection,candidates,projectPolicy(candidates),null,null);
                 validateApplications(connection,next);
             }catch(SQLException failure){throw new ApplicationGroupDirectoryStore.Unavailable(failure);}
             return next;
@@ -132,6 +129,8 @@ public final class ApplicationGroupDirectoryService implements ApplicationGroupD
 
     public void validateApplications(Connection connection,Snapshot snapshot)throws SQLException {
         for(var application:snapshot.applications()) {
+            for(var permission:application.permissions())permission.validate(kind(application.clientId()),
+                snapshot.scopes().stream().map(ApplicationGroupDirectory.Scope::key).collect(java.util.stream.Collectors.toSet()));
             var client=protocol.client(connection,issuer,application.clientId());
             if(client.isEmpty() || !client.get().active()) {
                 var pending=protocol.pendingClient(connection,issuer,application.clientId());
@@ -144,28 +143,53 @@ public final class ApplicationGroupDirectoryService implements ApplicationGroupD
         }
     }
 
+    public ApplicationPermission.Kind kind(String clientId) {
+        return loginClientId.equals(clientId)?ApplicationPermission.Kind.KESTRA_POLICY:ApplicationPermission.Kind.EXTERNAL_DECLARATION;
+    }
+
+    public ApplicationGroupPolicy projectPolicy(List<Snapshot> snapshots) {
+        var groups=new java.util.TreeMap<String,ApplicationGroupPolicy.ApplicationGroup>();
+        for(var snapshot:snapshots) {
+            var application=snapshot.applications().stream().filter(value->value.clientId().equals(loginClientId)).findFirst();
+            if(application.isEmpty())continue;
+            var audiences=application.get().audiences();
+            var scopes=application.map(value->ApplicationPermission.project(value.permissions(),ApplicationPermission.Kind.KESTRA_POLICY)).orElse(java.util.Map.of());
+            groups.put(snapshot.group().id(),new ApplicationGroupPolicy.ApplicationGroup(issuer,audiences,snapshot.group().active(),scopes));
+        }
+        if(groups.isEmpty())throw new IdentityLifecycleGuardV1.Rejected(IdentityLifecycleGuardV1.Failure.LAST_ADMIN);
+        return new ApplicationGroupPolicy(2,groups);
+    }
+
+    public ApplicationGroupPolicyStore.Snapshot runtimePolicy() { return transaction(this::runtimePolicy); }
+    public ApplicationGroupPolicyStore.Snapshot runtimePolicy(Connection connection)throws SQLException {
+        var policy=projectPolicy(snapshots(connection));
+        return new ApplicationGroupPolicyStore.Snapshot(Math.max(1,catalogRevision(connection)),0,"permission-projection",
+            java.time.Instant.EPOCH,policy,new ApplicationGroupPolicyParser().canonicalJson(policy));
+    }
+
     @Override public void beforeChange(Connection connection,Change change)throws SQLException {
         if(!issuer.equals(change.issuer()))throw new IdentityLifecycleGuardV1.Rejected(IdentityLifecycleGuardV1.Failure.FORBIDDEN);
         var actor=ApplicationGroupMutationContext.current();
         if(actor!=null) {
             verifyIdentity(connection,actor);
-            var snapshot=find(connection,actor.applicationGroupId());var policy=policies.readCurrent(connection).policy();
+            var snapshot=find(connection,actor.applicationGroupId());var policy=runtimePolicy(connection).policy();
             var application=policy.applicationGroups().get(actor.applicationGroupId());
-            if(application==null || !application.audiences().containsAll(actor.audiences()))throw new IdentityLifecycleGuardV1.Rejected(IdentityLifecycleGuardV1.Failure.FORBIDDEN);
+            boolean login=actor.clientId().equals(loginClientId) && actor.audiences().equals(Set.of(loginClientId));
+            if(application==null || !login && !application.audiences().containsAll(actor.audiences()))throw new IdentityLifecycleGuardV1.Rejected(IdentityLifecycleGuardV1.Failure.FORBIDDEN);
             var scopes=new java.util.TreeMap<String,ApplicationGroupAuthorization.DirectoryScope>();
             snapshot.scopes().forEach(scope->scopes.put(scope.key(),new ApplicationGroupAuthorization.DirectoryScope(scope.name(),scope.description())));
-            var registeredAudiences=snapshot.applications().stream().filter(Application::approved).flatMap(member->member.audiences().stream()).collect(java.util.stream.Collectors.toSet());
+            var registeredAudiences=snapshot.applications().stream().flatMap(member->member.audiences().stream()).collect(java.util.stream.Collectors.toSet());
             var boundary=new ApplicationGroupAuthorization.Directory(new ApplicationGroupAuthorization.ScopeCatalog(issuer,registeredAudiences,snapshot.group().active(),snapshot.group().revision(),scopes),
                 snapshot.group().id(),PROTOCOL_SCOPES.stream().map(ProtocolScope::scope).collect(java.util.stream.Collectors.toSet()));
             var identity=new ApplicationGroupAuthorization.Identity(actor.subject(),issuer,actor.audiences().stream().sorted().findFirst().orElseThrow(),
-                actor.applicationGroupId(),actor.directoryRevision(),actor.applicationGroupScopes(),actor.protocolScopes(),"main");
+                actor.applicationGroupId(),snapshot.group().revision(),actor.applicationGroupScopes(),actor.protocolScopes(),"main",login);
             if(!new ApplicationGroupAuthorization(policy).authorizeManagement(identity,boundary,IDENTITY,MANAGE,actor.applicationGroupId()))
                 throw new IdentityLifecycleGuardV1.Rejected(IdentityLifecycleGuardV1.Failure.FORBIDDEN);
         }
         if(change.kind()==Kind.ACCOUNT_ACTIVATE || change.kind()==Kind.PASSWORD_RESET)return;
         String excludedSubject=change.kind()==Kind.ACCOUNT_DEACTIVATE?change.subject():null;
         String excludedClient=change.kind()==Kind.CLIENT_REVOKE || change.kind()==Kind.CLIENT_DELETE?change.clientId():null;
-        requireAdministrators(connection,snapshots(connection),policies.readCurrent(connection).policy(),excludedSubject,excludedClient);
+        requireAdministrators(connection,snapshots(connection),runtimePolicy(connection).policy(),excludedSubject,excludedClient);
     }
 
     public void requireAdministrators(Connection connection,List<Snapshot> groups,ApplicationGroupPolicy policy,
@@ -183,7 +207,7 @@ public final class ApplicationGroupDirectoryService implements ApplicationGroupD
                 if(!snapshot.group().active() || configured==null || !configured.enabled() || !issuer.equals(configured.issuer()))continue;
                 for(var application:snapshot.applications()) {
                     if(!application.clientId().equals(loginClientId) || application.clientId().equals(excludedClient)
-                        || !application.approved() || !configured.audiences().containsAll(application.audiences()))continue;
+                        || !configured.audiences().containsAll(application.audiences()))continue;
                     var client=protocol.client(connection,issuer,application.clientId());
                     if(client.isEmpty() || !client.get().active() || !client.get().configuredLoginClient())continue;
                     for(var grant:snapshot.userGrants()) {

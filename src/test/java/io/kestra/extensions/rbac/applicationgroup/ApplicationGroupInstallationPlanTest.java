@@ -9,12 +9,15 @@ import static org.junit.jupiter.api.Assertions.*;
 class ApplicationGroupInstallationPlanTest {
     private static final ObjectMapper MAPPER=new ObjectMapper();
     private static final String PLAN="""
-        {"formatVersion":1,"installationId":"28e9352d-ea66-4a24-888f-e76fda93fef0","issuer":"https://issuer.example",
+        {"formatVersion":2,"installationId":"28e9352d-ea66-4a24-888f-e76fda93fef0","issuer":"https://issuer.example",
          "uiClientId":"ui","builtInApplicationGroupId":"first","applicationGroups":[{
-          "applicationGroup":{"id":"first","displayName":"First","active":true,"revision":1,"authorizationVersion":1},
+          "applicationGroup":{"id":"first","displayName":"First","description":"","active":true,"revision":1,"authorizationVersion":1},
           "scopes":[{"key":"read","name":"Reader","description":"Read access","revision":1},
                     {"key":"manage","name":"Manager","description":"Manage access","revision":1}],
-          "applications":[{"clientId":"ui","approved":true,"audiences":["ui"],"supportedScopeKeys":["read","manage"],"revision":1}],
+          "applications":[{"clientId":"ui","description":"","audiences":["ui"],"permissions":[
+            {"key":"allow-all","name":"Supported scopes","description":"","scopeKeys":["read","manage"],"grants":[],"managementGrants":[
+              {"domain":"IDENTITY","actions":["MANAGE"],"applicationGroupIds":[]},
+              {"domain":"LOCAL_POLICY","actions":["MANAGE"],"applicationGroupIds":[]}],"details":"","enabled":true,"revision":1}],"revision":1}],
           "userGrants":[{"issuer":"https://issuer.example","subject":"admin","scopeKeys":["manage"],"revision":1}]}]}
         """;
 
@@ -52,7 +55,7 @@ class ApplicationGroupInstallationPlanTest {
 
     @Test void rejectsDuplicateFieldsTrailingDataAndMissingProperties()throws Exception {
         assertThrows(IllegalArgumentException.class,()->ApplicationGroupInstallationPlan.parse(
-            PLAN.replace("\"formatVersion\":1","\"formatVersion\":1,\"formatVersion\":1").getBytes(StandardCharsets.UTF_8)));
+            PLAN.replace("\"formatVersion\":2","\"formatVersion\":2,\"formatVersion\":2").getBytes(StandardCharsets.UTF_8)));
         assertThrows(IllegalArgumentException.class,()->ApplicationGroupInstallationPlan.parse((PLAN+"{}").getBytes(StandardCharsets.UTF_8)));
         var missing=input();missing.remove("installationId");assertThrows(IllegalArgumentException.class,()->review(missing));
     }

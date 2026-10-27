@@ -1,25 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {registerHooks} from 'node:module'
 import {createRenderer, defineComponent, h, Teleport, nextTick} from 'vue'
 
-const hooks = registerHooks({
-  load(url, context, nextLoad) {
-    const result=nextLoad(url, context)
-    if (url.endsWith('/src/lifecycle.js')) return {...result,source:String(result.source).replace("import.meta.glob('./translations/*.json', {eager: true, import: 'default'})",'{}')}
-    return result
-  },
-  resolve(specifier, context, nextResolve) {
-    if (context.parentURL?.endsWith('/src/lifecycle.js') && (specifier === '@kestra-io/design-system' || specifier.endsWith('.vue') || specifier.endsWith('/locales.mjs'))) {
-      return {url:'data:text/javascript,' + encodeURIComponent(specifier === '@kestra-io/design-system'
-        ? 'export const registerDesignSystemI18n=()=>{};export const KsButton={},KsInput={},KsSearch={},KsPopover={},KsTooltip={},KsIcon={},KsSelect={},KsOption={},KsDatePicker={},KsTag={},KsSegmented={};'
-        : specifier.endsWith('.vue') ? 'export default {}' : 'export const resolveLocale=value=>value'),shortCircuit:true}
-    }
-    return nextResolve(specifier, context)
-  }
-})
-const {createPortalSelect} = await import('../src/lifecycle.js')
-hooks.deregister()
+import * as Vue from 'vue'
+import {shadowOverlayComponents} from '../../.integration/ui-sdk/shadow-overlays.mjs'
+
+function createPortalSelect(component, portal) {
+  const scope = {portal, popup: () => ({id: 'test-popup', show() {}, hide() {}, dispose() {}}), escapeSelect() {}}
+  return shadowOverlayComponents(Vue, {KsSelect: component}, scope).KsSelect
+}
 
 const node = (type, text = '') => ({type,text,children:[],parent:null,props:{}})
 function renderer() {

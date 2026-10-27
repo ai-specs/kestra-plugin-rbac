@@ -24,7 +24,8 @@ class ApplicationGroupRuntimeDirectoryTest {
         var directory=org.mockito.Mockito.mock(ApplicationGroupDirectoryReader.class);
         org.mockito.Mockito.when(directory.boundaries()).thenReturn(present?List.of(console,target):List.of(console));
         var identity=new io.kestra.webserver.oidc.TrustedIdentityV1.Identity(1,"https://issuer.example","operator","ui-client",Set.of("ui"),"main","p",Set.of(),Set.of("manager"),0,97,3);
-        var runtime=new ApplicationGroupRuntimePolicies(store,directory,org.mockito.Mockito.mock(io.kestra.webserver.oidc.TrustedIdentityV1.class));
+        org.mockito.Mockito.when(directory.runtimePolicy()).thenAnswer(call->store.readCurrent());
+        var runtime=new ApplicationGroupRuntimePolicies(directory,org.mockito.Mockito.mock(io.kestra.webserver.oidc.TrustedIdentityV1.class));
         if(!issuer.equals("https://issuer.example") || !tenant.equals("main") || bound){
             assertEquals(ApplicationGroupRuntimePolicies.Failure.INVALID_DIRECTORY,assertThrows(ApplicationGroupRuntimePolicies.Rejected.class,()->runtime.open(identity,"main")).failure());
         }else try(var context=runtime.open(identity,"main")){
@@ -55,7 +56,8 @@ class ApplicationGroupRuntimeDirectoryTest {
         org.mockito.Mockito.when(store.readCurrent()).thenReturn(new io.kestra.extensions.rbac.store.ApplicationGroupPolicyStore.Snapshot(1,0,"operator",java.time.Instant.EPOCH,policy,"{}"));
         var directory=org.mockito.Mockito.mock(ApplicationGroupDirectoryReader.class);
         org.mockito.Mockito.when(directory.boundaries()).thenReturn(List.of(console,target));
-        var runtime=new ApplicationGroupRuntimePolicies(store,directory,org.mockito.Mockito.mock(io.kestra.webserver.oidc.TrustedIdentityV1.class));
+        org.mockito.Mockito.when(directory.runtimePolicy()).thenAnswer(call->store.readCurrent());
+        var runtime=new ApplicationGroupRuntimePolicies(directory,org.mockito.Mockito.mock(io.kestra.webserver.oidc.TrustedIdentityV1.class));
         var identity=new io.kestra.webserver.oidc.TrustedIdentityV1.Identity(1,"https://issuer.example","operator","ui-client",Set.of("ui"),"main","p",Set.of(),Set.of("manager"),0,97,3);
         try(var context=runtime.open(identity,"main")){
             assertTrue(context.authorizeManagement(domain,action,"target"));
@@ -75,7 +77,10 @@ class ApplicationGroupRuntimeDirectoryTest {
     }
     @Test void runtimeFactoryDoesNotBorrowConnectionsOrCreatePolicySchema() throws Exception {
         var source=org.mockito.Mockito.mock(javax.sql.DataSource.class);
-        assertNotNull(new ApplicationGroupRuntimeConfiguration().applicationGroupPolicyStore(source,org.mockito.Mockito.mock(io.kestra.webserver.oidc.OidcProtocolStateV1.class)));
+        assertNotNull(new ApplicationGroupRuntimeConfiguration().applicationGroupDirectoryStore(source,org.mockito.Mockito.mock(io.kestra.webserver.oidc.OidcProtocolStateV1.class)));
+        assertTrue(java.util.Arrays.stream(ApplicationGroupRuntimeConfiguration.class.getDeclaredMethods())
+            .noneMatch(method->method.getReturnType()==io.kestra.extensions.rbac.store.ApplicationGroupPolicyStore.class
+                || method.getReturnType()==io.kestra.extensions.rbac.declaration.ApplicationScopeDeclarationStore.class));
         org.mockito.Mockito.verify(source,org.mockito.Mockito.never()).getConnection();
         org.mockito.Mockito.verify(source,org.mockito.Mockito.never()).getConnection(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString());
     }
@@ -124,7 +129,8 @@ class ApplicationGroupRuntimeDirectoryTest {
         var identities=org.mockito.Mockito.mock(io.kestra.webserver.oidc.TrustedIdentityV1.class);
         var identity=new io.kestra.webserver.oidc.TrustedIdentityV1.Identity(1,"https://issuer.example","operator","ui-client",Set.of("ui"),
             "main","p",Set.of(),Set.of("manager"),0,97,3);
-        var runtime=new ApplicationGroupRuntimePolicies(store,directory,identities);
+        org.mockito.Mockito.when(directory.runtimePolicy()).thenAnswer(call->store.readCurrent());
+        var runtime=new ApplicationGroupRuntimePolicies(directory,identities);
         var negativeVersion=new io.kestra.webserver.oidc.TrustedIdentityV1.Identity(1,"https://issuer.example","operator","ui-client",Set.of("ui"),
             "main","p",Set.of(),Set.of("manager"),-1,97,3);
         assertEquals(ApplicationGroupRuntimePolicies.Failure.INVALID_IDENTITY,

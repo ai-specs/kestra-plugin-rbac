@@ -16,9 +16,13 @@ class ApplicationGroupDirectoryCommandTest {
     private final Connection connection=mock(Connection.class);
     private final OidcProtocolStateV1 protocol=mock(OidcProtocolStateV1.class);
     private ApplicationGroupInstallationPlan plan(boolean external) {
-        var apps=new java.util.ArrayList<Application>();apps.add(new Application("ui",true,Set.of("ui"),Set.of("manager"),1));
-        if(external)apps.add(new Application("external",true,Set.of("api"),Set.of("manager"),1));
-        return new ApplicationGroupInstallationPlan(1,"28e9352d-ea66-4a24-888f-e76fda93fef0",ISSUER,"ui","group",List.of(
+        var apps=new java.util.ArrayList<Application>();apps.add(io.kestra.extensions.rbac.applicationgroup.TestApplicationFactory.application("ui",true,Set.of("ui"),Set.of("manager"),1));
+        var manager=new io.kestra.extensions.rbac.applicationgroup.ApplicationGroupPolicy.ScopeDefinition("",true,List.of(),List.of(
+            new io.kestra.extensions.rbac.applicationgroup.ApplicationGroupPolicy.ManagementGrant(io.kestra.extensions.rbac.applicationgroup.ApplicationGroupPolicy.ManagementDomain.IDENTITY,Set.of(io.kestra.extensions.rbac.applicationgroup.ApplicationGroupPolicy.ManagementAction.MANAGE)),
+            new io.kestra.extensions.rbac.applicationgroup.ApplicationGroupPolicy.ManagementGrant(io.kestra.extensions.rbac.applicationgroup.ApplicationGroupPolicy.ManagementDomain.LOCAL_POLICY,Set.of(io.kestra.extensions.rbac.applicationgroup.ApplicationGroupPolicy.ManagementAction.MANAGE))));
+        apps.set(0,io.kestra.extensions.rbac.applicationgroup.TestApplicationFactory.withPolicy(apps.getFirst(),java.util.Map.of("manager",manager)));
+        if(external)apps.add(io.kestra.extensions.rbac.applicationgroup.TestApplicationFactory.application("external",true,Set.of("api"),Set.of("manager"),1));
+        return new ApplicationGroupInstallationPlan(2,"28e9352d-ea66-4a24-888f-e76fda93fef0",ISSUER,"ui","group",List.of(
             new ApplicationGroupInstallationPlan.Entry(new Group("group","Group",true,1,1),List.of(new Scope("manager","Manager","",1)),apps,
                 List.of(new UserGrant(ISSUER,"admin",Set.of("manager"),1)))));
     }

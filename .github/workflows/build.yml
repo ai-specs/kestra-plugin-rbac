@@ -42,21 +42,38 @@ jobs:
       - name: Build, test, and verify thin jar
         working-directory: rbac
         run: |
-          ./gradlew clean check --console=plain
-          python3 scripts/check-application-project-tests.py build/test-results/test
+          status=0
+          ./gradlew clean check --console=plain || status=$?
           mkdir -p .evidence/unit
           cp -R build/reports/tests/test .evidence/unit/report
           cp -R build/test-results/test .evidence/unit/results
+          if [ "$status" -ne 0 ]; then exit "$status"; fi
+          python3 scripts/check-application-project-tests.py .evidence/unit/results
       - name: Verify policy storage against PostgreSQL
         working-directory: rbac
         env:
           RBAC_STORE_TEST_JDBC: jdbc:postgresql://localhost:5432/postgres
         run: |
-          ./gradlew test --tests 'io.kestra.extensions.rbac.store.*' --tests 'io.kestra.extensions.rbac.declaration.ApplicationScopeDeclarationStoreTest' --tests 'io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectoryServiceTest' --rerun-tasks --console=plain
-          python3 scripts/check-policy-tests.py build/test-results/test
+          status=0
+          ./gradlew test --tests 'io.kestra.extensions.rbac.store.*' --tests 'io.kestra.extensions.rbac.declaration.ApplicationScopeDeclarationStoreTest' --tests 'io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectoryServiceTest' --tests 'io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionUpgradeTest' --tests 'io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionControllerTest' --tests 'io.kestra.extensions.rbac.management.AccountGrantCleanupTest' --rerun-tasks --console=plain || status=$?
           mkdir -p .evidence/postgres
           cp -R build/reports/tests/test .evidence/postgres/report
           cp -R build/test-results/test .evidence/postgres/results
+          if [ "$status" -ne 0 ]; then exit "$status"; fi
+          python3 scripts/check-policy-tests.py .evidence/postgres/results
+          python3 scripts/check-declaration-upgrade-tests.py .evidence/postgres/results
+      - name: Verify plugin account lifecycle against PostgreSQL
+        working-directory: rbac
+        env:
+          RBAC_STORE_TEST_JDBC: jdbc:postgresql://localhost:5432/postgres
+        run: |
+          status=0
+          ./gradlew lifecyclePostgresTest --console=plain || status=$?
+          mkdir -p .evidence/lifecycle
+          cp -R build/reports/tests/lifecyclePostgresTest .evidence/lifecycle/report
+          cp -R build/test-results/lifecyclePostgresTest .evidence/lifecycle/results
+          if [ "$status" -ne 0 ]; then exit "$status"; fi
+          python3 scripts/check-lifecycle-tests.py .evidence/lifecycle/results > .evidence/lifecycle/summary.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
