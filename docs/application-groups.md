@@ -7,16 +7,16 @@ R24同借用连接事务及R25登录client部署维护轮换的来源是主控�
 宿主README中“账号与client凭据V2”“受限维护CLI”的公开契约，发布输入见
 host-contract.properties；本仓不据该设计来源扩大宿主能力或降低验收门。
 
-状态：未发布候选。本文是插件自足设计，不表示 CI、PG 或组合验收通过。
+本文描述公开契约；正式消费必须对应提交 CI 和产物检查通过，不等于根仓组合验收通过。
 正式协议44先由64c4498/run40523539018发布；2026-10-28当前正式输入已升级为
-2906d795/run40576953734，digest由host-contract.properties固定为91827c9d…a2e6。
+cfd81ec8/run40619438865，digest由host-contract.properties固定为f7d195b6…fe1f。
 正式registry缓存经独立create/cp提取，executable SHA256为
-67f0d8a6d08b5fa6f2230a358de539a2f8e5c5777028c01d9f65a9fc1cb21134。
+fd16fcfa82fe8ebed22cbcb22dcb7be215b9c40d703050920365201194866acd。
 发布门与提取来源已核对，
-公开UserDirectoryV2/TrustedIdentityV2/参与者/凭据/ProjectionV2类型已进入候选实现，
+公开UserDirectoryV2/TrustedIdentityV2/参与者/凭据/ProjectionV2契约由插件实现，
 Java编译通过不等于插件CI或组合验收通过；不直读宿主私有表。0384公开SDK十个文件
 已从当前正式镜像提取，四原生组件经helper的条件契约已消费，导航及overlay接线
-本地clean check通过；宿主949矩阵不替代插件真实UI门，最终插件CI尚未执行。
+本地clean check通过；宿主949矩阵不替代插件真实UI门，最终插件CI与产物必须核对对应提交的实际成功结果。
 
 ### 本轮检查点（本地候选，非发布结论）
 

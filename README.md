@@ -1,6 +1,6 @@
 # kestra-plugin-rbac
 
-> 应用组、scope、统一应用权限、派生支持集、用户授予、内置/退役约束和业务存储由本仓实现；宿主提供标准 OIDC 与公开协议机制。当前 R21 候选设计、DTO 和初始化输入见 `docs/application-groups.md` 顶部。
+> 应用组、scope、统一应用权限、派生支持集、用户授予、内置/退役约束和业务存储由本仓实现；宿主提供标准 OIDC 与公开协议机制。统一权限模型、DTO 和初始化输入见 `docs/application-groups.md` 顶部。
 
 > 当前目标以维护者应用组模型为准；本仓自足契约见 `docs/application-groups.md` 和 `docs/management-api.md`。正式 CI 及 root 组合验收必须对应最终提交，历史记录不能替代。
 
@@ -9,16 +9,17 @@
 插件消费边界以ai-specs/kestra-overlay正式README的“账号与client凭据V2”和“受限
 维护CLI”公开契约为准，具体发布输入由host-contract.properties固定。
 
-当前未发布候选采用应用下独立 `permissions` CRUD，同一实体保存 Kestra typed grants 或外部 details。
+统一权限模型采用应用下独立 `permissions` CRUD，同一实体保存 Kestra typed grants 或外部 details。
 旧 `scope-declarations` 与 `runtime-permissions` 路由不注册，无兼容转发。当前代码不表示
 新契约 CI、PG、宿主 F3/F4 或 Compose 验收通过；只有匹配正式宿主重新编译、独立 CI
 及发布通过的产物才可部署。历史测试记录不能证明本轮 R21 行为。
 
-当前候选检查点：description为可选HTTP字段、权限列表先按key排序再分页，默认25；
-新安装候选为目录四表加管理审计表，生产不注册旧policy/declaration store bean。已消费正式
+当前模型与验证边界：description为可选HTTP字段、权限列表先按key排序再分页，默认25；
+新安装使用目录四表加管理审计表，生产不注册旧policy/declaration store bean。已消费正式
 协议44镜像（64c4498/run40523539018，固定digest见host-contract.properties），真实V2
-适配及空资源audiences登记已进入本地Java/PG验证，不补clientId。当前pin已升级正式
-2906d795/run40576953734的91827c9d…a2e6镜像，公开SDK overlayCompatibility经helper
+适配及空资源audiences登记已进入本地Java/PG验证，不补clientId。当前pin已升级为正式
+cfd81ec8/run40619438865的f7d195b6…fe1f镜像，包含首次临时改密
+协议入口修复；公开SDK overlayCompatibility经helper
 支持四个组件；新导航/overlay接线已通过本地clean check，真实插件UI/Compose仍须验收。
 具体输入、缺口和版本证据入口见 `docs/application-groups.md`；本地候选测试不是发布结论。
 
