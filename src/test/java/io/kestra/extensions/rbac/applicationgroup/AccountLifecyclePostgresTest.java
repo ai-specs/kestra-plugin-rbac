@@ -175,6 +175,12 @@ class AccountLifecyclePostgresTest {
     }
     private boolean attempt(String actor,String target,boolean delete,CountDownLatch ready,CountDownLatch start)throws Exception {
         var identity=authentication(actor);ready.countDown();assertTrue(start.await(5,TimeUnit.SECONDS));
-        try {change(identity,target,delete);return true;}catch(RuntimeException rejected) {return false;}
+        try {change(identity,target,delete);return true;}
+        catch(io.kestra.extensions.rbac.management.UserDirectoryAccess.DirectoryFailure rejected) {
+            assertTrue(java.util.Set.of(io.kestra.extensions.rbac.management.UserDirectoryAccess.Failure.FORBIDDEN,
+                io.kestra.extensions.rbac.management.UserDirectoryAccess.Failure.LAST_ADMIN,
+                io.kestra.extensions.rbac.management.UserDirectoryAccess.Failure.CONFLICT).contains(rejected.failure()),"Unexpected concurrent failure: "+rejected.failure());
+            return false;
+        }
     }
 }

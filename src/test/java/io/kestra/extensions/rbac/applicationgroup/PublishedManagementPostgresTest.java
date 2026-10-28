@@ -29,6 +29,76 @@ class PublishedManagementPostgresTest {
     }
     ManagementAuditStore.Page events(){return fixture.store.transaction(connection->fixture.audit.readIssuer(connection,AccountLifecyclePostgresTest.ISSUER,1,100));}
 
+    ManagementController lifecycleController() {
+        var policies=new ApplicationGroupRuntimePolicies(fixture.service,fixture.trusted);
+        return new ManagementController(policies,AccountLifecyclePostgresTest.provider(()->fixture.published),
+            AccountLifecyclePostgresTest.provider(()->new ApplicationGroupDirectoryManagement(fixture.service,policies)));
+    }
+
+    @Test void concurrentControllerMutualDeletionReturnsOne204AndOneSafeRejection()throws Exception {controllerRace(true);}
+    @Test void concurrentControllerMutualDeactivationReturnsOne200AndOneSafeRejection()throws Exception {controllerRace(false);}
+
+    void controllerRace(boolean delete)throws Exception {
+        var controller=lifecycleController();
+        var ready=new java.util.concurrent.CountDownLatch(2);var start=new java.util.concurrent.CountDownLatch(1);
+        try(var executor=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var futures=new java.util.ArrayList<java.util.concurrent.Future<Integer>>();
+            for(String subject:List.of("first","second")) {
+                String target=subject.equals("first")?"second":"first";
+                var authentication=fixture.authentication(subject);long revision=fixture.published.find(target).orElseThrow().revision();
+                futures.add(executor.submit(()->{
+                    var request=HttpRequest.DELETE("/api/v1/main/extensions/rbac/users/detail").setAttribute(io.micronaut.security.filters.SecurityFilter.AUTHENTICATION,authentication);
+                    try(var scope=io.micronaut.core.propagation.PropagatedContext.getOrEmpty().plus(new io.kestra.core.repositories.AuthorizationInvocationContext(request,false)).propagate()) {
+                        ready.countDown();assertTrue(start.await(5,java.util.concurrent.TimeUnit.SECONDS));
+                        return delete?controller.deleteUser("main",authentication,target,"\""+revision+"\"").code():
+                            controller.state("main",authentication,"\""+revision+"\"",("{\"subject\":\""+target+"\",\"active\":false}").getBytes(java.nio.charset.StandardCharsets.UTF_8)).code();
+                    }
+                }));
+            }
+            assertTrue(ready.await(5,java.util.concurrent.TimeUnit.SECONDS));start.countDown();
+            var statuses=new java.util.ArrayList<Integer>();for(var future:futures)statuses.add(future.get(20,java.util.concurrent.TimeUnit.SECONDS));
+            System.out.println("Published controller "+(delete?"mutual-delete":"mutual-deactivate")+" statuses: "+statuses);
+            int success=delete?204:200;assertEquals(1,statuses.stream().filter(status->status==success).count());
+            assertTrue(statuses.stream().allMatch(status->status==success||Set.of(401,403,409,412).contains(status)),"Unexpected controller race statuses: "+statuses);
+            assertEquals(1,fixture.activeAccounts());assertEquals(2,events().total());
+            assertEquals(delete?2:4,fixture.store.readAll().stream().mapToLong(snapshot->snapshot.userGrants().size()).sum());
+        }
+    }
+
+    @Test void controllerDependencyFailuresRemain503AndLeaveAllLifecycleStateUnchanged()throws Exception {
+        var controller=lifecycleController();var policies=mock(ApplicationGroupRuntimePolicies.class);
+        fixture.participant=new PublishedIdentityLifecycleParticipant(fixture.service,fixture.store,policies,
+            AccountLifecyclePostgresTest.provider(()->fixture.trusted),fixture.audit);
+        var before=fixture.store.readAll();var accounts=fixture.published.list(1,100);var auditBefore=events();var storageBefore=lifecycleStorageState();
+        for(var failure:List.of(ApplicationGroupRuntimePolicies.Failure.POLICY_UNAVAILABLE,ApplicationGroupRuntimePolicies.Failure.DIRECTORY_UNAVAILABLE)) {
+            doThrow(new ApplicationGroupRuntimePolicies.Rejected(failure)).when(policies).open(any(java.sql.Connection.class),any(),eq("main"));
+            assertEquals(503,actor("first",()->controller.deleteUser("main",fixture.authentication("first"),"second","\"0\"")).code());
+            assertEquals(before,fixture.store.readAll());assertEquals(accounts,fixture.published.list(1,100));assertEquals(auditBefore,events());
+            assertEquals(storageBefore,lifecycleStorageState());
+        }
+        for(var failure:List.of(ApplicationGroupRuntimePolicies.Failure.INVALID_IDENTITY,ApplicationGroupRuntimePolicies.Failure.FORBIDDEN,ApplicationGroupRuntimePolicies.Failure.LAST_ADMIN)) {
+            doThrow(new ApplicationGroupRuntimePolicies.Rejected(failure)).when(policies).open(any(java.sql.Connection.class),any(),eq("main"));
+            assertEquals(failure==ApplicationGroupRuntimePolicies.Failure.LAST_ADMIN?409:403,actor("first",()->controller.deleteUser("main",fixture.authentication("first"),"second","\"0\"")).code());
+            assertEquals(storageBefore,lifecycleStorageState());
+        }
+        doThrow(new java.sql.SQLException("Injected policy query failure")).when(policies).open(any(java.sql.Connection.class),any(),eq("main"));
+        assertEquals(503,actor("first",()->controller.deleteUser("main",fixture.authentication("first"),"second","\"0\"")).code());
+        assertEquals(before,fixture.store.readAll());assertEquals(accounts,fixture.published.list(1,100));assertEquals(auditBefore,events());
+        assertEquals(storageBefore,lifecycleStorageState());
+    }
+
+    String lifecycleStorageState()throws Exception {
+        var rows=new java.util.ArrayList<String>();
+        try(var connection=fixture.source.getConnection()) {
+            for(String table:List.of("oidc_user","oidc_user_auth_method","oidc_authorization_code","oidc_token","oidc_password_change","rbac_application_group_state","rbac_application_group_invalidation","rbac_management_audit")) {
+                try(var statement=connection.createStatement();var result=statement.executeQuery("SELECT row_to_json(record)::text FROM "+table+" record ORDER BY row_to_json(record)::text")) {
+                    while(result.next())rows.add(table+":"+result.getString(1));
+                }
+            }
+        }
+        return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(String.join("\n",rows).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+    }
+
     @Test void passwordResetAndActorDeletionRetainOriginalCommittedAuditSubjects() {
         actor("first",()->fixture.published.resetPassword("second",fixture.published.find("second").orElseThrow().revision(),"new-isolated-password"));
         var original=events().items();assertEquals(2,original.size());assertTrue(original.stream().allMatch(event->event.operation()==ManagementAuditStore.Operation.PASSWORD_RESET && event.actorSubject().equals("first") && event.targetSubject().equals("second")));

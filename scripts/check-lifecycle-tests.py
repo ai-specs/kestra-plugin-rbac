@@ -26,6 +26,9 @@ assert 'executable: ' + provenance['sha256'] + '; image: ' + provenance['image']
 additional_name='io.kestra.extensions.rbac.applicationgroup.PublishedManagementPostgresTest'
 additional=ET.parse(Path(sys.argv[1])/('TEST-'+additional_name+'.xml')).getroot()
 additional_required={
+    'concurrentControllerMutualDeletionReturnsOne204AndOneSafeRejection',
+    'concurrentControllerMutualDeactivationReturnsOne200AndOneSafeRejection',
+    'controllerDependencyFailuresRemain503AndLeaveAllLifecycleStateUnchanged',
     'issuerWideDirectoryCrudMissingTargetsAndZeroAuthorizationUseRealTransactions',
     'passwordResetAndActorDeletionRetainOriginalCommittedAuditSubjects',
     'missingParticipantRefusesMutationAndLeavesAuditAndGrantsUnchanged',

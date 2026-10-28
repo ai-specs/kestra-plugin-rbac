@@ -57,9 +57,17 @@ public final class PublishedIdentityLifecycleParticipant implements IdentityLife
             }
             audit.append(connection,actor.issuer(),actor.subject(),operation,change.subject(),change.clientId(),groups);
         }catch(UserDirectoryAccess.DirectoryFailure failure) {
-            throw new IdentityLifecycleGuardV1.Rejected(IdentityLifecycleGuardV1.Failure.FORBIDDEN);
+            throw new IdentityLifecycleGuardV1.Rejected(switch(failure.failure()) {
+                case FORBIDDEN->IdentityLifecycleGuardV1.Failure.FORBIDDEN;
+                case LAST_ADMIN->IdentityLifecycleGuardV1.Failure.LAST_ADMIN;
+                default->IdentityLifecycleGuardV1.Failure.UNAVAILABLE;
+            });
         }catch(ApplicationGroupRuntimePolicies.Rejected failure) {
-            throw new IdentityLifecycleGuardV1.Rejected(IdentityLifecycleGuardV1.Failure.FORBIDDEN);
+            throw new IdentityLifecycleGuardV1.Rejected(switch(failure.failure()) {
+                case INVALID_IDENTITY,FORBIDDEN->IdentityLifecycleGuardV1.Failure.FORBIDDEN;
+                case LAST_ADMIN->IdentityLifecycleGuardV1.Failure.LAST_ADMIN;
+                default->IdentityLifecycleGuardV1.Failure.UNAVAILABLE;
+            });
         }
     }
 }

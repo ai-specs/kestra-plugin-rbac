@@ -18,8 +18,8 @@
 新安装使用目录四表加管理审计表，生产不注册旧policy/declaration store bean。已消费正式
 协议44镜像（64c4498/run40523539018，固定digest见host-contract.properties），真实V2
 适配及空资源audiences登记已进入本地Java/PG验证，不补clientId。当前pin已升级为正式
-dae2b4a/run40645098489的a56adfb9…84ade镜像，包含首次临时改密、账号空资料及
-精确favicon静态资源激活修复。临时账号姓名/邮箱可空，资料更新可清空，不补用户名或
+e720f55/run40663374442的2b67b233…644b8镜像，包含首次临时改密、账号空资料、
+精确favicon及V2锁后身份拒绝分类修复。临时账号姓名/邮箱可空，资料更新可清空，不补用户名或
 虚构邮箱；空资料的创建与读回仍须核对对应提交的实际测试结果。公开SDK overlayCompatibility经helper
 支持四个组件；新导航/overlay接线已通过本地clean check，真实插件UI/Compose仍须验收。
 具体输入、缺口和版本证据入口见 `docs/application-groups.md`；本地候选测试不是发布结论。
@@ -98,9 +98,10 @@ python3 scripts/check-lifecycle-tests.py build/test-results/lifecyclePostgresTes
 suite为`io.kestra.extensions.rbac.applicationgroup.AccountLifecyclePostgresTest`，6个具名用例。
 真实插件目录、统一权限投影、身份复查、最后管理员检查与清理都在同一PG连接执行；
 标准账号、可信身份与参与者调度来自固定正式镜像，生产插件适配器/参与者实际接线。
-同任务另执行PublishedManagementPostgresTest的10项真实管理集成，包含身份目录的
-缺组404、零授权403和真实创建/更新/删除事务回归。检查器同时核对
-两个suite的精确名称集合、PostgreSQL及hostImage/executable hash；摘要gatePassed仅
+同任务另执行PublishedManagementPostgresTest的13项真实管理集成，包含身份目录的
+缺组404、零授权403和真实创建/更新/删除事务回归。
+Controller互删/互停用检查一个成功及一个明确安全拒绝/冲突，不接受任意RuntimeException。
+SQL和投影依赖故障保持503并验证无副作用。检查器核对两个suite的精确名称集合、PostgreSQL及hostImage/executable hash；摘要gatePassed仅
 表示此门通过，不表示整仓可发布。正式HTTP/CSRF、插件浏览器及Compose仍须独立验收。
 CI证据入口为`.evidence/lifecycle/results/TEST-io.kestra.extensions.rbac.applicationgroup.AccountLifecyclePostgresTest.xml`
 及`.evidence/lifecycle/summary.json`；根仓T6必须核对具名用例、实际PostgreSQL和最终提交。
