@@ -64,7 +64,8 @@ class ApplicationGroupDirectoryStoreTest {
         store.initializeBuiltin(empty("first"));
         assertEquals("first",new ApplicationGroupDirectoryStore(source).builtinGroupId());
         assertThrows(ApplicationGroupDirectoryStore.Conflict.class,()->store.initializeBuiltin(empty("replacement")));
-        assertThrows(IllegalArgumentException.class,()->store.delete("first",1));
+        var protectedFailure=assertThrows(ApplicationGroupDirectoryStore.DeletionRejected.class,()->store.delete("first",1));
+        assertEquals(ApplicationGroupDirectoryStore.DeletionFailure.PROTECTED_GROUP,protectedFailure.failure());
         store.create(empty("temporary"));
         assertThrows(ApplicationGroupDirectoryStore.Conflict.class,()->store.delete("temporary",2));
         store.delete("temporary",1);
@@ -84,7 +85,9 @@ class ApplicationGroupDirectoryStoreTest {
         assertThrows(IllegalArgumentException.class,()->store.update("other",1,current->
             new Snapshot(current.group(),List.of(scope),List.of(app),List.of())));
         var occupied=store.update("other",1,current->new Snapshot(current.group(),List.of(scope),List.of(),List.of()));
-        assertThrows(IllegalArgumentException.class,()->store.delete("other",occupied.group().revision()));
+        var occupiedFailure=assertThrows(ApplicationGroupDirectoryStore.DeletionRejected.class,()->store.delete("other",occupied.group().revision()));
+        assertEquals(ApplicationGroupDirectoryStore.DeletionFailure.GROUP_NOT_EMPTY,occupiedFailure.failure());
+        assertEquals(occupied,store.readAll().stream().filter(value->value.group().id().equals("other")).findFirst().orElseThrow());
         assertEquals(initial,store.readAll().stream().filter(value->value.group().id().equals("first")).findFirst().orElseThrow());
     }
 

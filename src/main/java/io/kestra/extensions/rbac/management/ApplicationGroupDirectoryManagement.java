@@ -94,6 +94,9 @@ public final class ApplicationGroupDirectoryManagement implements ApplicationDir
                 }
             });
         }catch(ApplicationGroupChanges.NotFound failure){throw new DirectoryFailure(404,"not_found");}
+        catch(ApplicationGroupDirectoryStore.DeletionRejected failure){
+            throw new DirectoryFailure(409,switch(failure.failure()){case PROTECTED_GROUP->"protected_group";case GROUP_NOT_EMPTY->"group_not_empty";});
+        }
         catch(ApplicationGroupDirectoryStore.Conflict|ApplicationGroupChanges.Conflict failure){
             throw new DirectoryFailure(request.operation()==Operation.CREATE?409:412,"revision_conflict");
         }catch(IdentityLifecycleGuardV1.Rejected failure){

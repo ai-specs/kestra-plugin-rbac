@@ -35,6 +35,45 @@ class PublishedManagementPostgresTest {
             AccountLifecyclePostgresTest.provider(()->new ApplicationGroupDirectoryManagement(fixture.service,policies)));
     }
 
+    @Test void protectedAndOccupiedGroupDeletesAre409WithExactCodesAndNoDirectoryOrAuditChanges()throws Exception {
+        actor("first",()->fixture.published.createTemporary(new TemporaryAccountCommands.Create("delete-zero","","")));
+        firstIdentityActions(Set.of(ApplicationGroupPolicy.ManagementAction.MANAGE));
+        var controller=lifecycleController();var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        var before=fixture.store.readAll();var auditBefore=events();var storageBefore=groupDeletionStorageState();
+        var main=before.stream().filter(value->value.group().id().equals("main")).findFirst().orElseThrow();
+        var other=before.stream().filter(value->value.group().id().equals("other")).findFirst().orElseThrow();
+        actor("first",()->{
+            var authentication=fixture.authentication("first");
+            assertEquals(403,controller.applicationGroup("main","main",authentication).code(),"MANAGE must not imply READ");
+            for(var target:List.of(main,other)) {
+                var response=controller.deleteApplicationGroup("main",target.group().id(),authentication,"\""+target.group().revision()+"\"");
+                assertEquals(409,response.code());
+                assertEquals(Map.of("code",target==main?"protected_group":"group_not_empty"),mapper.convertValue(response.body(),Map.class));
+                assertEquals(412,controller.deleteApplicationGroup("main",target.group().id(),authentication,"\""+(target.group().revision()+1)+"\"").code());
+            }
+            assertEquals(400,controller.deleteApplicationGroup("main","main",authentication,"W/\"1\"").code());
+            assertEquals(404,controller.deleteApplicationGroup("main","delete-absent",authentication,"\"1\"").code());
+            return null;
+        });
+        actor("delete-zero",()->{
+            for(String target:List.of("main","other","delete-absent"))
+                assertEquals(403,controller.deleteApplicationGroup("main",target,fixture.authentication("delete-zero"),"\"1\"").code());
+            return null;
+        });
+        assertEquals(before,fixture.store.readAll());assertEquals(auditBefore,events());assertEquals(storageBefore,groupDeletionStorageState());
+    }
+
+    String groupDeletionStorageState()throws Exception {
+        var rows=new java.util.ArrayList<String>();rows.add(lifecycleStorageState());
+        try(var connection=fixture.source.getConnection();var statement=connection.createStatement()) {
+            for(String table:List.of("rbac_application_group_bootstrap","rbac_application_group_retired"))
+                try(var result=statement.executeQuery("SELECT row_to_json(record)::text FROM "+table+" record ORDER BY row_to_json(record)::text")) {
+                    while(result.next())rows.add(table+":"+result.getString(1));
+                }
+        }
+        return String.join("\n",rows);
+    }
+
     @Test void concurrentControllerMutualDeletionReturnsOne204AndOneSafeRejection()throws Exception {controllerRace(true);}
     @Test void concurrentControllerMutualDeactivationReturnsOne200AndOneSafeRejection()throws Exception {controllerRace(false);}
 

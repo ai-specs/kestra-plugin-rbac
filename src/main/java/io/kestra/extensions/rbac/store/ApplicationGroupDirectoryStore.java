@@ -16,6 +16,13 @@ import javax.sql.DataSource;
 
 public final class ApplicationGroupDirectoryStore {
     public static final class Conflict extends IllegalStateException {}
+    public enum DeletionFailure { PROTECTED_GROUP, GROUP_NOT_EMPTY }
+    /** Valid deletion request blocked by current business state; distinct from revision CAS. */
+    public static final class DeletionRejected extends IllegalStateException {
+        private final DeletionFailure failure;
+        public DeletionRejected(DeletionFailure failure) { super(Objects.requireNonNull(failure).name()); this.failure=failure; }
+        public DeletionFailure failure() { return failure; }
+    }
     public static class Unavailable extends IllegalStateException {
         public Unavailable(SQLException cause) { super("Application group storage unavailable",cause); }
         Unavailable(String message,SQLException cause) { super(message,cause); }
@@ -193,9 +200,9 @@ public final class ApplicationGroupDirectoryStore {
             lock(connection);
             var current=find(connection,groupId);
             if(current.group().revision()!=expectedRevision)throw new Conflict();
-            if(groupId.equals(builtin(connection)))throw new IllegalArgumentException("Builtin application group cannot be deleted");
+            if(groupId.equals(builtin(connection)))throw new DeletionRejected(DeletionFailure.PROTECTED_GROUP);
             if(!current.scopes().isEmpty() || !current.applications().isEmpty() || !current.userGrants().isEmpty())
-                throw new IllegalArgumentException("Application group must be empty before deletion");
+                throw new DeletionRejected(DeletionFailure.GROUP_NOT_EMPTY);
             try(var statement=prepare(connection,"INSERT INTO rbac_application_group_retired(group_id) VALUES(?)")) {
                 statement.setString(1,groupId);statement.executeUpdate();
             }

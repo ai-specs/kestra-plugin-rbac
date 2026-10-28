@@ -70,8 +70,10 @@ UI列表导航按§12.3消费permissionKey/filterSubject/scopeKeys/page/size及�
 | PUT `/application-groups/{id}` | `displayName/description/active` | IDENTITY.MANAGE |
 | DELETE `/application-groups/{id}` | 删除回执 | IDENTITY.MANAGE |
 
-内置组固定 ID 且 `builtIn=true`，始终不可删除。普通组删除要求没有 scope、应用或用户
-授予，并在同一事务登记退役 ID；退役 ID 不可重用。卡片进入只读详情，点击编辑后才显示
+内置组固定 ID 且 `builtIn=true`，始终不可删除；合法删除请求返回409 `protected_group`。
+普通组删除要求没有 scope、应用或用户授予；非空组返回409 `group_not_empty`。这两类
+业务冲突不改变目录、退役记录或审计。非法输入仍400、过时修订412；先检查IDENTITY.MANAGE，
+无权限403、已授权未知目标404，MANAGE不隐含READ。成功删除在同一事务登记退役 ID；退役 ID 不可重用。卡片进入只读详情，点击编辑后才显示
 表单；有修改权限不等于有查看权限。页面没有默认操作列或配置状态。
 
 ## Scope、应用和用户授予
