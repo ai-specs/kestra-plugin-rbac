@@ -24,6 +24,11 @@ LOCAL_POLICY 的 READ/MANAGE 控制指定应用组中配置的 Kestra 应用实�
 MANAGE 不隐含 READ。BUSINESS_INSTANCE 不授予上述管理权限。能力响应仅用于界面展示，
 每次实际操作仍重新校验。
 
+身份目录入口先检查调用人的 IDENTITY.READ 或 IDENTITY.MANAGE。授权通过后，未知
+应用组或已删除父组返回404；实际目标跨issuer仍返回403。没有所需动作时，已存在与
+不存在目标均返回403，不提供存在性信息。目录或策略依赖不可用仍返回503，不伪装404。
+该规则不改变capabilities未知目标403或LOCAL_POLICY上界失败关闭行为。
+
 业务写入在 `READ_COMMITTED` 事务中先取得正式 `OidcProtocolStateV1` 的安全锁，再读取
 当前标准账号/client、组修订、撤权版本和 scope 交集，重新校验操作者。目录写入、实际策略
 条件提交与生命周期 guard 使用同连接标准身份检查。拒绝回滚所有相关写入。组、scope、

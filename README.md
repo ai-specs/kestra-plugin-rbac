@@ -98,7 +98,8 @@ python3 scripts/check-lifecycle-tests.py build/test-results/lifecyclePostgresTes
 suite为`io.kestra.extensions.rbac.applicationgroup.AccountLifecyclePostgresTest`，6个具名用例。
 真实插件目录、统一权限投影、身份复查、最后管理员检查与清理都在同一PG连接执行；
 标准账号、可信身份与参与者调度来自固定正式镜像，生产插件适配器/参与者实际接线。
-同任务另执行PublishedManagementPostgresTest的9项真实管理集成。检查器同时核对
+同任务另执行PublishedManagementPostgresTest的10项真实管理集成，包含身份目录的
+缺组404、零授权403和真实创建/更新/删除事务回归。检查器同时核对
 两个suite的精确名称集合、PostgreSQL及hostImage/executable hash；摘要gatePassed仅
 表示此门通过，不表示整仓可发布。正式HTTP/CSRF、插件浏览器及Compose仍须独立验收。
 CI证据入口为`.evidence/lifecycle/results/TEST-io.kestra.extensions.rbac.applicationgroup.AccountLifecyclePostgresTest.xml`

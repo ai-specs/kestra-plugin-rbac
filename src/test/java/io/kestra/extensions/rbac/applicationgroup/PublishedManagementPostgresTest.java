@@ -138,6 +138,51 @@ class PublishedManagementPostgresTest {
         assertEquals(directoryBefore,fixture.store.readAll());assertEquals(0,events().total());
     }
 
+    @Test void issuerWideDirectoryCrudMissingTargetsAndZeroAuthorizationUseRealTransactions() {
+        actor("first",()->fixture.published.createTemporary(new TemporaryAccountCommands.Create("new-account","","")));
+        var policies=new ApplicationGroupRuntimePolicies(fixture.service,fixture.trusted);
+        var management=new ApplicationGroupDirectoryManagement(fixture.service,policies);
+        var controller=new ManagementController(policies,AccountLifecyclePostgresTest.provider(()->fixture.published),AccountLifecyclePostgresTest.provider(()->management));
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        var before=fixture.store.readAll();
+        actor("first",()->{
+            var authentication=fixture.authentication("first");
+            assertEquals(404,controller.applicationGroup("main","diagnostic-absent",authentication).code());
+            assertEquals(404,controller.deleteApplicationGroup("main","diagnostic-absent",authentication,"\"1\"").code());
+            assertEquals(403,controller.capabilities("main",authentication,"diagnostic-absent").code());
+            return null;
+        });
+        assertEquals(before,fixture.store.readAll());
+        actor("new-account",()->{
+            for(String target:List.of("main","diagnostic-absent")) {
+                assertEquals(403,controller.applicationGroup("main",target,fixture.authentication("new-account")).code());
+                assertEquals(403,controller.deleteApplicationGroup("main",target,fixture.authentication("new-account"),"\"1\"").code());
+            }
+            return null;
+        });
+        assertEquals(before,fixture.store.readAll());
+        actor("first",()->{
+            var authentication=fixture.authentication("first");
+            var created=controller.createApplicationGroup("main",authentication,"{\"id\":\"diagnostic-created\",\"tenant\":\"main\",\"displayName\":\"Diagnostic\",\"description\":\"\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            assertEquals(200,created.code());
+            long revision=mapper.valueToTree(created.body()).path("revision").longValue();
+            assertEquals(200,controller.applicationGroup("main","diagnostic-created",authentication).code());
+            var updated=controller.updateApplicationGroup("main","diagnostic-created",authentication,"\""+revision+"\"","{\"displayName\":\"Diagnostic Changed\",\"description\":\"saved\",\"active\":true}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            assertEquals(200,updated.code());
+            revision=mapper.valueToTree(updated.body()).path("revision").longValue();
+            var saved=controller.applicationGroup("main","diagnostic-created",authentication);
+            assertEquals("Diagnostic Changed",mapper.valueToTree(saved.body()).path("displayName").textValue());
+            assertEquals(200,controller.deleteApplicationGroup("main","diagnostic-created",authentication,"\""+revision+"\"").code());
+            var afterDelete=fixture.store.readAll();
+            assertEquals(404,controller.applicationGroup("main","diagnostic-created",authentication).code());
+            assertEquals(404,controller.updateApplicationGroup("main","diagnostic-created",authentication,"\""+revision+"\"","{\"displayName\":\"No write\",\"description\":\"\",\"active\":true}".getBytes(java.nio.charset.StandardCharsets.UTF_8)).code());
+            assertEquals(404,controller.deleteApplicationGroup("main","diagnostic-created",authentication,"\""+revision+"\"").code());
+            assertEquals(afterDelete,fixture.store.readAll());
+            return null;
+        });
+        assertEquals(before,fixture.store.readAll());assertEquals(0,events().total());
+    }
+
     void firstIdentityActions(Set<ApplicationGroupPolicy.ManagementAction> actions) {
         var current=fixture.store.readAll().stream().filter(snapshot->snapshot.group().id().equals("main")).findFirst().orElseThrow();
         var app=current.applications().getFirst();var extra=new ApplicationPermission("restricted","Restricted","",Set.of("restricted"),List.of(),List.of(

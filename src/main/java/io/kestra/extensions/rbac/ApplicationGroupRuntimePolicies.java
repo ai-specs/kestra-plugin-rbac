@@ -117,6 +117,7 @@ public final class ApplicationGroupRuntimePolicies {
         public Set<String> managementTargets(){check();return managementTargets;}
         public Map<String,ApplicationGroupManagementSafety.DirectoryState> directoryStates(){check();return states;}
         public ApplicationGroupDirectoryReader.Boundary upperBound(String target){check();var value=boundaries.get(target);if(value==null)throw new Rejected(Failure.FORBIDDEN);return value;}
+        public java.util.Optional<ApplicationGroupDirectoryReader.Boundary> directoryBoundary(String target){check();return java.util.Optional.ofNullable(boundaries.get(target));}
         /** Binding options require a usable target audience; identity-directory reads use upperBound instead. */
         public ApplicationGroupDirectoryReader.Boundary bindingBoundary(String target){
             var boundary=upperBound(target);

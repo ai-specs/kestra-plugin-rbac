@@ -26,6 +26,7 @@ assert 'executable: ' + provenance['sha256'] + '; image: ' + provenance['image']
 additional_name='io.kestra.extensions.rbac.applicationgroup.PublishedManagementPostgresTest'
 additional=ET.parse(Path(sys.argv[1])/('TEST-'+additional_name+'.xml')).getroot()
 additional_required={
+    'issuerWideDirectoryCrudMissingTargetsAndZeroAuthorizationUseRealTransactions',
     'passwordResetAndActorDeletionRetainOriginalCommittedAuditSubjects',
     'missingParticipantRefusesMutationAndLeavesAuditAndGrantsUnchanged',
     'issuerAuditReaderSupportsCrossGroupAndRetiredHistoryButManageDoesNotImplyRead',
@@ -36,7 +37,7 @@ additional_required={
     'readOnlyAuditAndCredentialStatusNeverGrantManageAndForeignIssuerCannotRead',
     'manageOnlyOrdinaryRotationReturnsOneTimeReceiptWithoutReadAccess',
 }
-assert int(additional.get('tests','0'))==9 and all(int(additional.get(key,'0'))==0 for key in ('failures','errors','skipped')), 'Published management integration cases missing or failed'
+assert int(additional.get('tests','0'))==len(additional_required) and all(int(additional.get(key,'0'))==0 for key in ('failures','errors','skipped')), 'Published management integration cases missing or failed'
 assert {case.get('name','').removesuffix('()') for case in additional.findall('testcase')}==additional_required, 'Published management named cases differ'
 additional_output='\n'.join(additional.itertext())
 assert 'host: published-adapter-participant;' in additional_output and 'backend: H2' not in additional_output, 'Published management must run on PostgreSQL'

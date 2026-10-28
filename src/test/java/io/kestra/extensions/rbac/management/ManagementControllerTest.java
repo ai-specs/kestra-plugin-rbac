@@ -74,6 +74,75 @@ class ManagementControllerTest {
         clearInvocations(store,directory);
         return new Setup(controller,store,directory,users,applications,identities);
     }
+    @Test void authorizedMissingDirectoryTargetsReturn404WithoutChangingCapabilityDenial() {
+        var setup=setup(3,Set.of(MANAGER));
+        var before=setup.store.readCurrent().canonicalJson();
+        assertEquals(404,setup.controller.applicationGroup("main","missing",owner()).code());
+        assertEquals(404,setup.controller.applicationGroupScopes("main","missing",owner(),1,25).code());
+        assertEquals(404,setup.controller.clients("main","missing",owner(),1,25).code());
+        assertEquals(404,setup.controller.assignments("main","missing",owner(),1,25).code());
+        assertEquals(404,setup.controller.applicationGroupScope("main","missing","reader",owner()).code());
+        assertEquals(404,setup.controller.createApplicationGroupScope("main","missing",owner(),"\"1\"",json("{\"key\":\"reader\",\"name\":\"Reader\",\"description\":\"\"}")).code());
+        assertEquals(404,setup.controller.updateApplicationGroupScope("main","missing","reader",owner(),"\"1\"",json("{\"key\":\"reader\",\"name\":\"Reader\",\"description\":\"\"}")).code());
+        assertEquals(404,setup.controller.deleteApplicationGroupScope("main","missing","reader",owner(),"\"1\"").code());
+        assertEquals(404,setup.controller.clientsDetail("main","missing",clientKey(),owner()).code());
+        assertEquals(404,setup.controller.clientsCreate("main","missing",owner(),"\"1\"",json("{\"clientId\":\"new-client\",\"description\":\"\",\"audiences\":[]}")).code());
+        assertEquals(404,setup.controller.clientsUpdate("main","missing",clientKey(),owner(),"\"1\"",json("{\"clientId\":\"kestra-ui\",\"description\":\"\",\"audiences\":[]}")).code());
+        assertEquals(404,setup.controller.clientsDelete("main","missing",clientKey(),owner(),"\"1\"").code());
+        assertEquals(404,setup.controller.assignmentsDetail("main","missing","target",owner()).code());
+        assertEquals(404,setup.controller.assignmentsCreate("main","missing",owner(),"\"1\"",json("{\"issuer\":\""+ISSUER+"\",\"subject\":\"target\",\"scopeKeys\":[]}")).code());
+        assertEquals(404,setup.controller.assignmentsUpdate("main","missing","target",owner(),"\"1\"",json("{\"issuer\":\""+ISSUER+"\",\"subject\":\"target\",\"scopeKeys\":[]}")).code());
+        assertEquals(404,setup.controller.assignmentsDelete("main","missing","target",owner(),"\"1\"").code());
+        assertEquals(404,setup.controller.updateApplicationGroup("main","missing",owner(),"\"1\"",json("{\"displayName\":\"Missing\",\"description\":\"\",\"active\":true}")).code());
+        assertEquals(404,setup.controller.deleteApplicationGroup("main","missing",owner(),"\"1\"").code());
+        assertEquals(403,setup.controller.capabilities("main",owner(),"missing").code());
+        assertEquals(403,setup.controller.runtimePolicy("main","missing",clientKey(),owner()).code());
+        assertEquals(before,setup.store.readCurrent().canonicalJson());verifyNoInteractions(setup.applications);
+    }
+
+    @Test void unprivilegedMissingAndExistingDirectoryTargetsBothDenyWithoutEnumeration() {
+        var setup=setup(3,Set.of());
+        for(String target:List.of("console","missing")) {
+            assertEquals(403,setup.controller.applicationGroup("main",target,owner()).code());
+            assertEquals(403,setup.controller.deleteApplicationGroup("main",target,owner(),"\"1\"").code());
+        }
+        verifyNoInteractions(setup.applications);
+    }
+
+    @Test void directoryReadAndManageRemainIndependentOfLocalPolicyAndRejectForeignIssuer() {
+        for(var action:List.of("READ","MANAGE")) {
+            var setup=setup(3,Set.of(MANAGER));
+            var policy=responsePolicyForIdentityOnly(action);
+            setup.store.replace(setup.store.readCurrent().revision(),policy,"owner");
+            assertEquals(action.equals("READ")?404:403,setup.controller.applicationGroup("main","missing",owner()).code());
+            assertEquals(action.equals("MANAGE")?404:403,setup.controller.deleteApplicationGroup("main","missing",owner(),"\"1\"").code());
+            var current=setup.directory.boundaries();
+            var foreign=new ApplicationGroupDirectoryReader.GroupView("foreign","main","https://foreign.invalid","Foreign",true,1,1);
+            var values=new java.util.ArrayList<>(current);values.add(new ApplicationGroupDirectoryReader.Boundary(foreign,List.of(),Set.of(),Set.of(),List.of()));
+            when(setup.directory.boundaries()).thenReturn(values);
+            assertEquals(403,setup.controller.applicationGroup("main","foreign",owner()).code());
+            assertEquals(403,setup.controller.deleteApplicationGroup("main","foreign",owner(),"\"1\"").code());
+            verifyNoInteractions(setup.applications);
+        }
+    }
+
+    private byte[] responsePolicyForIdentityOnly(String action) {
+        try {
+            var policy=(com.fasterxml.jackson.databind.node.ObjectNode)MAPPER.readTree(POLICY);
+            var grants=(com.fasterxml.jackson.databind.node.ArrayNode)policy.path("applicationGroups").path("console").path("scopes").path(MANAGER).path("managementGrants");
+            grants.remove(1);((com.fasterxml.jackson.databind.node.ObjectNode)grants.get(0)).putArray("actions").add(action);
+            return json(policy.toString());
+        } catch(java.io.IOException failure) {throw new AssertionError(failure);}
+    }
+
+    @Test void unavailableDirectoryIs503RatherThanMissingTarget404() {
+        var setup=setup(3,Set.of(MANAGER));
+        when(setup.directory.boundaries()).thenThrow(new IllegalStateException("Directory unavailable"));
+        assertEquals(503,setup.controller.applicationGroup("main","missing",owner()).code());
+        assertEquals(503,setup.controller.deleteApplicationGroup("main","missing",owner(),"\"1\"").code());
+        verifyNoInteractions(setup.applications);
+    }
+
     private JsonNode response(io.micronaut.http.HttpResponse<?> response) {return MAPPER.valueToTree(response.body());}
     private void onlyRuntimeMembershipReads(Setup setup) {
         verifyNoInteractions(setup.users);

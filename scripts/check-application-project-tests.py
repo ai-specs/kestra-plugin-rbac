@@ -6,7 +6,7 @@ REQUIRED = {'io.kestra.extensions.rbac.applicationgroup.ApplicationGroupAuthoriz
 del REQUIRED['io.kestra.extensions.rbac.ProjectRuntimeDirectoryTest']
 REQUIRED['io.kestra.extensions.rbac.ApplicationGroupRuntimeDirectoryTest'] = 12
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.ScopeCatalogTest'] = 6
-REQUIRED['io.kestra.extensions.rbac.management.ManagementControllerTest'] = 25
+REQUIRED['io.kestra.extensions.rbac.management.ManagementControllerTest'] = 29
 del REQUIRED['io.kestra.extensions.rbac.management.PublishedApplicationDirectoryAccessTest']
 REQUIRED['io.kestra.extensions.rbac.management.ApplicationGroupDirectoryManagementTest'] = 8
 REQUIRED['io.kestra.extensions.rbac.store.ApplicationGroupStorageTest'] = 1

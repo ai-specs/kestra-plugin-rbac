@@ -269,13 +269,15 @@ public final class ManagementController {
         ApplicationDirectoryAccess.Operation operation,String id,String key,int page,int size,Long revision,JsonNode body) {
         boolean read=operation==ApplicationDirectoryAccess.Operation.LIST || operation==ApplicationDirectoryAccess.Operation.FIND;
         identity(context,read?READ:MANAGE);
+        long directoryRevision=0;
         if(id!=null) {
             project(id);
             // IDENTITY is issuer-wide, never cross issuer. Check the actual target before proxying.
-            var boundary=context.upperBound(id);
+            var boundary=context.directoryBoundary(id).orElseThrow(()->new Failure(404,"not_found"));
             if(!context.identity().issuer().equals(boundary.applicationGroup().issuer()))throw new Failure(403,"access_denied");
+            directoryRevision=boundary.applicationGroup().revision();
         }
-        Object result=applications().invoke(new ApplicationDirectoryAccess.Request(resource,operation,context.identity(),id,key,page,size,revision,id==null?0:context.upperBound(id).applicationGroup().revision(),body));
+        Object result=applications().invoke(new ApplicationDirectoryAccess.Request(resource,operation,context.identity(),id,key,page,size,revision,directoryRevision,body));
         if(!read) {
             if(!(result instanceof Map<?,?> receipt))throw new Failure(503,"directory_unavailable");
             String field=switch(resource){case GROUP->"id";case SCOPE->"key";case CLIENT->"clientId";case ASSIGNMENT->"subject";};
