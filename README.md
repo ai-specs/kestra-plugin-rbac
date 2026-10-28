@@ -151,7 +151,7 @@ BUSINESS_INSTANCE 不授予另外两个管理域。新增账号不自动授予�
 宿主签发、refresh、账号/client 生命周期与插件业务写入复用正式公开协议安全锁。
 业务写入在可写 READ_COMMITTED 事务中重新校验可信身份、当前对象修订、支持与授予，
 并保护有效管理员；失败回滚全部写入。标准身份状态只通过正式 OidcProtocolStateV1
-读取，插件不查询宿主私有表。运行时使用当前应用组快照和实际策略，故障失败关闭。
+读取，插件不查询宿主私有表。运行时使用当前应用组快照和实际策略，故障失败关闭。普通授权消费正式 `TrustedIdentityV2.currentForAuthorization()`；只有明确目录/策略依赖不可用传播宿主 `AuthorizationUnavailableException` 并返回503，安全拒绝与未分类异常保持拒绝。V1回退及生命周期借用连接契约不变。
 scope 名称和说明不授予资源权限。旧项目路径、完整恢复和旧目录代理不保留兼容入口。
 
 组内分页带 `directoryRevision`；消费者必须核对各页同版本。账号列表使用标准账号目录

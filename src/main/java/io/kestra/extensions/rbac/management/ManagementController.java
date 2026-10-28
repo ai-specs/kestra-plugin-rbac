@@ -60,6 +60,7 @@ public final class ManagementController {
             if (authentication==null) throw new Failure(401,"authentication_required");
             try (var context=policies.open(authentication,tenant)) { return action.apply(context); }
         } catch (Failure failure) { return error(failure.status,failure.code); }
+        catch (io.kestra.webserver.rbac.AuthorizationUnavailableException failure) { return error(503,"authorization_unavailable"); }
         catch (ApplicationGroupRuntimePolicies.Rejected failure) { return runtimeFailure(failure); }
         catch (ApplicationGroupPolicyStore.Conflict failure) { return error(412,"revision_conflict"); }
         catch (ApplicationGroupPolicyStore.Unavailable failure) { return error(503,"policy_unavailable"); }

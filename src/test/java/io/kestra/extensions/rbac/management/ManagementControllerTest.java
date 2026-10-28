@@ -137,7 +137,7 @@ class ManagementControllerTest {
 
     @Test void unavailableDirectoryIs503RatherThanMissingTarget404() {
         var setup=setup(3,Set.of(MANAGER));
-        when(setup.directory.boundaries()).thenThrow(new IllegalStateException("Directory unavailable"));
+        when(setup.directory.boundaries()).thenThrow(new io.kestra.extensions.rbac.store.ApplicationGroupDirectoryStore.Unavailable(new java.sql.SQLException("Directory unavailable")));
         assertEquals(503,setup.controller.applicationGroup("main","missing",owner()).code());
         assertEquals(503,setup.controller.deleteApplicationGroup("main","missing",owner(),"\"1\"").code());
         verifyNoInteractions(setup.applications);

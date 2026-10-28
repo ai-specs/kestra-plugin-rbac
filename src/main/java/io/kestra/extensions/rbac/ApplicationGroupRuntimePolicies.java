@@ -6,6 +6,8 @@ import io.kestra.extensions.rbac.applicationgroup.*;
 import io.kestra.extensions.rbac.store.ApplicationGroupPolicyStore;
 import io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectoryReader;
 import io.kestra.webserver.oidc.TrustedIdentityV1;
+import io.kestra.webserver.oidc.TrustedIdentityV2;
+import io.kestra.webserver.rbac.AuthorizationUnavailableException;
 import io.micronaut.security.authentication.Authentication;
 import jakarta.inject.Singleton;
 import io.micronaut.context.annotation.Requires;
@@ -43,22 +45,38 @@ public final class ApplicationGroupRuntimePolicies {
     }
     public Context open(Authentication authentication,String tenant) {
         if(authentication==null)throw new Rejected(Failure.INVALID_IDENTITY);
-        var identity=identities.current();
+        var identity=identities instanceof TrustedIdentityV2 v2?v2.currentForAuthorization():identities.current();
         if(identity==null || !authentication.getName().equals(identity.subject()))throw new Rejected(Failure.INVALID_IDENTITY);
         return open(identity,tenant);
     }
+    /** Only ordinary authorization translates explicitly classified dependency failures. */
     public Context open(TrustedIdentityV1.Identity identity,String tenant) {
-        if(directory instanceof ApplicationGroupDirectoryService service) {
-            try {return service.transaction(connection->open(connection,identity,tenant));}
-            catch(Rejected failure){throw failure;}
-            catch(RuntimeException failure){throw new Rejected(Failure.DIRECTORY_UNAVAILABLE);}
+        try {
+            if(directory instanceof ApplicationGroupDirectoryService service)
+                return service.transaction(connection->openAuthorization(connection,identity,tenant));
+            return context(identity,tenant,List.copyOf(directory.boundaries()),directory.runtimePolicy());
+        } catch(RuntimeException failure) {
+            throw authorizationFailure(failure);
         }
-        List<ApplicationGroupDirectoryReader.Boundary> boundaries;
-        try { boundaries=List.copyOf(directory.boundaries()); }
-        catch(RuntimeException error){throw new Rejected(Failure.DIRECTORY_UNAVAILABLE);}
-        ApplicationGroupPolicyStore.Snapshot snapshot;
-        try {snapshot=directory.runtimePolicy();}catch(RuntimeException error){throw new Rejected(Failure.POLICY_UNAVAILABLE);}
-        return context(identity,tenant,boundaries,snapshot);
+    }
+    private Context openAuthorization(java.sql.Connection connection,TrustedIdentityV1.Identity identity,String tenant)throws java.sql.SQLException {
+        // The lifecycle borrowed-connection overload below retains its original contract.
+        try {
+            directory.verifyIdentity(connection,identity);
+        } catch(io.kestra.webserver.oidc.IdentityLifecycleGuardV1.Rejected failure) {
+            if(failure.failure()==io.kestra.webserver.oidc.IdentityLifecycleGuardV1.Failure.UNAVAILABLE)
+                throw new AuthorizationUnavailableException();
+            throw new Rejected(Failure.INVALID_IDENTITY);
+        }
+        return context(identity,tenant,directory.boundaries(connection),directory.runtimePolicy(connection));
+    }
+    static RuntimeException authorizationFailure(RuntimeException failure) {
+        if(failure instanceof AuthorizationUnavailableException)return failure;
+        if(failure instanceof io.kestra.extensions.rbac.store.ApplicationGroupDirectoryStore.Unavailable
+            || failure instanceof ApplicationGroupPolicyStore.Unavailable
+            || failure instanceof Rejected rejected && (rejected.failure()==Failure.DIRECTORY_UNAVAILABLE
+                || rejected.failure()==Failure.POLICY_UNAVAILABLE))return new AuthorizationUnavailableException();
+        return failure;
     }
     public Context open(java.sql.Connection connection,TrustedIdentityV1.Identity identity,String tenant)throws java.sql.SQLException {
         List<ApplicationGroupDirectoryReader.Boundary> boundaries;

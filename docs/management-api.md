@@ -196,3 +196,5 @@ HTTP/CSRF仍需部署组合验证，不把直接控制器测试当作网络请�
 数据库语句或内部异常内容。锁后actor失效或明确权限拒绝返回403；并发失败不得用
 依赖503冒充安全拒绝。参与者仅将明确INVALID_IDENTITY/FORBIDDEN映射安全拒绝，
 目录/策略/SQL/投影故障仍为503。真实 HTTP、CSRF、浏览器、撤权与无副作用门由部署仓验收。
+
+普通授权前置门使用正式 `TrustedIdentityV2.currentForAuthorization()`。明确目录/策略依赖不可用通过宿主 `AuthorizationUnavailableException` 返回固定安全503 ProblemDetail，不携带SQL、凭据或底层异常消息。该前置响应不保证包含控制器的 `directory_unavailable`/`policy_unavailable` 业务码。若宿主公开异常在管理控制器 `request` 边界内产生，控制器精确返回HTTP503及业务码 `authorization_unavailable`，不输出底层消息；其他控制器内已分类故障仍保留原业务响应。同步/异步评估使用相同分类，安全拒绝、未知异常和缺失/重复授权provider保持原失败关闭门；生命周期借用连接接口不变。

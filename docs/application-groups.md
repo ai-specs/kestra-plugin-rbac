@@ -236,8 +236,8 @@ bean集合及数据库表；仅检查旧store bean缺失不能证明不会建旧
 
 原 policy-unavailable 故障用例应改为“统一权限存储不可用”：在隔离维护窗口临时重命名
 `rbac_application_group_state`，而不是旧 policy_head。当前身份复核/投影读取必须失败关闭，
-管理 API 返回503 `directory_unavailable`，业务门必须拒绝且无数据库/队列副作用；恢复
-原表后重新验证。投影阶段本身失败映射503 `policy_unavailable`；账号/epoch不匹配仍为
+普通授权前置门返回宿主固定安全503 ProblemDetail；进入管理控制器后的目录故障返回503 `directory_unavailable`。业务门必须拒绝且无数据库/队列副作用；恢复
+原表后重新验证。普通授权仅将明确目录/策略不可用传播为宿主公开 `AuthorizationUnavailableException`，同步及异步评估不转换为deny；未知异常、安全拒绝和缺失/重复授权组件保持原拒绝门。生命周期V2借用连接契约不变。控制器投影阶段本身失败映射503 `policy_unavailable`；账号/epoch不匹配仍为
 403，不得将真实数据库故障伪装零授权成功。具体宿主HTTP映射和恢复仍由真实Compose检查。
 
 策略快照 lifetime 是部署参数 `kestra.rbac.policy-snapshot-max-age-seconds`，默认60秒，

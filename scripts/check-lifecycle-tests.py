@@ -44,4 +44,16 @@ assert int(additional.get('tests','0'))==len(additional_required) and all(int(ad
 assert {case.get('name','').removesuffix('()') for case in additional.findall('testcase')}==additional_required, 'Published management named cases differ'
 additional_output='\n'.join(additional.itertext())
 assert 'host: published-adapter-participant;' in additional_output and 'backend: H2' not in additional_output, 'Published management must run on PostgreSQL'
-print(json.dumps({'suite': name, 'backend': 'PostgreSQL', 'business': 'plugin-directory', 'hostAdapter': 'published-adapter-participant', 'hostImage': provenance['image'], 'hostExecutableSha256': provenance['sha256'], 'tests': len(required), 'additionalTests': len(additional_required), 'failures': 0, 'errors': 0, 'skipped': 0, 'productionHostIntegrated': True, 'gatePassed': True}, sort_keys=True))
+summary={'suite': name, 'backend': 'PostgreSQL', 'business': 'plugin-directory', 'hostAdapter': 'published-adapter-participant', 'hostImage': provenance['image'], 'hostExecutableSha256': provenance['sha256'], 'tests': len(required), 'additionalTests': len(additional_required), 'failures': 0, 'errors': 0, 'skipped': 0, 'productionHostIntegrated': True, 'gatePassed': True}
+
+authorization_name='io.kestra.extensions.rbac.applicationgroup.AuthorizationDependencyPostgresTest'
+authorization=ET.parse(Path(sys.argv[1])/('TEST-'+authorization_name+'.xml')).getroot()
+authorization_required={
+    'signedContextRealDirectorySqlFailureIs503AndRestoresWithoutSideEffects',
+    'signedContextPolicySqlFailureIs503ThroughSynchronousAndAsynchronousBegin',
+    'signedContextAuthorizeExplicitFailuresAre503SecurityAndUnknownRemain403',
+}
+assert int(authorization.get('tests','0'))==3 and all(int(authorization.get(key,'0'))==0 for key in ('failures','errors','skipped')), 'Authorization dependency PostgreSQL cases missing or failed'
+assert {case.get('name','').removesuffix('()') for case in authorization.findall('testcase')}==authorization_required, 'Authorization dependency named cases differ'
+summary['authorizationDependency']={'suite':authorization_name,'tests':3,'failures':0,'errors':0,'skipped':0,'signedTestJwt':True,'publishedHttpFilter':True,'backend':'PostgreSQL','productionLogin':False}
+print(json.dumps(summary,sort_keys=True))

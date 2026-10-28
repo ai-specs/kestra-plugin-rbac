@@ -33,7 +33,9 @@ public final class ConfiguredEvaluationProvider implements AuthorizationEvaluati
             return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid evaluation identity or tenant"));
         }
         return CompletableFuture.supplyAsync(() -> {
-            var snapshot = new AtomicReference<>(policies.open(principal,tenant));
+            final AtomicReference<ApplicationGroupRuntimePolicies.Context> snapshot;
+            try {snapshot = new AtomicReference<>(policies.open(principal,tenant));}
+            catch(RuntimeException failure){throw ApplicationGroupRuntimePolicies.authorizationFailure(failure);}
             return new AuthorizationEvaluationV1() {
                 @Override
                 public CompletionStage<TypedAuthorization.Decision> authorize(TypedAuthorization.Operation operation) {
@@ -41,7 +43,10 @@ public final class ConfiguredEvaluationProvider implements AuthorizationEvaluati
                     if (current == null) return CompletableFuture.completedFuture(TypedAuthorization.Decision.deny("Evaluation is closed"));
                     try {
                         return CompletableFuture.completedFuture(current.authorize(operation));
-                    } catch (Exception failure) {
+                    } catch (RuntimeException failure) {
+                        var classified=ApplicationGroupRuntimePolicies.authorizationFailure(failure);
+                        if(classified instanceof io.kestra.webserver.rbac.AuthorizationUnavailableException)
+                            return CompletableFuture.failedFuture(classified);
                         return CompletableFuture.completedFuture(TypedAuthorization.Decision.deny("Invalid policy input"));
                     }
                 }

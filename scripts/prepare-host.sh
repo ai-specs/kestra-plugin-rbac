@@ -19,7 +19,7 @@ path,image,output,sdk_output=sys.argv[1:]
 sdk_hashes={}
 with zipfile.ZipFile(path) as jar:
     names=set(jar.namelist())
-    for name in ['RbacAuthorizer','RestAuthorizationResolver','McpAuthorizationResolver','TypedAuthorization','TypedAuthorizationResolver','AuthorizationEvaluationV1','AuthorizationEvaluationProviderV1','AuthorizationEvaluationProviderV2']:
+    for name in ['RbacAuthorizer','RestAuthorizationResolver','McpAuthorizationResolver','TypedAuthorization','TypedAuthorizationResolver','AuthorizationEvaluationV1','AuthorizationEvaluationProviderV1','AuthorizationEvaluationProviderV2','AuthorizationUnavailableException']:
         assert f'io/kestra/webserver/rbac/{name}.class' in names, f'Missing host SPI: {name}'
     assert 'io/kestra/core/models/executions/Execution.class' in names
     for name in ['io/kestra/webserver/oidc/UserDirectoryV1.class','io/kestra/webserver/oidc/ApplicationGroupProtocolProjectionV1.class','io/kestra/webserver/oidc/OidcProtocolStateV1.class','io/kestra/webserver/oidc/OidcProtocolStateV1$PendingClient.class','io/kestra/webserver/oidc/IdentityLifecycleGuardV1.class','io/kestra/webserver/oidc/TrustedIdentityV1.class','io/kestra/webserver/ui/UiExtensionProviderV1.class','io/kestra/webserver/ui/UiExtensionDescriptorV1.class']:
@@ -27,6 +27,7 @@ with zipfile.ZipFile(path) as jar:
     for name in ['UserDirectoryV2','UserDirectoryV2$TemporaryUser','TrustedIdentityV2','IdentityLifecycleParticipantV1','IdentityLifecycleParticipantV1$Change','ClientCredentialsV1','ClientCredentialsV1$CredentialStatus','ClientCredentialsV1$IssuedCredential','ApplicationGroupProtocolProjectionV2','ApplicationGroupProtocolProjectionV2$Projection','ApplicationGroupProtocolProjectionV2$Result']:
         entry='io/kestra/webserver/oidc/'+name+'.class'
         assert jar.namelist().count(entry)==1, f'Missing or duplicated published protocol: {name}'
+    assert b'currentForAuthorization' in jar.read('io/kestra/webserver/oidc/TrustedIdentityV2.class'), 'Missing authorization identity entry'
     for name in ['ApplicationDirectoryV1','ApplicationGroupManagementV1']:
         assert not any(entry.startswith('io/kestra/webserver/oidc/'+name) for entry in names), f'Obsolete host business contract: {name}'
     prefix='META-INF/kestra/ui-sdk/v1/'
