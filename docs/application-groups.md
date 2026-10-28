@@ -9,9 +9,11 @@ host-contract.properties；本仓不据该设计来源扩大宿主能力或降�
 
 本文描述公开契约；正式消费必须对应提交 CI 和产物检查通过，不等于根仓组合验收通过。
 正式协议44先由64c4498/run40523539018发布；2026-10-28当前正式输入已升级为
-cfd81ec8/run40619438865，digest由host-contract.properties固定为f7d195b6…fe1f。
+3a96e111/run40632084140，digest由host-contract.properties固定为e5f8a2e5…fb26。
 正式registry缓存经独立create/cp提取，executable SHA256为
-fd16fcfa82fe8ebed22cbcb22dcb7be215b9c40d703050920365201194866acd。
+190fb02df7923f096bc8a540b49c5e96f16a25736f3c1649749dcb51a7eae15b。
+该正式目录契约允许临时账号姓名/邮箱为空及资料更新清空，不补用户名或虚构邮箱；
+插件通过公开目录读回精确空字符串，不保存“—”占位符。真实页面显示仍由根仓验收。
 发布门与提取来源已核对，
 公开UserDirectoryV2/TrustedIdentityV2/参与者/凭据/ProjectionV2契约由插件实现，
 Java编译通过不等于插件CI或组合验收通过；不直读宿主私有表。0384公开SDK十个文件

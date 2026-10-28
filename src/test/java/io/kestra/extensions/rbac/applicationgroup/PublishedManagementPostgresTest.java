@@ -120,9 +120,22 @@ class PublishedManagementPostgresTest {
     }
 
     @Test void temporaryUserUsesPublishedV2AndDoesNotFabricateCreateAudit() {
+        var directoryBefore=fixture.store.readAll();
         var created=actor("first",()->fixture.published.createTemporary(new TemporaryAccountCommands.Create("new-account","","")));
         assertEquals("new-account",created.subject());assertFalse(created.temporaryPassword().isBlank());assertFalse(created.toString().contains(created.temporaryPassword()));
         assertTrue(fixture.published.find("new-account").isPresent());assertEquals(0,events().total());
+        var initial=fixture.published.find("new-account").orElseThrow();
+        assertEquals("",initial.name());assertEquals("",initial.email());assertEquals(directoryBefore,fixture.store.readAll());
+        var populated=actor("first",()->fixture.published.update(created.subject(),initial.revision(),"Profile Name","profile@example.invalid"));
+        assertEquals(initial.revision()+1,populated.revision());
+        var populatedRead=fixture.published.find(created.subject()).orElseThrow();
+        assertEquals("Profile Name",populatedRead.name());assertEquals("profile@example.invalid",populatedRead.email());
+        var cleared=actor("first",()->fixture.published.update(created.subject(),populatedRead.revision(),"",""));
+        assertEquals(populatedRead.revision()+1,cleared.revision());
+        var clearedRead=fixture.published.find(created.subject()).orElseThrow();
+        assertEquals("",clearedRead.name());assertEquals("",clearedRead.email());
+        assertEquals(initial.subject(),clearedRead.subject());assertEquals(initial.active(),clearedRead.active());
+        assertEquals(directoryBefore,fixture.store.readAll());assertEquals(0,events().total());
     }
 
     void firstIdentityActions(Set<ApplicationGroupPolicy.ManagementAction> actions) {
