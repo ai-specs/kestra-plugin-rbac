@@ -9,9 +9,11 @@ host-contract.properties；本仓不据该设计来源扩大宿主能力或降�
 
 本文描述公开契约；正式消费必须对应提交 CI 和产物检查通过，不等于根仓组合验收通过。
 正式协议44先由64c4498/run40523539018发布；2026-10-28当前正式输入已升级为
-3a96e111/run40632084140，digest由host-contract.properties固定为e5f8a2e5…fb26。
+dae2b4a/run40645098489，digest由host-contract.properties固定为a56adfb9…84ade。
 正式registry缓存经独立create/cp提取，executable SHA256为
-190fb02df7923f096bc8a540b49c5e96f16a25736f3c1649749dcb51a7eae15b。
+33d21c2055c1e3e14063144627d1c4e5f4095364b55f6a249b8e43dfee4565a4。
+该正式宿主补齐精确favicon静态资源激活，不改变SDK输入或插件授权策略；生产浏览器
+与根仓组合结果仍须独立验收。
 该正式目录契约允许临时账号姓名/邮箱为空及资料更新清空，不补用户名或虚构邮箱；
 插件通过公开目录读回精确空字符串，不保存“—”占位符。真实页面显示仍由根仓验收。
 发布门与提取来源已核对，

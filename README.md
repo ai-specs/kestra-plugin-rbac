@@ -18,8 +18,8 @@
 新安装使用目录四表加管理审计表，生产不注册旧policy/declaration store bean。已消费正式
 协议44镜像（64c4498/run40523539018，固定digest见host-contract.properties），真实V2
 适配及空资源audiences登记已进入本地Java/PG验证，不补clientId。当前pin已升级为正式
-3a96e111/run40632084140的e5f8a2e5…fb26镜像，包含首次临时改密
-协议入口和账号空资料修复。临时账号姓名/邮箱可空，资料更新可清空，不补用户名或
+dae2b4a/run40645098489的a56adfb9…84ade镜像，包含首次临时改密、账号空资料及
+精确favicon静态资源激活修复。临时账号姓名/邮箱可空，资料更新可清空，不补用户名或
 虚构邮箱；空资料的创建与读回仍须核对对应提交的实际测试结果。公开SDK overlayCompatibility经helper
 支持四个组件；新导航/overlay接线已通过本地clean check，真实插件UI/Compose仍须验收。
 具体输入、缺口和版本证据入口见 `docs/application-groups.md`；本地候选测试不是发布结论。
