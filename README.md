@@ -15,13 +15,11 @@
 及发布通过的产物才可部署。历史测试记录不能证明本轮 R21 行为。
 
 当前模型与验证边界：description为可选HTTP字段、权限列表先按key排序再分页，默认25；
-新安装使用目录四表加管理审计表，生产不注册旧policy/declaration store bean。已消费正式
-协议44镜像（64c4498/run40523539018，固定digest见host-contract.properties），真实V2
-适配及空资源audiences登记已进入本地Java/PG验证，不补clientId。当前pin已升级为正式
-e720f55/run40663374442的2b67b233…644b8镜像，包含首次临时改密、账号空资料、
-精确favicon及V2锁后身份拒绝分类修复。临时账号姓名/邮箱可空，资料更新可清空，不补用户名或
-虚构邮箱；空资料的创建与读回仍须核对对应提交的实际测试结果。公开SDK overlayCompatibility经helper
-支持四个组件；新导航/overlay接线已通过本地clean check，真实插件UI/Compose仍须验收。
+新安装使用目录四表加管理审计表，生产不注册旧policy/declaration store bean。正式协议
+允许空资源audiences登记，不补clientId；临时账号姓名/邮箱可空，资料更新可清空，不补
+用户名或虚构邮箱。当前正式编译输入只由host-contract.properties及独立prepare-host生成的
+.integration/host-provenance.json共同确定；旧版本测试记录不作为当前pin。公开SDK
+通过helper适配已声明原生组件，生产插件UI及根仓Compose仍须独立验收。
 具体输入、缺口和版本证据入口见 `docs/application-groups.md`；本地候选测试不是发布结论。
 
 账号候选HTTP只接受username/name/email创建并提供强修订DELETE入口；Published适配器
@@ -51,6 +49,12 @@ are extracted from the immutable published image, independently of any overlay s
 独立存储测试默认使用 H2；设置 RBAC_STORE_TEST_JDBC 可对隔离 PostgreSQL 执行相同
 检查。该变量只用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
 每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。
+
+当前编译输入为正式宿主 commit `1e3632e27a639c10052de3f56bfe2ddbe2427335`（CI `40822882820`），
+镜像 digest `9e2667744f9f0515a9902aa3d83bca3a3433aa9b752ec72fd8c07f3c539acdd0`；
+arm64 executable SHA256 `6e1a19a258917e1d40e00b0abde9d80371d3dfe471ae133f79760a479e3af09f`。
+构建以 `host-contract.properties` 和本仓独立提取的 `.integration/host-provenance.json` 为准。
+宿主发布与插件本地检查不表示最终生产 HTTP、UI 或 Compose 组合验收通过。
 
 ## Build independently
 
@@ -98,7 +102,7 @@ python3 scripts/check-lifecycle-tests.py build/test-results/lifecyclePostgresTes
 suite为`io.kestra.extensions.rbac.applicationgroup.AccountLifecyclePostgresTest`，6个具名用例。
 真实插件目录、统一权限投影、身份复查、最后管理员检查与清理都在同一PG连接执行；
 标准账号、可信身份与参与者调度来自固定正式镜像，生产插件适配器/参与者实际接线。
-同任务另执行PublishedManagementPostgresTest的13项真实管理集成，包含身份目录的
+同任务另执行PublishedManagementPostgresTest的15项真实管理集成，包含身份目录的
 缺组404、零授权403和真实创建/更新/删除事务回归。
 Controller互删/互停用检查一个成功及一个明确安全拒绝/冲突，不接受任意RuntimeException。
 SQL和投影依赖故障保持503并验证无副作用。检查器核对两个suite的精确名称集合、PostgreSQL及hostImage/executable hash；摘要gatePassed仅

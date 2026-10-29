@@ -8,12 +8,11 @@ R24同借用连接事务及R25登录client部署维护轮换的来源是主控�
 host-contract.properties；本仓不据该设计来源扩大宿主能力或降低验收门。
 
 本文描述公开契约；正式消费必须对应提交 CI 和产物检查通过，不等于根仓组合验收通过。
-正式协议44先由64c4498/run40523539018发布；2026-10-28当前正式输入已升级为
-e720f55/run40663374442，digest由host-contract.properties固定为2b67b233…644b8。
-正式registry缓存经独立create/cp提取，executable SHA256为
-aad527bb4e54645e8d5e471fd09358a1ec81044cfafd084ddb21a3771095cbcc。
-该正式宿主补齐精确favicon静态资源激活，不改变SDK输入或插件授权策略；生产浏览器
-与根仓组合结果仍须独立验收。
+历史协议44先由64c4498/run40523539018发布；后续e720f55/run40663374442及
+2b67镜像仅为历史消费记录，不是当前pin。当前正式编译输入以host-contract.properties和
+本仓从registry独立create/cp提取的.integration/host-provenance.json为准。新宿主须通过
+对应提交CI、推广与实际产物核验后消费；SDK输入变化必须重新验证。生产浏览器与根仓
+组合结果仍须独立验收。
 该正式目录契约允许临时账号姓名/邮箱为空及资料更新清空，不补用户名或虚构邮箱；
 插件通过公开目录读回精确空字符串，不保存“—”占位符。真实页面显示仍由根仓验收。
 发布门与提取来源已核对，
@@ -40,14 +39,15 @@ Java编译通过不等于插件CI或组合验收通过；不直读宿主私有�
 approved。typed执行/身份边界和旧凭据版本切换仍需真实正反检查；当前不得把空值
 构造通过写成登录、access资源aud、MCP或整个R19已验收。
 
-### 插件内部账号、清理与凭据边界（未发布）
+### 插件内部账号、清理与凭据边界
 
-#### 管理生命周期与凭据审计（已接收收窄方案，候选实施中、未发布）
+#### 管理生命周期与凭据审计（正式插件已包含）
 
 主控已接收并收窄为正式IdentityLifecycleParticipantV1五种Kind：ACCOUNT_DELETE、
 ACCOUNT_ACTIVATE、ACCOUNT_DEACTIVATE、PASSWORD_RESET、CLIENT_SECRET_ROTATE。
 不记录CREATE/PROFILE_UPDATE，不请求新宿主协议，不建立execution事件或executionId。
-本段新裁决优先于下方保留的初始候选调查；没有完整CI前不得称已发布。
+正式插件 `862ccf9`（成功 CI `40803869433`、jar SHA256 前缀 `99f1`）已包含接口、存储及参与者接线，独立 PostgreSQL 门已执行。
+下方初始调查仅为历史设计；生产 HTTP、根仓 UI 与 Compose 的最终组合验收仍独立记录。
 
 实际候选表`rbac_management_audit`只含event_id、occurred_at、issuer、actor_subject、
 operation、target_subject或client_id、group_id。没有target_revision/outcome/schema_version
@@ -84,7 +84,7 @@ outcome/schema_version及自由筛选不进入本轮；以本节已接收收窄�
 #### 正式协议与正式UI SDK分阶段消费
 
 主控已裁决先发布通过门的44补丁协议产物，后发布包含0384的正式UI SDK。这是依赖
-交付顺序，不缩小插件最终范围。当前已收到正式44 digest及成功CI证据，pin已更新，
+交付顺序，不缩小插件最终范围。历史阶段已收到正式44 digest及成功CI证据并更新pin；当前输入见本页顶部，
 公开jar由正式registry镜像create/cp提取并核对hash，下面为正在执行的适配范围，
 不使用候选jar或相邻源码编译。
 
@@ -114,9 +114,9 @@ PG仍由主控协调，不自行启动实例。该阶段不能标记UI已支持�
 `AccountLifecyclePostgresTest`的6项覆盖参与者写后异常、宿主删除失败、全组清理、最后
 管理员拒绝及并发互删/互停。使用真实插件DirectoryService的身份复查与管理员算法，
 标准账号状态通过同连接内部测试适配器读取，安全锁在每次事务开始取得；不使用
-最小宿主provider代替插件业务。该6项和附加13项正式管理PG集成必须在当前正式输入重跑，
+最小宿主provider代替插件业务。该6项和附加15项正式管理PG集成必须在当前正式输入重跑，
 0失败/错误/跳过；XML及CI入口见README。本地门不是正式CI发布结论。
-正式新宿主接线后必须补真实参与者/HTTP集成证据，测试适配器不代表宿主适配已交付。
+独立 PG 已验证生产插件参与者接线；最终生产 HTTP 和浏览器组合证据仍由部署仓提供。
 
 `TemporaryAccountCommands` 定义只含username/name/email的Create和只含
 subject/revision/temporaryPassword的Created，删除只接收subject与账号修订。

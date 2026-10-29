@@ -107,6 +107,8 @@
     "applicationGroupIds": "अनुप्रयोग समूह ID",
     "key": "Scope कुंजी",
     "supportedScopeKeys": "समर्थित स्कोप",
-    "scopeKeys": "Scope आवंटन"
+    "scopeKeys": "Scope आवंटन",
+    "andFilterOnly": "सभी शर्तें पूरी होनी चाहिए (AND)। शर्त समूह और OR उपलब्ध नहीं हैं।",
+    "andFilterUnavailable": "फ़िल्टर को सुरक्षित रूप से जोड़ नहीं सके। फ़िल्टर हटाकर फिर प्रयास करें।"
   }
 }

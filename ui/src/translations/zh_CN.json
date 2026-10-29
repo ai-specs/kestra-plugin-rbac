@@ -107,6 +107,8 @@
     "applicationGroupIds": "应用组 ID",
     "key": "scope 标识",
     "supportedScopeKeys": "支持的 scope",
-    "scopeKeys": "scope 授予"
+    "scopeKeys": "scope 授予",
+    "andFilterOnly": "此列表要求全部条件同时满足（AND），不支持条件组或OR。",
+    "andFilterUnavailable": "无法安全关联原生筛选。请清除筛选后重试。"
   }
 }

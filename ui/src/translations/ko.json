@@ -107,6 +107,8 @@
     "applicationGroupIds": "애플리케이션 그룹 ID",
     "key": "scope 키",
     "supportedScopeKeys": "지원하는 범위",
-    "scopeKeys": "scope 부여"
+    "scopeKeys": "scope 부여",
+    "andFilterOnly": "모든 조건을 충족해야 합니다(AND). 조건 그룹과 OR는 사용할 수 없습니다.",
+    "andFilterUnavailable": "필터를 안전하게 연결할 수 없습니다. 필터를 지우고 다시 시도하세요."
   }
 }

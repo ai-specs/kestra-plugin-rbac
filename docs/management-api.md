@@ -156,7 +156,7 @@ ScopePicker唯一外层`data-test="scope-picker"`真实包裹正常原生选择�
 分隔符或路径穿越。不是简单跳`/ui/`。本地helper/组件检查不证明真实会话已清除；
 必须实际点击到生产登录表单，并以同cookie capabilities拒绝及重新登录确认。
 
-## 管理生命周期审计（候选实施，未发布）
+## 管理生命周期审计（正式插件已包含，组合验收独立执行）
 
 GET `/audit?page=1&size=25`返回items/total/page/size。每项仅含
 id/time/issuer/actorSubject/operation/targetSubject/clientId/groupId。操作只包括
@@ -168,17 +168,18 @@ CLIENT_SECRET_ROTATE。不记录创建/资料更新，不包含secret/hash/hint/
 保持issuer；SQL在items分页和total前统一限制可信issuer，包含同issuer跨组和已退役/
 删除组历史。MANAGE-only和无READ返回403，跨issuer不泄漏。无组目标账号事件只记
 actor当前可信组，有成员关系则按操作前所属组逐组记录。账号/actor/组删除不改写
-历史标识，无账号/组级联外键；groupId只是事件归属，不改变IDENTITY授权范围。当前API源码和存储
-不等于正式参与者已接线；生产审计与PG回滚/保留门仍须实际运行。
+历史标识，无账号/组级联外键；groupId只是事件归属，不改变IDENTITY授权范围。正式插件 `862ccf9`（CI `40803869433`、jar SHA256 前缀 `99f1`）已包含审计接口、存储及参与者接线，独立 PostgreSQL 生命周期门已执行。
+本轮已针对最终正式宿主输入通过本地 Java 286、PostgreSQL 108、生命周期 24 及 UI 111 项独立门。
+最终提交的 CI、实际下载产物及生产 HTTP、根仓 UI 与 Compose 组合验收仍待核对；无新输入不要求重复本地门。
 
 ### 标准账号与错误状态
 
 `/users`、`/users/detail?subject=...` 提供分页、详情与创建；`/users/profile`、`/users/state`、
 `/users/password` 修改标准账号。用户创建不自动授予 scope。标准账号读取、资料、状态和
-密码操作当前通过正式 UserDirectoryV1；停用和密码变更在宿主事务内调用插件 guard，
+密码操作当前通过正式 UserDirectoryV2；停用和密码变更在宿主事务内调用插件 guard，
 保留最后管理员与撤权检查。
 
-当前未发布候选 POST `/users` 只允许 username/name/email，姓名与邮箱可省略并默认空。
+正式 POST `/users` 只允许 username/name/email，姓名与邮箱可省略并默认空。
 调用方 password、未知字段和 null 均拒绝。成功201只返回
 `{subject,revision,temporaryPassword}`，带强 ETag 和 `Cache-Control: no-store`。
 DELETE `/users/detail?subject=...` 必须发送强 If-Match，账号修订允许0；自身删除拒绝，
@@ -202,3 +203,12 @@ HTTP/CSRF仍需部署组合验证，不把直接控制器测试当作网络请�
 普通授权前置门使用正式 `TrustedIdentityV2.currentForAuthorization()`。明确目录/策略依赖不可用通过宿主 `AuthorizationUnavailableException` 返回固定安全503 ProblemDetail，不携带SQL、凭据或底层异常消息。该前置响应不保证包含控制器的 `directory_unavailable`/`policy_unavailable` 业务码。若宿主公开异常在管理控制器 `request` 边界内产生，控制器精确返回HTTP503及业务码 `authorization_unavailable`，不输出底层消息；其他控制器内已分类故障仍保留原业务响应。同步/异步评估使用相同分类，安全拒绝、未知异常和缺失/重复授权provider保持原失败关闭门；生命周期借用连接接口不变。
 
 同一clientId跨应用组重复登记返回409 `client_already_assigned`。上述唯一性冲突在事务写入边界精确分类，不改变目录、修订、epoch或审计；CAS412、非法输入/引用400及权限403保持。组显示名和应用权限name不新增唯一约束；Snapshot损坏数据校验仍独立失败关闭。
+
+内联编辑（组、scope、应用）遇到409/412时保留草稿并锁定输入和保存；取消仍可聚焦及点击，脏草稿必须经显式丢弃确认。取消丢弃继续保留草稿；确认后退出编辑。冲突提示的刷新同样先确认丢弃，再重新读取服务端数据并恢复可编辑状态，不自动重试原写入。保存期间输入、保存及取消均禁用，事件入口也拒绝重复保存/取消。四类抽屉遵循同一冲突/保存边界。
+
+用户、应用权限及用户授予列表通过公开KsFilter configuration将已支持字段设为可分组，使原生高级筛选Add condition实际创建条件。permission支持key精确匹配、name包含及scopeKeys；用户支持subject精确匹配，用户授予另支持scopeKeys。同一列表的原生条件与深链条件按AND求交，scopeKeys单条件内仍按任一值匹配；URL编码与历史回退保留条件和结果。未支持的OR或比较符明确拒绝，不降级扩大列表。此配置不改变服务端授权范围。
+
+访问控制管理的组卡片、权限、用户及用户授予筛选均采用AND；DS0.5原生高级层保留合法条件编辑，仅由版本绑定owned适配禁用Add condition group和AND/OR切换，显示本地化AND说明及aria-describedby，并阻止鼠标/Enter/Space。目标必须由注册区域触发并唯一关联本根portal；结构未知或多匹配显示可清除错误，不改其他filter、不把OR改写为AND。手工OR URL仍拒绝并支持清除恢复。该组件回归不代表生产浏览器验收通过。
+
+保存筛选不是本管理页面能力，四处KsFilter原配置savedFilters.shown=false在DS0.5移动层由同一owned适配精确落实：隐藏Saved tab与Save入口并禁用激活，保留All Filters、字段/比较符、清除及Apply。关联仅用本实例结构与当前语言的精确标签；未知结构卸载该实例，错误区Clear后重新挂载并释放原生modal。此处不提供保存/加载/删除能力，本次适配代码不读取、迁移或删除旧共用localStorage记录；原生KsFilter自身setup仍可能由useStorage读取默认key；此前prefix隔离方案已收窄为非当前能力。
+UI test:logic使用Node原生spec+JUnit双reporter，所有test/*.test.mjs均执行；机器报告保留于.evidence/ui/results.xml，失败仍保存并返回原失败exit，最终CI artifact必须实际下载核对。

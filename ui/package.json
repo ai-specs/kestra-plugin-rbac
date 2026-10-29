@@ -4,11 +4,11 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/check-translations.mjs && vite build && node scripts/generate-ui-manifest.mjs",
-    "test:logic": "node --test test/*.test.mjs"
+    "test:logic": "node scripts/test-logic.mjs"
   },
   "dependencies": {
-    "@vue/runtime-dom": "3.5.39",
     "@kestra-io/design-system": "0.5.0",
+    "@vue/runtime-dom": "3.5.39",
     "element-plus": "2.14.7",
     "vue": "3.5.39",
     "vue-i18n": "11.4.4",
@@ -16,6 +16,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "6.0.7",
+    "happy-dom": "21.0.4",
     "postcss": "8",
     "vite": "7.1.9"
   }

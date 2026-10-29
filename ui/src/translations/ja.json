@@ -107,6 +107,8 @@
     "applicationGroupIds": "アプリケーショングループ ID",
     "key": "scope キー",
     "supportedScopeKeys": "対応するスコープ",
-    "scopeKeys": "scope の付与"
+    "scopeKeys": "scope の付与",
+    "andFilterOnly": "すべての条件を満たす必要があります（AND）。条件グループとORは使用できません。",
+    "andFilterUnavailable": "フィルターを安全に関連付けできません。クリアして再試行してください。"
   }
 }

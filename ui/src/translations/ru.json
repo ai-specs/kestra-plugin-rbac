@@ -107,6 +107,8 @@
     "applicationGroupIds": "Группа приложений ID",
     "key": "Ключ scope",
     "supportedScopeKeys": "Поддерживаемые scope",
-    "scopeKeys": "Назначения scope"
+    "scopeKeys": "Назначения scope",
+    "andFilterOnly": "Все условия должны выполняться (AND). Группы и OR недоступны.",
+    "andFilterUnavailable": "Не удалось безопасно связать фильтр. Очистите фильтры и повторите попытку."
   }
 }

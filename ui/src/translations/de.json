@@ -107,6 +107,8 @@
     "applicationGroupIds": "Anwendungsgruppe ID",
     "key": "Scope-Schlüssel",
     "supportedScopeKeys": "Unterstützte Scopes",
-    "scopeKeys": "Scope-Zuweisungen"
+    "scopeKeys": "Scope-Zuweisungen",
+    "andFilterOnly": "Alle Bedingungen müssen zutreffen (AND). Bedingungsgruppen und OR sind nicht verfügbar.",
+    "andFilterUnavailable": "Der Filter konnte nicht sicher zugeordnet werden. Filter löschen und erneut versuchen."
   }
 }

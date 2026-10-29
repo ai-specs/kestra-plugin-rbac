@@ -107,6 +107,8 @@
     "applicationGroupIds": "Application group IDs",
     "key": "Scope key",
     "supportedScopeKeys": "Supported scopes",
-    "scopeKeys": "Scope grants"
+    "scopeKeys": "Scope grants",
+    "andFilterOnly": "This list requires all conditions to match (AND). Condition groups and OR are unavailable.",
+    "andFilterUnavailable": "The native filter could not be safely associated. Clear filters and retry."
   }
 }

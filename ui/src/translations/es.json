@@ -107,6 +107,8 @@
     "applicationGroupIds": "Grupo de aplicaciones ID",
     "key": "Clave del scope",
     "supportedScopeKeys": "Scopes admitidos",
-    "scopeKeys": "Asignaciones de scopes"
+    "scopeKeys": "Asignaciones de scopes",
+    "andFilterOnly": "Deben cumplirse todas las condiciones (AND). Los grupos y OR no están disponibles.",
+    "andFilterUnavailable": "No se pudo asociar el filtro de forma segura. Borre los filtros y vuelva a intentarlo."
   }
 }
