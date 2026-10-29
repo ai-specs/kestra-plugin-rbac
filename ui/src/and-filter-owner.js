@@ -6,12 +6,12 @@ export function ownAndFilter({area, portal, description, descriptionId, fail, sa
   let registry = registries.get(portal)
   if (!registry) {registry = {pending: null, claims: new Map()}; registries.set(portal, registry)}
   const token = {}, records = new Map()
-  let closed = false
+  let closed = false, failureNotified = false, failurePending = false, generation = 0
   const visible = node => node.isConnected && !node.closest('[hidden],[aria-hidden="true"]') && node.style.display !== 'none'
   const snapshot = (node, names) => Object.fromEntries(names.map(name => [name, node.getAttribute(name)]))
   const restore = (node, attributes) => {for (const [name, value] of Object.entries(attributes)) value === null ? node.removeAttribute(name) : node.setAttribute(name, value)}
   const remember = layer => {
-    if (!records.has(layer)) records.set(layer, {buttons: new Map(), hidden: new Map(), layout: new Map(), note: null, block: null, inert: layer.inert, invalid: layer.getAttribute('data-and-filter-invalid')})
+    if (!records.has(layer)) records.set(layer, {buttons: new Map(), hidden: new Map(), layout: new Map(), note: null, block: null, inert: layer.inert, invalid: layer.getAttribute('data-and-filter-invalid'), dismiss: null, rejected: false, generation})
     return records.get(layer)
   }
   const release = layer => {
@@ -25,10 +25,25 @@ export function ownAndFilter({area, portal, description, descriptionId, fail, sa
     restore(layer, {'data-and-filter-invalid': record.invalid})
     if (registry.claims.get(layer) === token) registry.claims.delete(layer)
     records.delete(layer)
+    if (record.rejected && record.generation === generation) notifyFailure()
+  }
+  const notifyFailure = () => {
+    if (closed || failureNotified) return
+    failureNotified = true; failurePending = false; fail()
   }
   const reject = layer => {
-    remember(layer); registry.claims.set(layer, token)
-    layer.inert = true; layer.setAttribute('data-and-filter-invalid', ''); fail()
+    const record = remember(layer); registry.claims.set(layer, token)
+    if (record.rejected) return
+    layer.inert = true; layer.setAttribute('data-and-filter-invalid', '')
+    const ownedDismiss = registry.claims.get(layer) === token && record.generation === generation && record.dismiss
+    const dismiss = ownedDismiss && ownedDismiss.isConnected && portal.contains(ownedDismiss)
+      && (!layer.matches('.mobile-sheet') || ownedDismiss.matches('.mobile-scrim')) ? ownedDismiss : null
+    if (dismiss) {
+      record.rejected = true; failurePending = true
+      // Let the native close handler drive renderer.remove and SDK modal cleanup
+      // before the consumer unmounts this filter's original subtree.
+      dismiss.click()
+    } else notifyFailure()
   }
   const installBlock = (layer, record) => {
     if (record.block) return
@@ -91,13 +106,21 @@ export function ownAndFilter({area, portal, description, descriptionId, fail, sa
     if (registry.pending?.token === token) {
       const candidates = layers.filter(layer => !registry.claims.has(layer) && !registry.pending.existing.has(layer))
       if (candidates.length > 1) {for (const layer of candidates) reject(layer); registry.pending = null}
-      else if (candidates.length === 1) {registry.claims.set(candidates[0], token); registry.pending = null}
+      else if (candidates.length === 1) {
+        const layer = candidates[0]
+        registry.claims.set(layer, token)
+        if (layer.matches('.mobile-sheet')) {
+          const scrims = [...portal.querySelectorAll('.mobile-scrim')].filter(node => visible(node) && !registry.pending.scrims.has(node))
+          if (scrims.length === 1) remember(layer).dismiss = scrims[0]
+        } else remember(layer).dismiss = layer.closest('.adv-overlay')
+        registry.pending = null
+      }
     }
     for (const layer of layers) if (registry.claims.get(layer) === token && !layer.hasAttribute('data-and-filter-invalid')) (layer.matches('.mobile-sheet') ? restrictMobile(layer) : restrict(layer))
   }
   const activate = event => {
     const trigger = event.composedPath().find(node => node?.matches?.('.customize-button,.rules-pill,.mobile-toggle'))
-    if (trigger && area.contains(trigger)) registry.pending = {token, existing: new Set(portal.querySelectorAll('.adv-builder,.mobile-sheet'))}
+    if (!failurePending && trigger && area.contains(trigger)) registry.pending = {token, existing: new Set(portal.querySelectorAll('.adv-builder,.mobile-sheet')), scrims: new Set(portal.querySelectorAll('.mobile-scrim'))}
   }
   area.addEventListener('pointerdown', activate, true); area.addEventListener('click', activate, true)
   const observer = new MutationObserver(scan)
@@ -105,6 +128,7 @@ export function ownAndFilter({area, portal, description, descriptionId, fail, sa
   return {
     refresh: scan,
     reset() {
+      generation++; failureNotified = false; failurePending = false
       if (registry.pending?.token === token) registry.pending = null
       for (const layer of [...records.keys()]) if (layer.hasAttribute('data-and-filter-invalid')) {
         const overlay = layer.closest('.adv-overlay'); release(layer); overlay?.click()
