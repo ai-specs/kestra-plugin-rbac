@@ -36,9 +36,14 @@ test('T4: deleting the sole final-page row replaces canonical page and preserves
 
 test('T4: App statically validates list query before capabilities or subject reads and exposes query recovery', async () => {
   const app = await readFile(new URL('../src/App.vue', import.meta.url), 'utf8')
-  const load = app.slice(app.indexOf('async function load('), app.indexOf('async function mutate('))
-  assert(load.indexOf('readListQuery(route.query, queryKind)') < load.indexOf('await api.capabilities('))
-  assert(load.indexOf('readListQuery(route.query, queryKind)') < load.indexOf('await api.scopeGrant('))
+  const start = app.indexOf('async function readView('), end = app.indexOf('async function mutate(')
+  assert(start >= 0 && end > start)
+  const load = app.slice(start, end)
+  const snapshot = load.indexOf('const query = router.resolve('), validate = load.indexOf('readListQuery(query, queryKind)')
+  const native = load.indexOf('nativeChips(decodeSearchParams(query), queryKind)')
+  const capabilities = load.indexOf('await api.capabilities('), subject = load.indexOf('await api.scopeGrant(')
+  assert([snapshot, validate, native, capabilities, subject].every(index => index >= 0))
+  assert(snapshot < validate && validate < native && native < capabilities && native < subject)
   assert.match(app, /problem.code === 'invalid_query'/)
   assert.match(app, /v-if="invalidQuery"[^>]*@click="clearInvalidQuery"/)
   assert.match(app, /context.navigate\(target, \{replace: true\}\)/)

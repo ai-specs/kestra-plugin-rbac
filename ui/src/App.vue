@@ -42,7 +42,7 @@ const busy = ref(false), loaded = ref(false), error = ref(''), notice = ref(''),
 const editor = reactive(createEditorState())
 const oneTime = reactive(newOneTimeValue())
 const credentialBusy = ref(false), pendingRoute = ref(null)
-const invalidQuery = ref(false)
+const invalidQuery = ref(false), queryRefreshing = ref(false)
 const inline = ref(null), inlineBaseline = ref(''), discardInline = ref(false)
 const deletion = ref(null), deletionError = ref(''), sourcePath = ref('')
 const path = computed(() => canonicalPath(sourcePath.value.split('?')[0]))
@@ -66,6 +66,7 @@ const subjectCandidates = computed(() => ordered(users.value.filter(user => user
 const columnsSubjects = computed(() => [{key: 'subject', label: 'subject'}, {key: 'scopeKeys', label: t('scopeKeys')}, {key: 'applications', label: t('involvedApplications')}, {key: 'operations', label: '', width: 100}])
 const statistics = computed(() => [{field: 'scopes', tab: 'scopes', label: t('scopes')}, {field: 'applications', tab: 'applications', label: t('clients')}, {field: 'subjects', tab: 'scope-grants', label: 'subject'}])
 let generation = 0, disposed = false, pendingNavigation = null, routingFromHost = false
+let activeLoad = Promise.resolve()
 const loginHref = computed(() => loginEntry(props.context.apiBase))
 function clearSensitive(clearCredential = true) {
   if (clearCredential) clearOneTimeValue(oneTime)
@@ -81,8 +82,8 @@ function failure(problem) {
   if ([409, 412, 428].includes(problem.status)) conflicted.value = true
   error.value = t([409, 412, 428].includes(problem.status) ? 'conflict' : [401, 403].includes(problem.status) ? 'denied' : problem.status === 404 ? 'notFound' : 'error')
 }
-function discardGuard(action) {
-  if (busy.value || editor.saving || credentialBusy.value) return
+function discardGuard(action, allowQueryRefresh = false) {
+  if (busy.value && !(allowQueryRefresh && queryRefreshing.value) || editor.saving || credentialBusy.value) return
   if (oneTime.value) return
   if (editor.kind) {requestEditorClose(editor, action); return}
   if (inlineDirty.value) {pendingNavigation = action; discardInline.value = true; return}
@@ -93,23 +94,33 @@ function navigate(target, query = {}, replace = false) {
 }
 function openInline(value, kind) {inline.value = {...copy(value), _kind: kind}; inlineBaseline.value = JSON.stringify(inline.value)}
 function discardInlineConfirm() {inline.value = null; discardInline.value = false; const action = pendingNavigation; pendingNavigation = null; action?.()}
-async function load(value = contextFullPath(props.context), preserveOneTime = false) {
+function load(...arguments_) {
+  activeLoad = readView(...arguments_)
+  return activeLoad
+}
+async function readView(value = contextFullPath(props.context), preserveOneTime = false, preserveView = false) {
   const current = ++generation
-  busy.value = true; loaded.value = false; invalidQuery.value = false; error.value = ''; notice.value = ''; conflicted.value = false; denied.value = false
-  clearSensitive(!preserveOneTime); sourcePath.value = value
+  queryRefreshing.value = preserveView
+  busy.value = true; invalidQuery.value = false; error.value = ''; notice.value = ''; conflicted.value = false; denied.value = false
+  if (!preserveView) {loaded.value = false; clearSensitive(!preserveOneTime)}
+  sourcePath.value = value
   try {
+    if (!preserveView) await nextTick()
     if (!['application-groups', 'users'].includes(parts.value[0])) throw {status: 404}
     routingFromHost = true
     try {await router.replace('/' + value.replace(/^\/+/, ''))} finally {routingFromHost = false}
+    if (current !== generation || disposed) return
+    const query = router.resolve('/' + value.replace(/^\/+/, '')).query
     const queryKind = isUsers.value ? 'users' : tab.value === 'scope-grants' ? 'subjects' : 'permissions'
     if (isUsers.value || groupId.value && ['applications', 'scope-grants'].includes(tab.value)) {
       try {
-        readListQuery(route.query, queryKind)
-        nativeChips(decodeSearchParams(route.query), queryKind)
+        readListQuery(query, queryKind)
+        nativeChips(decodeSearchParams(query), queryKind)
       } catch {throw {status: 400, code: 'invalid_query'}}
     }
     const id = groupId.value, capability = await api.capabilities(groupId.value || undefined)
     if (current !== generation || disposed) return
+    if (preserveView && JSON.stringify(caps.value) !== JSON.stringify(capability)) {loaded.value = false; clearSensitive()}
     caps.value = capability
     if (reauthenticate.value || !capability.allowed) throw {status: 403}
     const all = (fetcher, revision) => collectPages(fetcher, props.context.signal, revision)
@@ -148,14 +159,17 @@ async function load(value = contextFullPath(props.context), preserveOneTime = fa
           if (!capability.identityRead && !isRuntimeApplication(capability, id, clientId)) throw {status: 403}
           app = capability.identityRead ? await api.application(id, clientId) : {clientId, implementationKind: 'kestra-policy'}
           if (app.implementationKind === 'kestra-policy' ? capability.localPolicyRead : capability.identityRead) ps = await collectPermissions((page, size) => api.permissions(id, clientId, page, size), props.context.signal, app.revision)
-          if (route.query.filterSubject !== undefined) {
-            if (!capability.identityRead || typeof route.query.filterSubject !== 'string') throw {status: 403}
-            const subject = await api.scopeGrant(id, route.query.filterSubject)
+          if (query.filterSubject !== undefined) {
+            if (!capability.identityRead || typeof query.filterSubject !== 'string') throw {status: 403}
+            const subject = await api.scopeGrant(id, query.filterSubject)
             const account = await api.user(subject.subject)
             if (account.active !== true) throw {status: 403}
-            const keys = (Array.isArray(route.query.scopeKeys) ? route.query.scopeKeys : [route.query.scopeKeys]).filter(key => subject.scopeKeys.includes(key))
+            const keys = (Array.isArray(query.scopeKeys) ? query.scopeKeys : [query.scopeKeys]).filter(key => subject.scopeKeys.includes(key))
             if (!keys.length) ps = []
-            else await router.replace({path: route.path, query: {...route.query, scopeKeys: keys}})
+            else {
+              if (current !== generation || disposed) return
+              await router.replace({path: route.path, query: {...query, scopeKeys: keys}})
+            }
           }
         }
       }
@@ -166,13 +180,17 @@ async function load(value = contextFullPath(props.context), preserveOneTime = fa
       const key = scope ? encodeURIComponent(scope.key) : encodeKey(app.clientId)
       void props.context.navigate(groupBase.value + '/' + tab.value + '/' + key, {replace: true})
     }
-  } catch (problem) {if (current === generation && !disposed && problem.name !== 'AbortError') failure(problem)}
-  finally {if (current === generation && !disposed) busy.value = false}
+  } catch (problem) {
+    if (current === generation && !disposed && problem.name !== 'AbortError') {
+      if (preserveView) {loaded.value = false; clearSensitive()}
+      failure(problem)
+    }
+  }
+  finally {if (current === generation && !disposed) {busy.value = false; queryRefreshing.value = false}}
 }
 function clearInvalidQuery() {
   const target = sourcePath.value.split('?')[0]
   void props.context.navigate(target, {replace: true})
-  void load(target)
 }
 async function mutate(action, afterSuccess) {
   if (busy.value || conflicted.value || denied.value || reauthenticate.value) return
@@ -271,7 +289,7 @@ const toApplication = (clientId, query = {}) => navigate(groupBase.value + '/app
 const subjectApps = subject => subject.active === false ? [] : applications.value.filter(item => item.active !== false && item.supportedScopeKeys?.some(key => subject.scopeKeys.includes(key)))
 function beforeUnload(event) {if (editorDirty(editor) || inlineDirty.value) {event.preventDefault(); event.returnValue = ''}}
 const removeRouteGuard = router.beforeEach(createDraftNavigationGuard(
-  () => ({saving: !routingFromHost && (busy.value || editor.saving || credentialBusy.value || Boolean(oneTime.value)), dirty: !routingFromHost && (editorDirty(editor) || inlineDirty.value)}),
+  () => ({saving: !routingFromHost && (busy.value && !queryRefreshing.value || editor.saving || credentialBusy.value || Boolean(oneTime.value)), dirty: !routingFromHost && (editorDirty(editor) || inlineDirty.value)}),
   resolve => {
     pendingRoute.value = resolve
     if (editor.kind) requestEditorClose(editor, () => {pendingRoute.value = null; resolve(true)})
@@ -280,7 +298,7 @@ const removeRouteGuard = router.beforeEach(createDraftNavigationGuard(
 ))
 if (navigationHooks) {
   navigationHooks.guard = createDraftNavigationGuard(
-    () => ({saving: busy.value || editor.saving || credentialBusy.value || Boolean(oneTime.value), dirty: editorDirty(editor) || inlineDirty.value}),
+    () => ({saving: busy.value && !queryRefreshing.value || editor.saving || credentialBusy.value || Boolean(oneTime.value), dirty: editorDirty(editor) || inlineDirty.value}),
     resolve => {
       pendingRoute.value = resolve
       if (editor.kind) requestEditorClose(editor, () => {pendingRoute.value = null; resolve(true)})
@@ -289,23 +307,66 @@ if (navigationHooks) {
   )
   navigationHooks.cleanup = () => {cancelPendingRoute(); clearSensitive()}
 }
+let pendingQueryTarget = null, queryNavigationRunning = false, queryNavigationEpoch = 0
+const queryAcknowledgements = new Map()
+async function flushQueryNavigation() {
+  if (queryNavigationRunning) return
+  const epoch = queryNavigationEpoch
+  queryNavigationRunning = true
+  try {
+    while (pendingQueryTarget && !disposed && epoch === queryNavigationEpoch) {
+      const target = pendingQueryTarget
+      pendingQueryTarget = null
+      queryAcknowledgements.set(target, epoch)
+      try {
+        await props.context.navigate(target, {replace: true})
+        await nextTick()
+        if (epoch !== queryNavigationEpoch && !disposed) {
+          // An external navigation or tenant update cancelled this owned query.
+          // Its delayed acknowledgement must not undo the accepted host destination.
+          await activeLoad
+          if (!disposed && contextFullPath(props.context) !== sourcePath.value) {
+            await props.context.navigate(sourcePath.value, {replace: true})
+            await nextTick()
+          }
+        }
+      } finally {queryAcknowledgements.delete(target)}
+    }
+  } catch (problem) {
+    if (!disposed && epoch === queryNavigationEpoch) {
+      pendingQueryTarget = null
+      routingFromHost = true
+      try {await router.replace('/' + contextFullPath(props.context))} finally {routingFromHost = false}
+      failure(problem)
+    }
+  } finally {
+    queryNavigationRunning = false
+    if (pendingQueryTarget && !disposed) void flushQueryNavigation()
+  }
+}
 const removeRouteSync = router.afterEach(async (to, from, navigationFailure) => {
   if (navigationFailure || disposed || routingFromHost || to.fullPath === from.fullPath || to.fullPath.replace(/^\//, '') === contextFullPath(props.context)) return
-  try {await props.context.navigate(to.fullPath.replace(/^\//, ''), {replace: true})}
-  catch (problem) {
-    if (disposed) return
-    routingFromHost = true
-    try {await router.replace('/' + contextFullPath(props.context))} finally {routingFromHost = false}
-    failure(problem)
+  if (to.path === from.path && to.path === '/' + sourcePath.value.split('?')[0]) {
+    pendingQueryTarget = to.fullPath.replace(/^\//, '')
+    void flushQueryNavigation()
+    return
   }
+  try {await props.context.navigate(to.fullPath.replace(/^\//, ''), {replace: true})}
+  catch (problem) {if (!disposed) failure(problem)}
 })
 function cancelPendingRoute() {pendingRoute.value?.(false); pendingRoute.value = null}
 watch(() => editor.discard, value => {if (!value && editor.kind) cancelPendingRoute()})
 watch(discardInline, value => {if (!value && inline.value) cancelPendingRoute()})
 window.addEventListener('beforeunload', beforeUnload)
-watch(() => contextFullPath(props.context), value => {if (value !== sourcePath.value || !loaded.value) discardGuard(() => {void load(value)})}, {immediate: true})
-watch(() => props.context.tenant, () => {generation++; clearSensitive(); void load()})
-onBeforeUnmount(() => {disposed = true; generation++; removeRouteGuard(); removeRouteSync(); cancelPendingRoute(); window.removeEventListener('beforeunload', beforeUnload); clearSensitive()})
+watch(() => contextFullPath(props.context), value => {
+  if (queryAcknowledgements.has(value) && (queryAcknowledgements.get(value) !== queryNavigationEpoch || router.currentRoute.value.fullPath.replace(/^\//, '') !== value)) return
+  if (value.split('?')[0] !== sourcePath.value.split('?')[0]) {queryNavigationEpoch++; pendingQueryTarget = null}
+  if (value === sourcePath.value && loaded.value) return
+  const preserveView = loaded.value && !denied.value && !reauthenticate.value && value.split('?')[0] === sourcePath.value.split('?')[0]
+  discardGuard(() => {void load(value, false, preserveView)}, preserveView)
+}, {immediate: true})
+watch(() => props.context.tenant, () => {queryNavigationEpoch++; pendingQueryTarget = null; generation++; clearSensitive(); void load()})
+onBeforeUnmount(() => {disposed = true; queryNavigationEpoch++; pendingQueryTarget = null; queryAcknowledgements.clear(); generation++; removeRouteGuard(); removeRouteSync(); cancelPendingRoute(); window.removeEventListener('beforeunload', beforeUnload); clearSensitive()})
 </script>
 
 <template>

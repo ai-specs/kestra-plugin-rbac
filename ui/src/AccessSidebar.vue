@@ -1,5 +1,5 @@
 <script setup>
-import {computed, ref} from 'vue'
+import {computed, ref, watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import KsButton from '@kestra-io/design-system/components/Basic/KsButton/KsButton'
 import KsInput from '@kestra-io/design-system/components/Form/KsInput'
@@ -10,6 +10,11 @@ const {t} = useI18n()
 const search = ref(''), page = ref(1)
 const filtered = computed(() => ordered(props.items.filter(item => item[props.field].includes(search.value)), props.field))
 const result = computed(() => paginate(filtered.value, page.value))
+// Synchronize navigation inputs, not renders or manual page changes. Search owns its reset.
+watch([() => props.selected, () => props.field, () => props.items.map(item => item[props.field])], () => {
+  const index = filtered.value.findIndex(item => item[props.field] === props.selected)
+  page.value = index < 0 ? paginate(filtered.value, page.value).page : Math.floor(index / 25) + 1
+}, {immediate: true})
 </script>
 <template>
   <aside class="rbac-sidebar" :data-test="`${kind}-sidebar`">

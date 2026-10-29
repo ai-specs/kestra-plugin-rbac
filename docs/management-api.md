@@ -212,3 +212,15 @@ HTTP/CSRF仍需部署组合验证，不把直接控制器测试当作网络请�
 
 保存筛选不是本管理页面能力，四处KsFilter原配置savedFilters.shown=false在DS0.5移动层由同一owned适配精确落实：隐藏Saved tab与Save入口并禁用激活，保留All Filters、字段/比较符、清除及Apply。关联仅用本实例结构与当前语言的精确标签；未知结构卸载该实例，错误区Clear后重新挂载并释放原生modal。此处不提供保存/加载/删除能力，本次适配代码不读取、迁移或删除旧共用localStorage记录；原生KsFilter自身setup仍可能由useStorage读取默认key；此前prefix隔离方案已收窄为非当前能力。
 UI test:logic使用Node原生spec+JUnit双reporter，所有test/*.test.mjs均执行；机器报告保留于.evidence/ui/results.xml，失败仍保存并返回原失败exit，最终CI artifact必须实际下载核对。
+
+### 详情侧栏的分页与选中项
+
+scope 与应用详情侧栏在首次装载、选中标识变化或目录标识集合变化时，定位到当前搜索结果中选中项所在页；删除后新的回退选中项使用相同规则。人工翻页保持有效，不在每次渲染时强制返回选中页。搜索变化回到第 1 页；选中项不匹配搜索时不绕过搜索条件。组件回归不代替生产深链、导航和浏览器组合验收。
+
+### 同路径筛选 query 与授权刷新
+
+原生筛选的同路径 query 变化仍通过公开 `context.navigate` 同步宿主 URL，并完整重读 capabilities、目录和列表；`filterSubject` 的实时授予与账号检查保持执行。读取成功且公开身份/能力响应未变时保留组件实例、弹层和输入焦点，集合在当前 generation 成功后一起更新。身份或能力响应变化、tenant 或业务路径变化仍清敏并重载；403 清敏拒绝，503 清除旧集合并显示可重试错误，非法 query 失败关闭且可显式清除。
+
+query 读取不作为业务保存锁，后续同路径 query 可以覆盖旧读取；旧 generation 不得提交数据或修改新读取的忙状态。仅同路径 query 的宿主导航串行发送并保留最新待发目标，较旧回传不覆盖原生最新输入；外部路径/tenant 变化取消旧待发目标，已发请求的延迟回传按导航 generation 恢复当前宿主目标。每个回传记录在 finally 释放，卸载取消队列。真实保存、脏草稿和一次性凭据的导航保护保持有效。
+
+本地真实 App 组件回归使用公开 DS0.5、内存 router、受控 API 响应和实际 `beforeNavigate`/`context.navigate` 回传，验证连续输入、多条件、慢旧响应、宿主回传顺序、历史/原生刷新、失权/身份变化、依赖失败恢复和卸载。它不代表生产签名会话、浏览器几何或 Compose 组合验收通过。
