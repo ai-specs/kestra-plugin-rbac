@@ -194,13 +194,21 @@ function clearInvalidQuery() {
 }
 async function mutate(action, afterSuccess) {
   if (busy.value || conflicted.value || denied.value || reauthenticate.value) return
-  const current = generation
+  let current = generation
   busy.value = true; editor.saving = Boolean(editor.kind); error.value = ''; deletionError.value = ''
   try {
     await action()
     if (disposed || current !== generation) return
     Object.assign(editor, createEditorState()); inline.value = null; deletion.value = null
-    afterSuccess?.(); await load(sourcePath.value, Boolean(oneTime.value)); notice.value = t('saved')
+    const canonicalTarget = afterSuccess?.()
+    const reload = load(canonicalTarget ?? sourcePath.value, Boolean(oneTime.value))
+    current = generation
+    await reload
+    if (disposed || current !== generation || !loaded.value || denied.value || reauthenticate.value) return
+    // The transaction and authorized reload have finished. The ordinary public
+    // navigation guard now permits only this completed operation's canonical URL.
+    if (canonicalTarget) await props.context.navigate(canonicalTarget, {replace: true})
+    notice.value = t('saved')
   } catch (problem) {
     if (current === generation && !disposed && problem.name !== 'AbortError') {
       failure(problem); deletionError.value = error.value
@@ -210,7 +218,7 @@ async function mutate(action, afterSuccess) {
       }
       await nextTick(); main.value?.querySelector('[role="alert"]')?.focus()
     }
-  } finally {busy.value = false; editor.saving = false}
+  } finally {if (!disposed && current === generation) {busy.value = false; editor.saving = false}}
 }
 async function newPermission() {
   if (!permissionManage.value || busy.value || editor.kind) return
@@ -275,13 +283,12 @@ function askDelete(kind, value) {discardGuard(() => {
 })}
 function deleteConfirmed() {
   const {kind, value} = deletion.value
-  const next = kind === 'scope' ? selectionAfterDelete(scopes.value, value.key) : kind === 'application' ? selectionAfterDelete(applications.value, value.clientId, 'clientId') : ''
+  const next = kind === 'scope' ? (selectedScope.value?.key !== value.key ? selectedScope.value?.key : selectionAfterDelete(scopes.value, value.key)) : kind === 'application' ? (application.value?.clientId !== value.clientId ? application.value?.clientId : selectionAfterDelete(applications.value, value.clientId, 'clientId')) : ''
   if (deletion.value.blocked) return
   const operation = kind === 'user' ? () => api.deleteUser(value.subject, value.revision) : kind === 'permission' ? () => api.deletePermission(groupId.value, application.value.clientId, value.key, value.revision) : kind === 'scope' ? () => api.deleteApplicationGroupScope(groupId.value, value.key, value.revision) : kind === 'application' ? () => api.deleteApplication(groupId.value, value.clientId, value.revision) : kind === 'group' ? () => api.deleteApplicationGroup(groupId.value, value.revision) : () => api.deleteScopeGrant(groupId.value, value.subject, value.revision)
   void mutate(operation, () => {
-    if (kind === 'scope' || kind === 'application') sourcePath.value = groupBase.value + '/' + (kind === 'scope' ? 'scopes' : 'applications') + (next ? '/' + (kind === 'scope' ? encodeURIComponent(next) : encodeKey(next)) : '')
-    if (kind === 'group') sourcePath.value = 'application-groups'
-    if (['scope', 'application', 'group'].includes(kind)) void props.context.navigate(sourcePath.value, {replace: true})
+    if (kind === 'scope' || kind === 'application') return groupBase.value + '/' + (kind === 'scope' ? 'scopes' : 'applications') + (next ? '/' + (kind === 'scope' ? encodeURIComponent(next) : encodeKey(next)) : '')
+    if (kind === 'group') return 'application-groups'
   })
 }
 const toScope = key => navigate(groupBase.value + '/scopes/' + encodeURIComponent(key))
