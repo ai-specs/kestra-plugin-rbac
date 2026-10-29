@@ -8,6 +8,10 @@ R24同借用连接事务及R25登录client部署维护轮换的来源是主控�
 host-contract.properties；本仓不据该设计来源扩大宿主能力或降低验收门。
 
 本文描述公开契约；正式消费必须对应提交 CI 和产物检查通过，不等于根仓组合验收通过。
+当前正式插件 `d0995943643f21dd9e8bcb9e347614978bbc0de0` 的成功 CI `40950658945`
+已通过独立 Java/PG 门，包含 V2 账号、参与者、凭据与资源投影接线。该结论仅为独立
+能力层，不覆盖后续未提交 UI 改动，也不表示最终生产 HTTP/UI/Compose 组合通过。
+下文明确标记的本地候选检查点保留为历史记录，不作为当前能力或发布状态。
 历史协议44先由64c4498/run40523539018发布；后续e720f55/run40663374442及
 2b67镜像仅为历史消费记录，不是当前pin。当前正式编译输入以host-contract.properties和
 本仓从registry独立create/cp提取的.integration/host-provenance.json为准。新宿主须通过
@@ -21,7 +25,7 @@ Java编译通过不等于插件CI或组合验收通过；不直读宿主私有�
 已从当前正式镜像提取，四原生组件经helper的条件契约已消费，导航及overlay接线
 本地clean check通过；宿主949矩阵不替代插件真实UI门，最终插件CI与产物必须核对对应提交的实际成功结果。
 
-### 本轮检查点（本地候选，非发布结论）
+### 历史检查点（2026-10-27 本地候选，非当前发布结论）
 
 恢复实施前检查点的Java编译及排除UI任务的单元239项通过，真实PostgreSQL91项通过，均零失败、
 零错误、零跳过。升级8个具名用例及独立declaration-upgrade检查器通过；检查器另外
@@ -67,8 +71,9 @@ operation、target_subject或client_id、group_id。没有target_revision/outcom
 现有统一权限schema2安装使用ManagementAuditSchemaCommand preview和apply
 <approvalHash>，hash绑定目录内置ID、catalog修订及完整当前快照，维护停写后同锁
 复核创建空表；没有SQL回填事件。缺表时append和read失败关闭。参与者必须同借用
-连接append，写失败使宿主标准操作回滚，不能用控制器成功后补写。生产接线等待
-正式registry executable提取，当前store/API/upgrade源码不代表五种事件已真实运行。
+连接append，写失败使宿主标准操作回滚，不能用控制器成功后补写。生产参与者已通过
+正式公开契约接线；d099 独立 Java/PG 门已验证该层，最终生产 HTTP/UI/Compose 仍由
+根仓验收，不以 store/API/upgrade 源码存在替代事件运行证据。
 
 真实PG门保留：普通密码重置与R20 secret轮换脱敏、目标删除和actor删除后原subject
 逐字段保留、参与者/宿主失败零记录、并发最后管理员拒绝零记录、schema2升级，
@@ -85,7 +90,7 @@ outcome/schema_version及自由筛选不进入本轮；以本节已接收收窄�
 
 主控已裁决先发布通过门的44补丁协议产物，后发布包含0384的正式UI SDK。这是依赖
 交付顺序，不缩小插件最终范围。历史阶段已收到正式44 digest及成功CI证据并更新pin；当前输入见本页顶部，
-公开jar由正式registry镜像create/cp提取并核对hash，下面为正在执行的适配范围，
+公开jar由正式registry镜像create/cp提取并核对hash，下面为已接入的适配范围，
 不使用候选jar或相邻源码编译。
 
 收到正式证据后先核对镜像commit/digest与实际下载报告，再从固定正式镜像提取契约。
@@ -122,8 +127,8 @@ PG仍由主控协调，不自行启动实例。该阶段不能标记UI已支持�
 subject/revision/temporaryPassword的Created，删除只接收subject与账号修订。
 Created的toString不含临时密码。控制器只返回精确回执，不以MANAGE调用用户列表或详情。
 `UserDirectoryAccess`新增内部默认入口；正式V1适配器默认失败关闭，不能用旧create带
-调用方密码模拟临时账号。正式产物发布后，适配器映射UserDirectoryV2的真实临时凭据
-及删除能力，不在插件生成密码、维护标准账号表或签发受限会话。
+调用方密码模拟临时账号。当前 PublishedUserDirectoryAccess 已映射正式 UserDirectoryV2
+的真实临时凭据及删除能力，不在插件生成密码、维护标准账号表或签发受限会话。
 
 `AccountGrantCleanup.beforeAccountDelete`是插件内部参与者业务方法，不是宿主SPI实现，
 没有生产bean注册。宿主安全锁必须先持有；仅接收可写READ_COMMITTED借用连接。
@@ -134,8 +139,8 @@ Actor必须来自宿主已重验的生命周期Change，不能从HTTP请求体�
 IDENTITY与精确目标LOCAL_POLICY管理员可达性。宿主再执行标准账号物理删除和协议
 凭据撤销。任一异常必须由宿主回滚整个事务，参与者不commit/rollback/close，也不
 另开事务。组功能开启时唯一参与者门仍由宿主保证，缺失/重复不得继续账号变更。
-当前fake guard检查调用顺序、拒绝传播和事务回滚；实际V2身份复查、最后管理员及并发
-互删必须在正式接线后补真实PG和组合检查，不能按fake guard通过宣称已支持。
+fake guard 仅检查调用顺序、拒绝传播和事务回滚；当前正式 V2 参与者已有独立 PG
+检查，实际生产组合仍须另验，不能按 fake guard 或独立 PG 通过宣称组合已通过。
 
 `ClientCredentialManagement`定义目标组/client、状态、轮换回执和内部Host/Access接口。
 状态只要求READ，轮换只要求MANAGE；内部读取宿主状态不等于向调用者授予READ。
@@ -144,8 +149,9 @@ public与部署维护模式不调用轮换；强凭据修订原样交给宿主�
 不生成提示。轮换回执toString不含secret。正式适配器必须校验同issuer的真实组成员，
 把模式转为公开wire小写值，并只返回clientId/credentialRevision/clientSecret。
 控制器负责no-store和标准CSRF；宿主rotate在其事务内通过唯一参与者再次授权，
-不能以服务入口的初次检查替代事务内复查。当前服务没有生产bean或HTTP路由，
-只有fake Host测试；正式V1凭据契约发布后才实现适配器及HTTP接线。
+不能以服务入口的初次检查替代事务内复查。当前 PublishedClientCredentials 与
+ClientCredentialController 已消费正式 ClientCredentialsV1 并接入 HTTP 路由，
+不再仅有 fake Host 测试；生产 HTTP/UI/Compose 的最终组合仍须独立验收。
 
 应用成员集合变化必须推进组epoch，包含空支持应用的移出和重新登记。应用描述等
 纯metadata不推进epoch。支持集不变的权限关系变化继续不误撤权；成员变化不能仅
@@ -360,9 +366,10 @@ ApplicationPermissionUpgradeTest 的8个具名用例提供。H2 成功不能算�
 
 ## 必须检查与未交付门
 
-### F3/F4 HTTP 接收形状（候选，等待正式宿主发布后接线）
+### F3/F4 HTTP 接收形状（当前正式契约已接线）
 
-以下路径相对 `/api/v1/main/extensions/rbac`。不得用本段作为候选宿主类型编译依据。
+以下路径相对 `/api/v1/main/extensions/rbac`。编译只消费 host-contract.properties
+固定的已发布宿主产物，不以文档描述或相邻源码替代正式公开类型。
 
 | 入口 | 请求/响应与权限 |
 | --- | --- |
@@ -374,8 +381,9 @@ ApplicationPermissionUpgradeTest 的8个具名用例提供。H2 成功不能算�
 
 配置登录 client 在线轮换返回409 `maintenance_required`；public 返回400
 `public_client_no_secret`。用户创建失败或响应中断不提供默认可登录密码；首次修改流程
-及受限身份由宿主实现。正式接线等待主控通知 UserDirectoryV2、TrustedIdentityV2、
-IdentityLifecycleParticipantV1、ClientCredentialsV1 的最终签名与已发布 digest。
+及受限身份由宿主实现。UserDirectoryV2、TrustedIdentityV2、
+IdentityLifecycleParticipantV1、ClientCredentialsV1 已按正式公开签名与固定 digest 接线。
+独立 CI/JavaPG 已过不替代生产流程及最终根仓组合验收。
 
 保留原有安全单元断言、薄 jar 与 bean 索引门。增加多对多并集/授予交集、同 scope
 完整授权、外部说明不扩权、metadata 不 epoch、实际 grants 失效、双域拒绝无副作用、

@@ -22,10 +22,11 @@
 通过helper适配已声明原生组件，生产插件UI及根仓Compose仍须独立验收。
 具体输入、缺口和版本证据入口见 `docs/application-groups.md`；本地候选测试不是发布结论。
 
-账号候选HTTP只接受username/name/email创建并提供强修订DELETE入口；Published适配器
+正式插件 `d099594`（成功 CI `40950658945`、已下载产物 `12931202803`）已包含账号HTTP：只接受username/name/email创建并提供强修订DELETE入口；Published适配器
 消费正式UserDirectoryV2，唯一参与者借用连接完成全组清理、可信actor复查、最后管理员
-与提交审计。凭据HTTP已接正式ClientCredentialsV1。缺失/重复组件失败关闭；候选本地
-PG不是正式插件CI、浏览器或Compose交付，旧SDK检查不作为新组件正式支持。
+与提交审计。凭据HTTP已接正式ClientCredentialsV1。缺失/重复组件失败关闭。本轮新正式宿主
+输入消费及筛选/导航增量仍为候选；本地PG不替代该增量最终插件CI、浏览器或Compose验收，
+既有独立产物也不表示当前根仓组合通过。
 
 Independent, database-backed authorization extension for the Kestra OSS overlay. The business policy lives in this repository. Output: **`build/libs/kestra-rbac-authorizer.jar`**. The jar is thin, includes Micronaut generated bean indexes, and contains no Kestra, Micronaut, Jackson or other dependency classes.
 
@@ -37,7 +38,9 @@ are extracted from the immutable published image, independently of any overlay s
 
 用户、角色和授权管理功能的业务调查与阶段方案见
 [RBAC 管理功能方案](docs/rbac-management-plan.md)。该方案属于本插件，相关宿主机制
-需求向 overlay 独立提案；管理 API、页面和数据库策略正在实施，尚未完成发布与组合验收。
+需求向 overlay 独立提案。既有管理 API、页面和数据库策略的独立正式能力见 `d099594`
+对应成功 CI `40950658945` 及已下载产物；本轮输入与筛选/导航增量尚未发布，根仓完整组合
+验收仍待独立完成，不将既有独立发布写成当前组合通过。
 
 当前设计见 [应用组与 Kestra 权限实施设计](docs/application-groups.md)，HTTP 和修订语义见
 [管理接口实施契约](docs/management-api.md)。schema2 使用 applicationGroups 保存 Kestra
@@ -50,9 +53,9 @@ are extracted from the immutable published image, independently of any overlay s
 检查。该变量只用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
 每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。
 
-当前编译输入为正式宿主 commit `27520a2c64a9df742d0f9c52e71b5f04efd51e57`（CI `40941713707`），
-镜像 digest `bd04a93453bc57d26d7ab2e8292823cbdb81de4398f2b6935f88ae221460e191`；
-arm64 executable SHA256 `211d6095cb641584ef7797de604aaa74ee5abcc03a775aad354aaac11249d8af`。
+当前编译输入为正式宿主 commit `e0e952ba77804e84724d23d415ec11bbcc8f3684`（CI `40964088091`），
+镜像 digest `1b2b11023c35adf44f3f0dd534d591eaeeb243acab76ddcb9fc98625486e269a`；
+arm64 executable SHA256 `9f563ad6d2498bf2923a0c9088c4f6152027bc89a2ab849cbfaa279fe740e450`。
 构建以 `host-contract.properties` 和本仓独立提取的 `.integration/host-provenance.json` 为准。
 宿主发布与插件本地检查不表示最终生产 HTTP、UI 或 Compose 组合验收通过。
 

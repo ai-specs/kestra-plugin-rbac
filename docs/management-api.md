@@ -1,11 +1,13 @@
 # 应用组管理接口契约
 
-状态：当前候选源码契约。宿主正式输入由 `host-contract.properties` 固定；插件正式 CI、
-产物与部署仓真实组合验收尚须独立取得。本文不把单元测试或源码存在写成正式交付。
+状态：当前公开源码契约。宿主正式输入由 `host-contract.properties` 固定；正式插件
+`d0995943643f21dd9e8bcb9e347614978bbc0de0` 的成功 CI `40950658945` 已通过独立 Java/PG 门。
+该结果仅证明独立能力层，不代表当前未提交 UI 改动或最终生产 HTTP/UI/Compose 组合通过。
 2026-10-27 R21 取代旧声明/实际策略双入口；自足模型、安装与显式升级形状见
-`application-groups.md` 顶部。F3/F4 用户/凭据候选等待正式宿主发布后接线。
-空资源audiences登记仍被当前正式V1投影约束阻塞，详见同一设计中的R19缺口；不得把
-当前非空测试结果解释为完整登记能力。所有管理列表HTTP默认size=25；UI消费10/25/50/100。
+`application-groups.md` 顶部。用户/凭据已消费正式 UserDirectoryV2、TrustedIdentityV2、
+IdentityLifecycleParticipantV1 与 ClientCredentialsV1；ProjectionV2/currentResources 已接线，
+允许空资源 audiences 登记，不补 clientId；资源 audience 与登录 audience 规则仍分别校验。
+所有管理列表HTTP默认size=25；UI消费10/25/50/100。
 权限按key、目录按稳定key/subject先排序再分页，Unicode标识使用码点比较。
 
 R24借用连接与R25部署维护轮换为主控在维护者授权范围内的补充裁决，保留“维护者
@@ -15,9 +17,11 @@ README“账号与client凭据V2”“受限维护CLI”公开契约，不由本
 ## 身份与事务
 
 根路径为 `/api/v1/main/extensions/rbac`。其他 tenant 返回 404。宿主生产 OIDC、签名、
-会话、CSRF 和标准 issuer 校验保持有效。插件只消费 `TrustedIdentityV1`，核对登录 subject，
-不自行解析 token。请求体为单个 UTF-8 JSON 对象，最多 1 MiB；重复键、未知字段、null、
-尾随文档、错误类型及路径与正文标识不一致拒绝。响应使用 `Cache-Control: no-store`。
+会话、CSRF 和标准 issuer 校验保持有效。身份基础类型与生命周期保持 `TrustedIdentityV1` 兼容，核对登录 subject，不自行解析 token。
+普通授权优先消费已发布 `TrustedIdentityV2.currentForAuthorization()`；旧实现保留 V1 `current()` 回退，生命周期借用连接语义不变。请求体为单个 UTF-8 JSON 对象，最多 1 MiB；重复键、未知字段、顶层
+字段值为 null、尾随文档、错误类型及路径与正文标识不一致拒绝。嵌套 typed grant 按其
+完整模型校验；TENANT grant 的 namespace 必须显式为 null，见下文，不适用顶层 null 拒绝。
+响应使用 `Cache-Control: no-store`。
 
 IDENTITY 的 READ/MANAGE 控制本 issuer 的用户、应用组、scope、支持登记和用户授予。
 LOCAL_POLICY 的 READ/MANAGE 控制指定应用组中配置的 Kestra 应用实际权限。二者不互含；
@@ -116,7 +120,22 @@ Kestra读取/写入分别要求精确目标LOCAL_POLICY.READ/MANAGE；改变派�
 要求IDENTITY.MANAGE。外部权限使用IDENTITY.READ/MANAGE。enabled只影响真实执行，
 不影响支持集；停用与空grants不能授予资源或管理员动作。名称/描述不产生授权。
 
-资源 grant 使用 `scope/tenant/namespace/descendants/resource/actions/ids/allIds`；
+资源 grant 使用 `scope/tenant/namespace/descendants/resource/actions/ids/allIds`，每项必须
+显式提供全部八个字段（包括空 ids 数组和 false 布尔值），不得省略 JSON creator 字段。
+TENANT grant 仅用于 METADATA/MCP_SERVER，tenant 必须为 main，namespace 必须显式
+写为 null，descendants 必须为 false；省略 namespace 或改为空字符串均返回 400。
+METADATA 仅允许 READ/LIST，必须 allIds=true、ids=[]；MCP_SERVER 允许
+READ/LIST/CREATE/UPDATE/DELETE，allIds=false 时 ids 必须非空。其他业务资源要求
+NAMESPACE 和具体合法 namespace。以下是可放入 Kestra 权限请求 grants 数组的两项完整示例，
+不是省略 key/name/scopeKeys/managementGrants 等外层必需字段的完整 POST 请求：
+
+```json
+[
+  {"scope":"TENANT","tenant":"main","namespace":null,"descendants":false,"resource":"METADATA","actions":["READ","LIST"],"ids":[],"allIds":true},
+  {"scope":"TENANT","tenant":"main","namespace":null,"descendants":false,"resource":"MCP_SERVER","actions":["READ"],"ids":["server-a"],"allIds":false}
+]
+```
+
 管理 grant 使用 `domain/actions/applicationGroupIds`。同一个操作所需权限必须由同 scope
 完整提供，不跨 scope 拼接 READ/LIST、namespace 或资源 ID。名称和声明元数据不授予权限。
 
@@ -169,8 +188,10 @@ CLIENT_SECRET_ROTATE。不记录创建/资料更新，不包含secret/hash/hint/
 删除组历史。MANAGE-only和无READ返回403，跨issuer不泄漏。无组目标账号事件只记
 actor当前可信组，有成员关系则按操作前所属组逐组记录。账号/actor/组删除不改写
 历史标识，无账号/组级联外键；groupId只是事件归属，不改变IDENTITY授权范围。正式插件 `862ccf9`（CI `40803869433`、jar SHA256 前缀 `99f1`）已包含审计接口、存储及参与者接线，独立 PostgreSQL 生命周期门已执行。
-本轮已针对最终正式宿主输入通过本地 Java 286、PostgreSQL 108、生命周期 24 及 UI 111 项独立门。
-最终提交的 CI、实际下载产物及生产 HTTP、根仓 UI 与 Compose 组合验收仍待核对；无新输入不要求重复本地门。
+此前本地检查点针对当时正式宿主输入通过 Java 286、PostgreSQL 108、生命周期 24 及 UI 111 项，
+该数量保留为历史记录，不作为当前 UI 测试总数。d099 成功 CI `40950658945` 的独立
+Java/PG 门见本文顶部；后续未提交变更仍须对应最终提交 CI 与产物检查，生产 HTTP、
+根仓 UI 与 Compose 组合仍须独立验收。
 
 ### 标准账号与错误状态
 
@@ -185,7 +206,8 @@ actor当前可信组，有成员关系则按操作前所属组逐组记录。账
 DELETE `/users/detail?subject=...` 必须发送强 If-Match，账号修订允许0；自身删除拒绝，
 成功204无响应体，修订冲突412。MANAGE不包含READ，两种操作均不读取目录枚举。
 临时密码和物理删除已接固定正式UserDirectoryV2；不回退旧password创建。缺少或重复
-正式目录/生命周期组件返回503并失败关闭。当前本地候选不替代正式HTTP及CI验收。
+正式目录/生命周期组件返回503并失败关闭。独立能力层结果不替代最终生产 HTTP/组合验收，
+后续变更的正式 CI 必须对应最终提交。
 
 目标凭据路径为 `/application-groups/{id}/applications/{clientKey}/credentials` 和
 `/credentials/rotate`。内部业务服务已定义READ状态与MANAGE轮换、public400
@@ -243,4 +265,23 @@ DS0.5 移动筛选层由正式 SDK renderer 迁移至本扩展 portal。已 clai
 
 顶层应用组/用户及组内四详情 tab 显式消费公开 `KsTabs type="box"`，与宿主 MCP Servers 同类导航采用相同组件模式；不以本地字号 CSS 覆盖默认 tab。公开 DS0.5 的 box/segmented item 使用 `--ks-font-size-xs`，默认模式使用 `--kel-font-size-base`。组件测试核对真实 box DOM、选中态及切换后的授权内容；计算字号、主题与窄屏图样仍须生产浏览器对照，不能据组件挂载宣称完成。
 
-当前编译输入由正式 `27520a2`（成功 CI `40941713707`）发布并经 registry 独立提取，精确 digest/executable 以 README、host-contract.properties 及本次 provenance 为准。该 SDK 的移动 sheet viewport flip/clamp、逻辑父/邻接与清理更新由宿主承担；插件不复制定位或修改 vendor。当前插件本地门与最终提交 CI、下载及根仓组合验收分层记录。
+当前编译输入唯一由 `host-contract.properties` 和独立 `prepare-host` 生成的 `.integration/host-provenance.json` 确定。`27520a2`（成功 CI `40941713707`）仅为已发布的移动边界历史基线；桌面高级筛选及移动 sheet 的 viewport 边界、逻辑父/邻接与清理由新正式宿主承担，插件不复制定位或修改 vendor。本轮输入消费与筛选/导航增量仍须对应最终插件 CI、实际下载产物及根仓组合验收，不能以宿主发布或本地门代替。
+
+subject 深链每次读取继续通过公开 scope-grant 与账号入口重验当前授予和账号状态。
+URL 中的 scopeKeys 只保留与当前授予的交集；交集为空时移除全部 scopeKeys，保留
+filterSubject 并显示零条权限，不退回未筛选列表。部分交集只保留有效 scope。
+读取自身的同路径 query 规范化也适用于显式刷新，不解除业务保存、凭据或脏草稿保护。
+真实 App、公开设计系统、内存 router 与宿主导航回传组件测试覆盖撤权、部分交集、
+历史路径重验、缺失主体、禁用账号和非法主体 query。同路径 subject 慢读期间，通过
+公开凭据面板真实轮换覆盖凭据写锁与 oneTime 的 tab/宿主导航拒绝；关闭 oneTime 后
+释放读取，仍须保留 filterSubject、零行并规范 URL。该测试不覆盖 editor.saving 与
+subject 慢读的同时交错，也不代替生产组合及浏览器验收。
+
+### 受控 tab 与丢弃确认
+
+公开 KsTabs 的 before-leave 在原生 active 改变前调用现有导航保护；未获宿主受控路径
+确认时不改变 active。取消丢弃保留草稿及原 active，重复点击同一目标必须再次确认。
+宿主 modelValue 同步后才允许对应 active；不重建 tabs，不访问组件私有状态。
+真实保存、一次性凭据和脏草稿继续使用既有保护。英文 box tabs 的真实 App 组件测试覆盖
+组/scope/应用草稿取消后重试、确认后导航、取消焦点恢复、正常切换，以及账号保存与
+一次性凭据期间的 tab/宿主导航拒绝；不代替生产浏览器或最终根仓组合验收。

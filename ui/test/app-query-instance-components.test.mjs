@@ -48,7 +48,7 @@ const {createNavigationHooks}=await import('../src/navigation-lifecycle.js')
 const response=(body,status=200)=>({ok:status<400,status,json:async()=>structuredClone(body)})
 const wait=async(predicate,message)=>{for(let i=0;i<80;i++){if(predicate())return;await tick()}assert(predicate(),message)}
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve}}
-async function mountApp(){
+async function mountApp(requestOverride){
  const router=createRouter({history:createMemoryHistory(),routes:[{path:'/:pathMatch(.*)*',component:{render:()=>null}}]})
  const hooks=createNavigationHooks(),requests=[],navigations=[]
  const state=Vue.shallowReactive({context:null})
@@ -56,7 +56,7 @@ async function mountApp(){
  const items=[{id:'kestra-a',displayName:'First',active:true,counts:{scopes:0,applications:0,subjects:0}},{id:'kestra-b',displayName:'Second',active:true,counts:{scopes:0,applications:0,subjects:0}}]
  const context={apiBase:'/api/v1/main',path:'application-groups',fullPath:'application-groups',tenant:'main',signal:new AbortController().signal,
   navigate:async(fullPath,options)=>{navigations.push(fullPath);assert(await hooks.beforeNavigate({extensionPath:fullPath.split('?')[0],fullPath,query:router.resolve('/'+fullPath).query}),'host beforeNavigate rejected query');if(navigationWait)await navigationWait(fullPath);state.context={...state.context,path:fullPath.split('?')[0],fullPath}},
-  request:async(path,options={})=>{requests.push(path);if(path.includes('/capabilities'))return response(capability);if(path.includes('/application-groups?'))return groupResponse?groupResponse():response({items,total:items.length,page:1,size:100});if(path.includes('/users?'))return response({items:[{subject:'alice',active:true}],total:1,page:1,size:100});throw new Error('Unexpected request '+path)}
+  request:async(path,options={})=>{requests.push(path);const overridden=await requestOverride?.(path,options);if(overridden)return overridden;if(path.includes('/capabilities'))return response(capability);if(path.includes('/application-groups?'))return groupResponse?groupResponse():response({items,total:items.length,page:1,size:100});if(path.includes('/users?'))return response({items:[{subject:'alice',active:true}],total:1,page:1,size:100});throw new Error('Unexpected request '+path)}
  }
  state.context=context
  const container=document.createElement('div');document.body.append(container)
@@ -168,5 +168,127 @@ test('App rejected host query navigation releases acknowledgement and same-targe
   v.state.context={...v.state.context,fullPath:rejected};await tick();await wait(()=>v.router.currentRoute.value.fullPath.includes('kestra-a'),'real same-target host history was ignored after rejection')
   assert(!v.container.querySelector('[data-test="request-error"]'))
  }finally{v.close()}
+})
+// Exercise actual App reads, native permission rows, router canonicalization and host echo.
+for(const mode of ['revoked','partial','missing','disabled','invalid'])test('App subject deep link revalidates '+mode+' without broadening rows',async()=>{
+ let granted=['scope-a','scope-b'],active=true,missing=false
+ const permissions=[{key:'permit-a',name:'Permit A',scopeKeys:['scope-a'],details:'A'},{key:'permit-b',name:'Permit B',scopeKeys:['scope-b'],details:'B'},{key:'outside',name:'Outside',scopeKeys:['scope-other'],details:'Other'}]
+ const page=items=>response({items:items.map(item=>({...item,parentRevision:1})),total:items.length,page:1,size:100,directoryRevision:1,parentRevision:1})
+ const v=await mountApp(path=>{
+  if(path.includes('/scope-grants/detail?'))return missing?response({code:'not_found'},404):response({subject:'alice',scopeKeys:granted})
+  if(path.includes('/users/detail?'))return response({subject:'alice',active})
+  if(path.endsWith('/credentials'))return response({})
+  if(path.includes('/permissions?'))return page(permissions)
+  if(path.endsWith('/applications/~Y2xpZW50'))return response({clientId:'client',implementationKind:'external',revision:1})
+  if(path.includes('/applications?'))return page([{clientId:'client',active:true,supportedScopeKeys:['scope-a','scope-b']}])
+  if(path.includes('/scopes?'))return page(['scope-a','scope-b','scope-other'].map(key=>({key,name:key})))
+  if(path.endsWith('/application-groups/kestra-a'))return response({id:'kestra-a',issuer:'issuer-a',revision:1})
+ })
+ const base='application-groups/kestra-a/applications/~Y2xpZW50'
+ const original=base+'?filterSubject=alice&scopeKeys=scope-a&scopeKeys=scope-b'
+ const enter=fullPath=>{v.state.context={...v.state.context,path:base,fullPath}}
+ const settled=async()=>{await tick();await wait(()=>v.container.querySelector('main').getAttribute('aria-busy')==='false','subject read unfinished');await tick()}
+ const rows=()=>[...v.container.querySelectorAll('[data-test="permission-row"]')].map(n=>n.dataset.permissionKey)
+ try{
+  enter(original);await settled();assert.deepEqual(rows(),['permit-a','permit-b'])
+  granted=mode==='partial'?['scope-b']:[];active=mode!=='disabled';missing=mode==='missing'
+  const before=v.requests.length
+  if(mode==='invalid')enter(base+'?filterSubject=alice&filterSubject=bob&scopeKeys=scope-a')
+  else {const refresh=v.container.querySelector('[data-test="application-permissions"] .refresh-button')||[...v.container.querySelectorAll('[data-test="application-permissions"] button')].find(n=>/refresh/i.test(n.getAttribute('aria-label')||n.textContent));click(refresh)}
+  await settled()
+  if(mode==='invalid'){assert(v.container.querySelector('[data-test="request-error"]'));assert.equal(v.requests.length,before);assert.deepEqual(rows(),[]);return}
+  assert(v.requests.slice(before).some(p=>p.includes('/scope-grants/detail?subject=alice')),'refresh must reread grant')
+  if(mode==='missing'||mode==='disabled'){assert(v.container.querySelector('[data-test="request-error"]'));assert.deepEqual(rows(),[]);return}
+  assert(v.requests.slice(before).some(p=>p.includes('/users/detail?subject=alice')),'refresh must reread account')
+  const expected=mode==='partial'?['scope-b']:[]
+  assert.deepEqual(v.router.currentRoute.value.query.scopeKeys===undefined?[]:[v.router.currentRoute.value.query.scopeKeys].flat(),expected,'expired scopeKeys must leave canonical router query')
+  assert.equal(v.router.currentRoute.value.query.filterSubject,'alice')
+  await wait(()=>v.state.context.fullPath===v.router.currentRoute.value.fullPath.slice(1),'canonical URL must reach host echo')
+  assert.deepEqual(rows(),mode==='partial'?['permit-b']:[])
+  // Fresh context and stale host history must both revalidate rather than restore old grants.
+  const canonical=v.state.context.fullPath
+  for(const destination of [base+'?filterSubject=alice',original,canonical]){enter(destination);await settled();assert.deepEqual(rows(),destination===base+'?filterSubject=alice'?[]:mode==='partial'?['permit-b']:[]);assert.equal(v.router.currentRoute.value.query.filterSubject,'alice');assert(!v.state.context.fullPath.includes('scope-a'))}
+ }finally{v.close()}
+})
+for(const kind of ['group','scope','application'])test('App native box tab cancel and same-target retry preserves '+kind+' draft and controlled active',async()=>{
+ const page=items=>response({items,total:items.length,page:1,size:100,directoryRevision:1})
+ const v=await mountApp(path=>{
+  if(path.endsWith('/application-groups/kestra-a'))return response({id:'kestra-a',displayName:'First',issuer:'issuer-a',active:true,revision:1})
+  if(path.includes('/scopes?')||path.includes('/applications?')||path.includes('/scope-grants?'))return page([])
+ })
+ const base='application-groups/kestra-a',source=kind==='group'?'overview':kind==='scope'?'scopes':'applications',target=source==='overview'?'scopes':'overview'
+ const initial=base+(source==='overview'?'':'/'+source)
+ const visibleDialog=()=>[...document.querySelectorAll('[data-test="discard-confirm"]')].find(shown)
+ const tab=name=>v.container.querySelector('[role="tab"][id="tab-'+name+'"]')
+ try{
+  v.state.context={...v.state.context,path:initial,fullPath:initial};await wait(()=>v.container.querySelector(kind==='group'?'[data-test="group-edit"]':kind==='scope'?'[data-test="scope-add"]':'[data-test="application-register"]'),'inline entry absent')
+  click(v.container.querySelector(kind==='group'?'[data-test="group-edit"]':kind==='scope'?'[data-test="scope-add"]':'[data-test="application-register"]'));await tick()
+  const form=v.container.querySelector('.rbac-inline-form'),input=form.querySelector('input');inputText(input,'changed-draft');await tick()
+  const destination=tab(target);assert(destination);destination.focus();click(destination)
+  await wait(()=>visibleDialog(),'first tab click must confirm discard')
+  click([...visibleDialog().querySelectorAll('button')].find(n=>n.textContent.trim()==='Cancel'));await tick()
+  assert(!visibleDialog(),'cancel must close visible dialog');assert.equal(input.value,'changed-draft');assert.equal(v.state.context.fullPath,initial)
+  assert.equal(document.activeElement,destination,'cancel must restore trigger focus')
+  click(destination);await wait(()=>visibleDialog(),'same target second click must reopen visible discard dialog')
+  assert.equal(tab(source).getAttribute('aria-selected'),'true','cancelled navigation must retain controlled active tab')
+  assert.equal(tab(target).getAttribute('aria-selected'),'false')
+  click([...visibleDialog().querySelectorAll('button')].find(n=>n.textContent.trim()==='Discard changes'))
+  const final=base+(target==='overview'?'':'/'+target)
+  await wait(()=>v.state.context.fullPath===final&&v.container.querySelector('main').getAttribute('aria-busy')==='false','confirmed tab must reach authorized host destination')
+  await tick();assert.equal(tab(target).getAttribute('aria-selected'),'true');assert(!v.container.querySelector('.rbac-inline-form'));assert(!visibleDialog());assert.equal(document.activeElement,tab(target),'confirmed navigation must restore tab trigger focus')
+  // Normal native tab change must still synchronize the host URL after discard.
+  click(tab(source));await wait(()=>v.state.context.fullPath===initial,'normal tab must navigate');await tick();assert.equal(tab(source).getAttribute('aria-selected'),'true')
+ }finally{v.close()}
+})
+test('App native box tabs retain active and host URL during real editor save and one-time credential',async()=>{
+ const receipt=deferred();let saving=false
+ const v=await mountApp((path,options)=>{
+  if(path.endsWith('/users')&&options.method==='POST'){saving=true;return receipt.promise}
+ })
+ const dialog=()=>[...document.querySelectorAll('[data-test="temporary-password-once"]')].find(shown)
+ const tab=name=>v.container.querySelector('[role="tab"][id="tab-'+name+'"]')
+ try{
+  click(tab('users'));await wait(()=>v.state.context.fullPath==='users'&&v.container.querySelector('main').getAttribute('aria-busy')==='false','users tab not loaded')
+  click([...v.container.querySelectorAll('button')].find(n=>/Create/.test(n.textContent)));await wait(()=>document.querySelector('[data-test="drawer-user"] input[name="username"]'),'user drawer absent')
+  inputText(document.querySelector('[data-test="drawer-user"] input[name="username"]'),'tab-lock-account')
+  document.querySelector('[data-test="drawer-user"] form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));await wait(()=>saving,'real editor POST not started')
+  click(tab('application-groups'));await tick();assert.equal(v.state.context.fullPath,'users');assert.equal(tab('users').getAttribute('aria-selected'),'true');assert.equal(await v.hooks.beforeNavigate({fullPath:'application-groups'}),false,'saving must block external host navigation')
+  receipt.resolve(response({subject:'tab-lock-account',revision:1,temporaryPassword:'isolated-component-test-value'}));await wait(()=>dialog()&&v.container.querySelector('main').getAttribute('aria-busy')==='false','one-time dialog absent')
+  click(tab('application-groups'));await tick();assert.equal(v.state.context.fullPath,'users');assert.equal(tab('users').getAttribute('aria-selected'),'true');assert(dialog());assert.equal(await v.hooks.beforeNavigate({fullPath:'application-groups'}),false,'oneTime must block external host navigation')
+  click([...dialog().querySelectorAll('button')].find(n=>n.textContent.trim()==='Close'));await tick()
+  click(tab('application-groups'));await wait(()=>v.state.context.fullPath==='application-groups','closing oneTime must restore normal tab navigation');await tick();assert.equal(tab('application-groups').getAttribute('aria-selected'),'true')
+ }finally{receipt.resolve(response({subject:'tab-lock-account',revision:1,temporaryPassword:'isolated-component-test-value'}));v.close()}
+})
+test('App slow subject query retains real credential-write and oneTime navigation locks',async()=>{
+ const grant=deferred(),rotation=deferred();let slow=false,grantStarted=false,rotationStarted=false,credentialRevision=1
+ const page=items=>response({items,total:items.length,page:1,size:100,directoryRevision:1,parentRevision:1})
+ const v=await mountApp((path,options)=>{
+  if(path.endsWith('/credentials/rotate')){rotationStarted=true;return rotation.promise}
+  if(path.endsWith('/credentials'))return response({clientId:'client',clientType:'confidential',secretSet:true,maskedHint:'test-only',credentialRevision,rotationMode:'online'})
+  if(path.includes('/scope-grants/detail?')){if(slow){grantStarted=true;return grant.promise}return response({subject:'alice',scopeKeys:['scope-a']})}
+  if(path.includes('/users/detail?'))return response({subject:'alice',active:true})
+  if(path.includes('/permissions?'))return page([{key:'permit-a',name:'Permit A',scopeKeys:['scope-a'],details:'A',parentRevision:1}])
+  if(path.endsWith('/applications/~Y2xpZW50'))return response({clientId:'client',implementationKind:'external',revision:1})
+  if(path.includes('/applications?'))return page([{clientId:'client',active:true,supportedScopeKeys:['scope-a']}])
+  if(path.includes('/scopes?'))return page([{key:'scope-a',name:'A'}])
+  if(path.endsWith('/application-groups/kestra-a'))return response({id:'kestra-a',issuer:'issuer-a',revision:1})
+ })
+ const base='application-groups/kestra-a/applications/~Y2xpZW50',initial=base+'?filterSubject=alice&scopeKeys=scope-a'
+ const dialog=()=>[...document.querySelectorAll('[data-test="credential-once"]')].find(shown)
+ const overview=()=>v.container.querySelector('[role="tab"][id="tab-overview"]')
+ try{
+  v.state.context={...v.state.context,path:base,fullPath:initial};await wait(()=>v.container.querySelector('[data-test="credential-rotate"]')&&v.container.querySelector('[data-test="permission-row"]'),'subject application absent')
+  slow=true;v.state.context={...v.state.context,fullPath:initial+'&page=2'};await wait(()=>grantStarted,'slow same-path subject read absent')
+  assert.equal(v.container.querySelector('main').getAttribute('aria-busy'),'true')
+  // Public credential panel remains mounted during the same-path read; no private state injection.
+  click(v.container.querySelector('[data-test="credential-rotate"]'));await wait(()=>rotationStarted,'real rotation POST absent')
+  click(overview());await tick();assert.equal(v.state.context.path,base);assert.equal(await v.hooks.beforeNavigate({fullPath:'users'}),false,'credential write must block external navigation during query read')
+  credentialRevision=2;rotation.resolve(response({clientId:'client',credentialRevision:2,clientSecret:'isolated-component-test-secret'}));await wait(()=>dialog(),'real rotation oneTime absent')
+  assert.equal(v.container.querySelector('main').getAttribute('aria-busy'),'true','subject read must remain pending')
+  click(overview());await tick();assert.equal(v.state.context.path,base);assert.equal(v.container.querySelector('[role="tab"][id="tab-applications"]').getAttribute('aria-selected'),'true');assert.equal(await v.hooks.beforeNavigate({fullPath:'users'}),false,'oneTime must block external navigation during query read')
+  click([...dialog().querySelectorAll('button')].find(n=>n.textContent.trim()==='Close'));await tick()
+  grant.resolve(response({subject:'alice',scopeKeys:[]}));await wait(()=>v.container.querySelector('main').getAttribute('aria-busy')==='false'&&!v.state.context.fullPath.includes('scopeKeys'),'released subject read must normalize host URL')
+  assert.equal(v.router.currentRoute.value.query.filterSubject,'alice');assert.equal(v.container.querySelectorAll('[data-test="permission-row"]').length,0)
+ }finally{grant.resolve(response({subject:'alice',scopeKeys:[]}));rotation.resolve(response({clientId:'client',credentialRevision:2,clientSecret:'isolated-component-test-secret'}));v.close()}
 })
 test.after(()=>{hooks.deregister();window.happyDOM.abort()})

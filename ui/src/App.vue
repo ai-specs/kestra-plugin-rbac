@@ -92,6 +92,14 @@ function discardGuard(action, allowQueryRefresh = false) {
 function navigate(target, query = {}, replace = false) {
   discardGuard(() => {void props.context.navigate(router.resolve({path: '/' + target, query}).fullPath.slice(1), {replace})})
 }
+function beforeTabLeave(target) {
+  const current = groupId.value ? tab.value : isUsers.value ? 'users' : 'application-groups'
+  // Accept host-owned model synchronization; native clicks must first pass
+  // the existing save/credential/draft guard and await the host destination.
+  if (target === current) return true
+  navigate(groupId.value ? groupBase.value + (target === 'overview' ? '' : '/' + target) : target)
+  return false
+}
 function openInline(value, kind) {inline.value = {...copy(value), _kind: kind}; inlineBaseline.value = JSON.stringify(inline.value)}
 function discardInlineConfirm() {inline.value = null; discardInline.value = false; const action = pendingNavigation; pendingNavigation = null; action?.()}
 function load(...arguments_) {
@@ -166,10 +174,11 @@ async function readView(value = contextFullPath(props.context), preserveOneTime 
             if (account.active !== true) throw {status: 403}
             const keys = (Array.isArray(query.scopeKeys) ? query.scopeKeys : [query.scopeKeys]).filter(key => subject.scopeKeys.includes(key))
             if (!keys.length) ps = []
-            else {
-              if (current !== generation || disposed) return
-              await router.replace({path: route.path, query: {...query, scopeKeys: keys}})
-            }
+            if (current !== generation || disposed) return
+            // This read-owned query correction must pass the same-path navigation guard,
+            // including explicit refreshes, without releasing business save locks.
+            queryRefreshing.value = true
+            await router.replace({path: route.path, query: {...query, scopeKeys: keys}})
           }
         }
       }
@@ -378,8 +387,8 @@ onBeforeUnmount(() => {disposed = true; queryNavigationEpoch++; pendingQueryTarg
 
 <template>
   <main ref="main" tabindex="-1" data-test="access-control-root" :aria-busy="busy">
-    <KsTabs type="box" v-if="!groupId" :model-value="isUsers ? 'users' : 'application-groups'" @update:model-value="navigate($event)"><KsTabPane name="application-groups" :label="t('applicationGroups')" data-test="tab-application-groups" /><KsTabPane name="users" :label="t('users')" data-test="tab-users" /></KsTabs>
-    <template v-else><header class="rbac-detail-title"><KsButton :disabled="busy" :aria-label="t('back')" @click="navigate('application-groups')">←</KsButton><h1><code>{{ groupId }}</code></h1></header><KsTabs type="box" :model-value="tab" @update:model-value="navigate(groupBase + ($event === 'overview' ? '' : '/' + $event))"><KsTabPane name="overview" :label="t('overview')" /><KsTabPane name="scopes" :label="t('scopes')" /><KsTabPane name="applications" :label="t('clients')" /><KsTabPane name="scope-grants" label="subject" /></KsTabs></template>
+    <KsTabs type="box" v-if="!groupId" :model-value="isUsers ? 'users' : 'application-groups'" :before-leave="beforeTabLeave"><KsTabPane name="application-groups" :label="t('applicationGroups')" data-test="tab-application-groups" /><KsTabPane name="users" :label="t('users')" data-test="tab-users" /></KsTabs>
+    <template v-else><header class="rbac-detail-title"><KsButton :disabled="busy" :aria-label="t('back')" @click="navigate('application-groups')">←</KsButton><h1><code>{{ groupId }}</code></h1></header><KsTabs type="box" :model-value="tab" :before-leave="beforeTabLeave"><KsTabPane name="overview" :label="t('overview')" /><KsTabPane name="scopes" :label="t('scopes')" /><KsTabPane name="applications" :label="t('clients')" /><KsTabPane name="scope-grants" label="subject" /></KsTabs></template>
     <div v-if="error" class="message error" role="alert" tabindex="-1" data-test="request-error"><p>{{ error }}</p><KsButton v-if="invalidQuery" :disabled="busy" @click="clearInvalidQuery">{{ t('clearFilters') }}</KsButton><KsButton v-else-if="conflicted" :disabled="busy" data-test="conflict-refresh" @click="discardGuard(() => load())">{{ t('reload') }}</KsButton><KsButton v-else-if="!denied && !reauthenticate" :disabled="busy" @click="load()">{{ t('reload') }}</KsButton><a v-if="denied || reauthenticate" :href="loginHref" data-test="sign-in-again">{{ t('signInAgain') }}</a></div>
     <p v-if="notice" role="status" class="message">{{ notice }}</p><p v-if="busy && !loaded" role="status">{{ t('loading') }}</p>
     <template v-if="loaded && !denied && !reauthenticate">
