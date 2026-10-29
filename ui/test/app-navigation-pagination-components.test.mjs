@@ -76,7 +76,7 @@ async function mountScenario(path,kind,{scopeKeys=['a','b'],rejectCanonical=fals
  const app=Vue.createApp({render:()=>Vue.h(ElConfigProvider,{namespace:'kel'},()=>Vue.h(App,{context:state.context}))})
  for(const [name,component]of Object.entries(DS))if(name.startsWith('Ks')&&component&&typeof component==='object')app.component(name,component)
  const i18n=createI18n({legacy:false,locale:'en',messages});await DS.registerDesignSystemI18n(i18n);app.use(router);app.use(i18n);app.provide('rbac-portals',document.body);app.provide('rbac-navigation-hooks',hooks);app.mount(container)
- await wait(()=>container.querySelector('main')?.getAttribute('aria-busy')==='false'&&container.querySelector(kind==='scope'?'[data-test="scope-detail"]':'[data-test="list-total"]'),'scenario did not load')
+ await wait(()=>container.querySelector('main')?.getAttribute('aria-busy')==='false'&&container.querySelector(kind==='scope'?'[data-test="scope-detail"]':kind==='groups'?'.management-toolbar':'[data-test="list-total"]'),'scenario did not load')
  return {container,router,hostRouter,hooks,state,requests,navigations,setDeleteWait:p=>deleteWait=p,setReadWait:p=>readWait=p,close(){app.unmount();container.remove()}}
 }
 test('App successful scope deletion acknowledges canonical host navigation after write while pending write still rejects external leave',async()=>{
@@ -155,5 +155,15 @@ test('group cards independent native page-size 100 resets local page without rou
   click(container.querySelector('.kel-pagination .kel-select__wrapper'));await tick();const options=[...document.querySelectorAll('[role="option"]')].filter(n=>n.textContent.trim()==='100/page');assert.equal(options.length,1);click(options[0]);await tick()
   assert.deepEqual([...container.querySelectorAll('[data-group-id]')].map(n=>n.getAttribute('data-group-id')),items.map(x=>x.id));assert.equal(container.querySelector('.kel-pagination [aria-current="true"]')?.textContent.trim(),'1');assert.equal(router.currentRoute.value.fullPath,'/groups')
  }finally{app.unmount();container.remove()}
+})
+for(const level of ['top','group'])test('App '+level+' navigation uses published box tabs and preserves real tab switching',async()=>{
+ const v=await mountScenario(level==='top'?'application-groups':'application-groups/g/scopes/a',level==='top'?'groups':'scope')
+ try{
+  const tabs=v.container.querySelector('main > .kel-tabs');assert(tabs,'native App tabs absent');assert(tabs.classList.contains('kel-tabs--box'),'App must consume public type=box, not default14px tabs or custom CSS')
+  const items=[...tabs.querySelectorAll('[role="tab"]')];assert.equal(items.length,level==='top'?2:4);assert.equal(items.filter(n=>n.getAttribute('aria-selected')==='true').length,1)
+  const target=level==='top'?'users':'applications';const button=items.find(n=>n.id.endsWith('-'+target));assert(button,'native target tab missing');click(button)
+  await wait(()=>v.state.context.path.startsWith(level==='top'?'users':'application-groups/g/applications')&&v.container.querySelector('main').getAttribute('aria-busy')==='false','native tab switch did not reach authorized content')
+  const updated=v.container.querySelector('main > .kel-tabs');assert(updated.classList.contains('kel-tabs--box'));assert.equal(updated.querySelector('[aria-selected="true"]')?.id.endsWith('-'+target),true)
+ }finally{v.close()}
 })
 test.after(()=>{hooks.deregister();window.happyDOM.abort()})

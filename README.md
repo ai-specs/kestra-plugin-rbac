@@ -50,9 +50,9 @@ are extracted from the immutable published image, independently of any overlay s
 检查。该变量只用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
 每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。
 
-当前编译输入为正式宿主 commit `1e3632e27a639c10052de3f56bfe2ddbe2427335`（CI `40822882820`），
-镜像 digest `9e2667744f9f0515a9902aa3d83bca3a3433aa9b752ec72fd8c07f3c539acdd0`；
-arm64 executable SHA256 `6e1a19a258917e1d40e00b0abde9d80371d3dfe471ae133f79760a479e3af09f`。
+当前编译输入为正式宿主 commit `27520a2c64a9df742d0f9c52e71b5f04efd51e57`（CI `40941713707`），
+镜像 digest `bd04a93453bc57d26d7ab2e8292823cbdb81de4398f2b6935f88ae221460e191`；
+arm64 executable SHA256 `211d6095cb641584ef7797de604aaa74ee5abcc03a775aad354aaac11249d8af`。
 构建以 `host-contract.properties` 和本仓独立提取的 `.integration/host-provenance.json` 为准。
 宿主发布与插件本地检查不表示最终生产 HTTP、UI 或 Compose 组合验收通过。
 

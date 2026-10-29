@@ -238,3 +238,9 @@ DS0.5 移动筛选层由正式 SDK renderer 迁移至本扩展 portal。已 clai
 ### 列表每页数量的原子更新
 
 管理表格切换每页数量时，ManagementTable 只转发一次公开 pageSize 事件，由列表消费者在同一次 query 更新中设置新 size 与 page=1，保留原有筛选和 scope 条件。不得在同 tick 再发基于旧 route 状态的 page1 更新覆盖新 size。组卡片的独立分页直接更新本地 size/page，不走这条 query 写入链路。真实 App、ManagementTable 和原生 ElPagination 的100选项回归检查宿主回传、page1、全部授权行及筛选保留；本地组件回归不代替生产浏览器验收。
+
+### 原生 box 导航与正式移动视口输入
+
+顶层应用组/用户及组内四详情 tab 显式消费公开 `KsTabs type="box"`，与宿主 MCP Servers 同类导航采用相同组件模式；不以本地字号 CSS 覆盖默认 tab。公开 DS0.5 的 box/segmented item 使用 `--ks-font-size-xs`，默认模式使用 `--kel-font-size-base`。组件测试核对真实 box DOM、选中态及切换后的授权内容；计算字号、主题与窄屏图样仍须生产浏览器对照，不能据组件挂载宣称完成。
+
+当前编译输入由正式 `27520a2`（成功 CI `40941713707`）发布并经 registry 独立提取，精确 digest/executable 以 README、host-contract.properties 及本次 provenance 为准。该 SDK 的移动 sheet viewport flip/clamp、逻辑父/邻接与清理更新由宿主承担；插件不复制定位或修改 vendor。当前插件本地门与最终提交 CI、下载及根仓组合验收分层记录。
