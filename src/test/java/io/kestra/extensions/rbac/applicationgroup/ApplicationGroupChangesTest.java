@@ -28,14 +28,15 @@ class ApplicationGroupChangesTest {
         assertTrue(updated.applications().isEmpty());assertTrue(updated.userGrants().isEmpty());
         assertThrows(Conflict.class,()->scopeMetadata(updated,"read",1,"Other","Stale"));
         assertThrows(NotFound.class,()->scopeMetadata(updated,"renamed",2,"Observer","Invalid key"));
-        assertThrows(IllegalArgumentException.class,()->scopeMetadata(updated,"read",2,"Writer","Duplicate"));
+        assertEquals(UniquenessRejected.Failure.SCOPE_NAME_EXISTS,assertThrows(UniquenessRejected.class,()->scopeMetadata(updated,"read",2,"Writer","Duplicate")).failure());
+        assertEquals("Observer",scopeMetadata(updated,"read",2,"Observer","Same name allowed").scopes().getFirst().name());
     }
 
     @Test void creatingScopeOnlyRegistersRoleMetadata() {
         var updated=createScope(empty(),"read","Reader","Read role");
         assertEquals(1,updated.scopes().size());assertTrue(updated.applications().isEmpty());assertTrue(updated.userGrants().isEmpty());
         assertThrows(Conflict.class,()->createScope(updated,"read","Other","Duplicate key"));
-        assertThrows(IllegalArgumentException.class,()->createScope(updated,"another","Reader","Duplicate name"));
+        assertEquals(UniquenessRejected.Failure.SCOPE_NAME_EXISTS,assertThrows(UniquenessRejected.class,()->createScope(updated,"another","Reader","Duplicate name")).failure());
         assertThrows(IllegalArgumentException.class,()->createScope(updated,"OLD_KEY","Other","Invalid stable key"));
     }
 

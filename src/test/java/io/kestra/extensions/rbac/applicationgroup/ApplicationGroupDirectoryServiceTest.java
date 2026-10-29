@@ -109,7 +109,7 @@ class ApplicationGroupDirectoryServiceTest {
             new ApplicationGroupProtocolProjectionV1.Request("https://other.example","main","ui","first",null))));
         assertThrows(IllegalArgumentException.class,()->fixture.service.transaction(connection->fixture.service.currentResources(connection,
             new ApplicationGroupProtocolProjectionV1.Request(ISSUER,"main","ui","first","other"))));
-        assertThrows(IllegalArgumentException.class,()->fixture.store.create(new Snapshot(new Group("other","Other",true,1,1),before.scopes(),before.applications(),List.of())));
+        assertEquals(UniquenessRejected.Failure.CLIENT_ALREADY_ASSIGNED,assertThrows(UniquenessRejected.class,()->fixture.store.create(new Snapshot(new Group("other","Other",true,1,1),before.scopes(),before.applications(),List.of()))).failure());
         assertEquals(List.of(before),fixture.store.readAll());
     }
 

@@ -89,7 +89,7 @@ UI列表导航按§12.3消费permissionKey/filterSubject/scopeKeys/page/size及�
 
 三类入口支持 GET、POST、PUT、DELETE。表中响应是读取形状；写成功只返回提交的稳定标识、
 revision、parentRevision 和 ETag，不返回对象副本。GET 要求 IDENTITY.READ，写入要求 IDENTITY.MANAGE。
-scope key 不可修改；角色 name 必填且同组精确唯一，description 不参与授权。删除 scope
+scope key 不可修改；角色 name 必填且同组精确唯一，创建或改名遇到已存在name返回409 `scope_name_exists`；自身name不变允许，description 不参与授权。删除 scope
 要求组内全部应用和用户授予均已释放引用。应用登记须存在标准 active 或有效 pending
 client；pending 只允许先登记支持并展示 consent，不能直接签发凭据。用户授予要求同一
 issuer 的真实标准账号。当前 UI client 是普通成员，无 `firstPartyUi` 输入或输出。
@@ -200,3 +200,5 @@ HTTP/CSRF仍需部署组合验证，不把直接控制器测试当作网络请�
 目录/策略/SQL/投影故障仍为503。真实 HTTP、CSRF、浏览器、撤权与无副作用门由部署仓验收。
 
 普通授权前置门使用正式 `TrustedIdentityV2.currentForAuthorization()`。明确目录/策略依赖不可用通过宿主 `AuthorizationUnavailableException` 返回固定安全503 ProblemDetail，不携带SQL、凭据或底层异常消息。该前置响应不保证包含控制器的 `directory_unavailable`/`policy_unavailable` 业务码。若宿主公开异常在管理控制器 `request` 边界内产生，控制器精确返回HTTP503及业务码 `authorization_unavailable`，不输出底层消息；其他控制器内已分类故障仍保留原业务响应。同步/异步评估使用相同分类，安全拒绝、未知异常和缺失/重复授权provider保持原失败关闭门；生命周期借用连接接口不变。
+
+同一clientId跨应用组重复登记返回409 `client_already_assigned`。上述唯一性冲突在事务写入边界精确分类，不改变目录、修订、epoch或审计；CAS412、非法输入/引用400及权限403保持。组显示名和应用权限name不新增唯一约束；Snapshot损坏数据校验仍独立失败关闭。

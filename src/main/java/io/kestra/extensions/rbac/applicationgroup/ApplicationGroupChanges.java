@@ -31,16 +31,25 @@ public final class ApplicationGroupChanges {
 
     public static Snapshot createScope(Snapshot current,String key,String name,String description) {
         if(current.scopes().stream().anyMatch(value->value.key().equals(key)))throw new Conflict();
-        var scopes=new ArrayList<>(current.scopes());scopes.add(new Scope(key,name,description,1));
+        var candidate=new Scope(key,name,description,1);
+        requireUniqueScopeName(current,key,name);
+        var scopes=new ArrayList<>(current.scopes());scopes.add(candidate);
         return new Snapshot(current.group(),scopes,current.applications(),current.userGrants());
     }
 
     public static Snapshot scopeMetadata(Snapshot current,String key,long expectedRevision,String name,String description) {
         var scopes=replace(current.scopes(),value->value.key().equals(key),value->{
             revision(value.revision(),expectedRevision);
-            return value.withMetadata(name,description);
+            var candidate=value.withMetadata(name,description);
+            requireUniqueScopeName(current,key,name);
+            return candidate;
         });
         return new Snapshot(current.group(),scopes,current.applications(),current.userGrants());
+    }
+
+    private static void requireUniqueScopeName(Snapshot current,String key,String name) {
+        if(current.scopes().stream().anyMatch(value->!value.key().equals(key)&&value.name().equals(name)))
+            throw new UniquenessRejected(UniquenessRejected.Failure.SCOPE_NAME_EXISTS);
     }
 
     public static Snapshot deleteScope(Snapshot current,String key,long expectedRevision) {

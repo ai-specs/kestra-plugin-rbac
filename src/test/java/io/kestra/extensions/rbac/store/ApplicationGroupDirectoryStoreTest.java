@@ -82,8 +82,9 @@ class ApplicationGroupDirectoryStoreTest {
         store.initializeBuiltin(initial);store.create(empty("other"));
         assertThrows(IllegalArgumentException.class,()->store.update("first",1,current->
             new Snapshot(current.group(),List.of(),current.applications(),current.userGrants())));
-        assertThrows(IllegalArgumentException.class,()->store.update("other",1,current->
-            new Snapshot(current.group(),List.of(scope),List.of(app),List.of())));
+        assertEquals(io.kestra.extensions.rbac.applicationgroup.UniquenessRejected.Failure.CLIENT_ALREADY_ASSIGNED,
+            assertThrows(io.kestra.extensions.rbac.applicationgroup.UniquenessRejected.class,()->store.update("other",1,current->
+                new Snapshot(current.group(),List.of(scope),List.of(app),List.of()))).failure());
         var occupied=store.update("other",1,current->new Snapshot(current.group(),List.of(scope),List.of(),List.of()));
         var occupiedFailure=assertThrows(ApplicationGroupDirectoryStore.DeletionRejected.class,()->store.delete("other",occupied.group().revision()));
         assertEquals(ApplicationGroupDirectoryStore.DeletionFailure.GROUP_NOT_EMPTY,occupiedFailure.failure());
@@ -167,7 +168,8 @@ class ApplicationGroupDirectoryStoreTest {
                     store.update(groupId,1,current->new Snapshot(current.group(),List.of(),
                         List.of(io.kestra.extensions.rbac.applicationgroup.TestApplicationFactory.application("client",true,Set.of("resource"),Set.of(),1)),List.of()));
                     return true;
-                }catch(IllegalArgumentException expected){return false;}
+                }catch(io.kestra.extensions.rbac.applicationgroup.UniquenessRejected expected){
+                    assertEquals(io.kestra.extensions.rbac.applicationgroup.UniquenessRejected.Failure.CLIENT_ALREADY_ASSIGNED,expected.failure());return false;}
             }));
             start.countDown();
             assertNotEquals(futures.get(0).get(10,TimeUnit.SECONDS),futures.get(1).get(10,TimeUnit.SECONDS));

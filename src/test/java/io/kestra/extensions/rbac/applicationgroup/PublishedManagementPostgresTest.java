@@ -35,6 +35,40 @@ class PublishedManagementPostgresTest {
             AccountLifecyclePostgresTest.provider(()->new ApplicationGroupDirectoryManagement(fixture.service,policies)));
     }
 
+    @Test void scopeNameAndCrossGroupClientConflictsAre409WithoutDirectoryOrAuditSideEffects()throws Exception {
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        var installation=new OidcInstallationReceipt(temporary.resolve("receipt")).read().orElseThrow();
+        var maintenance=new OidcClientCredentialMaintenance(fixture.source,fixture.protocol,AccountLifecyclePostgresTest.ISSUER,installation,100);
+        var issued=maintenance.register(new OidcClientCredentialMaintenance.Registration("ordinary-unique","first",
+            List.of("https://issuer.example/unique"),Set.of("authorization_code"),Set.of("openid")));
+        assertEquals("ordinary-unique",issued.status().clientId());
+        boolean registeredActive=fixture.store.transaction(connection->fixture.protocol.client(connection,AccountLifecyclePostgresTest.ISSUER,"ordinary-unique").orElseThrow().active());
+        assertTrue(registeredActive);
+        var main=fixture.store.readAll().stream().filter(value->value.group().id().equals("main")).findFirst().orElseThrow();
+        fixture.store.update("main",main.group().revision(),snapshot->ApplicationGroupChanges.registerApplication(snapshot,"ordinary-unique","",Set.of()));
+        firstIdentityActions(Set.of(ApplicationGroupPolicy.ManagementAction.MANAGE));
+        var controller=lifecycleController();var before=fixture.store.readAll();var auditBefore=events();var storageBefore=groupDeletionStorageState();
+        var current=before.stream().filter(value->value.group().id().equals("main")).findFirst().orElseThrow();
+        var other=before.stream().filter(value->value.group().id().equals("other")).findFirst().orElseThrow();
+        actor("first",()->{
+            var authentication=fixture.authentication("first");
+            assertAll(
+                ()->{var create=controller.createApplicationGroupScope("main","main",authentication,"\""+current.group().revision()+"\"",
+                    "{\"key\":\"new-key\",\"name\":\"Admin\",\"description\":\"\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    assertEquals(409,create.code());assertEquals(Map.of("code","scope_name_exists"),mapper.convertValue(create.body(),Map.class));},
+                ()->{var rename=controller.updateApplicationGroupScope("main","main","restricted",authentication,"\"1\"",
+                    "{\"key\":\"restricted\",\"name\":\"Admin\",\"description\":\"\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    assertEquals(409,rename.code());assertEquals(Map.of("code","scope_name_exists"),mapper.convertValue(rename.body(),Map.class));},
+                ()->{var client=controller.clientsCreate("main","other",authentication,"\""+other.group().revision()+"\"",
+                    "{\"clientId\":\"ordinary-unique\",\"description\":\"\",\"audiences\":[]}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    assertEquals(409,client.code());assertEquals(Map.of("code","client_already_assigned"),mapper.convertValue(client.body(),Map.class));});
+            assertEquals(412,controller.updateApplicationGroupScope("main","main","restricted",authentication,"\"9\"",
+                "{\"key\":\"restricted\",\"name\":\"Admin\",\"description\":\"\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8)).code());
+            return null;
+        });
+        assertEquals(before,fixture.store.readAll());assertEquals(auditBefore,events());assertEquals(storageBefore,groupDeletionStorageState());
+    }
+
     @Test void protectedAndOccupiedGroupDeletesAre409WithExactCodesAndNoDirectoryOrAuditChanges()throws Exception {
         actor("first",()->fixture.published.createTemporary(new TemporaryAccountCommands.Create("delete-zero","","")));
         firstIdentityActions(Set.of(ApplicationGroupPolicy.ManagementAction.MANAGE));

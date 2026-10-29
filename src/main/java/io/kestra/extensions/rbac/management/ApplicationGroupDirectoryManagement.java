@@ -3,6 +3,7 @@ package io.kestra.extensions.rbac.management;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.kestra.extensions.rbac.ApplicationGroupRuntimePolicies;
 import io.kestra.extensions.rbac.applicationgroup.ApplicationGroupChanges;
+import io.kestra.extensions.rbac.applicationgroup.UniquenessRejected;
 import io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectory;
 import io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectoryReader;
 import io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectoryService;
@@ -94,6 +95,9 @@ public final class ApplicationGroupDirectoryManagement implements ApplicationDir
                 }
             });
         }catch(ApplicationGroupChanges.NotFound failure){throw new DirectoryFailure(404,"not_found");}
+        catch(UniquenessRejected failure){
+            throw new DirectoryFailure(409,switch(failure.failure()){case SCOPE_NAME_EXISTS->"scope_name_exists";case CLIENT_ALREADY_ASSIGNED->"client_already_assigned";});
+        }
         catch(ApplicationGroupDirectoryStore.DeletionRejected failure){
             throw new DirectoryFailure(409,switch(failure.failure()){case PROTECTED_GROUP->"protected_group";case GROUP_NOT_EMPTY->"group_not_empty";});
         }

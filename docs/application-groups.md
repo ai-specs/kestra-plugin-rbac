@@ -542,3 +542,5 @@ scope 的公开创建、修改输入只有 `key/name/description`。详情路径
 应用组集合使用卡片；卡片进入只读详情，点击显式“编辑”才可修改。概览不显示全组授权配置状态。scope 页管理 key/name/description；应用页管理支持范围和权限声明 key/name；用户页管理 scope 授予；Kestra 实际权限页只展示 Kestra 策略。旧“身份目录”“本地绑定”“完整应用组恢复”不出现在用户文案和路径。主题、语言、窄屏和键盘焦点按已发布宿主 UI 契约复验。
 
 必须先取得宿主正式镜像与公开 SPI，随后独立编译插件 jar、通过插件 CI 并发布。根仓使用正式镜像与 jar 运行 `new-install` REST、MCP、安全、撤权、refresh、无副作用、UI、缺插件与关闭功能矩阵；最终根仓 CI 报告必须对应最终提交。schema1 与物理回滚只进入显式 `legacy-migration` profile，未运行不计通过。
+
+事务业务唯一冲突：scope同组精确name重复（创建或改名）返回409 `scope_name_exists`；同一clientId跨组重复归属返回409 `client_already_assigned`。自身scope name不变允许。独立异常不复用CAS分类，不改变Snapshot损坏输入校验、非法引用400和CAS412；组显示名与permission name无新增唯一约束。

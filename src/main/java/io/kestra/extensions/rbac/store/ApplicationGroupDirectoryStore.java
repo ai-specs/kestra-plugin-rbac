@@ -236,7 +236,8 @@ public final class ApplicationGroupDirectoryStore {
         var clients=proposed.applications().stream().map(value->value.clientId()).toList();
         for(var existing:readAll(connection))if(!existing.group().id().equals(proposed.group().id())
             && existing.applications().stream().anyMatch(value->clients.contains(value.clientId())))
-            throw new IllegalArgumentException("Application already belongs to another group");
+            throw new io.kestra.extensions.rbac.applicationgroup.UniquenessRejected(
+                io.kestra.extensions.rbac.applicationgroup.UniquenessRejected.Failure.CLIENT_ALREADY_ASSIGNED);
     }
 
     private static void requireInitial(Snapshot initial) {
