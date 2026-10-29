@@ -59,7 +59,7 @@ async function mountScenario(path,kind,{scopeKeys=['a','b'],rejectCanonical=fals
  const scopes=scopeKeys.map(key=>({key,name:key.toUpperCase(),description:'',revision:1}))
  const users=Array.from({length:61},(_,i)=>({subject:'user-'+String(i).padStart(3,'0'),name:'User',email:'',active:true,revision:1}))
  let deleteWait=null,readWait=null
- const permissions=Array.from({length:61},(_,i)=>({key:'permission-'+String(i).padStart(3,'0'),name:'Permission',scopeKeys:[],details:'',implementationKind:'external-declaration',revision:1,parentRevision:1}))
+ const permissions=Array.from({length:61},(_,i)=>({key:'permission-'+String(i).padStart(3,'0'),name:'Permission',scopeKeys:kind==='permissions'?['a']:[],details:'',implementationKind:'external-declaration',revision:1,parentRevision:1}))
  const context={apiBase:'/api/v1/main',path:path.split('?')[0],fullPath:path,tenant:'main',signal:new AbortController().signal,
  navigate:async(target,options)=>{if(rejectCanonical&&requests.some(r=>r.method==='DELETE'))throw Object.assign(new Error('canonical navigation unavailable'),{status:503});const failure=await hostRouter[options?.replace?'replace':'push']('/'+target);navigations.push({target,allowed:!failure,replace:options?.replace});if(failure)throw Object.assign(new Error('host navigation rejected'),{status:409})},
  request:async(url,options={})=>{requests.push({url,method:options.method??'GET'});
@@ -124,5 +124,36 @@ for(const mode of ['last','noncurrent','navigation-reject'])test('App successful
   else {assert.equal(v.state.context.path,mode==='last'?'application-groups/g/scopes':'application-groups/g/scopes/a');assert.equal(v.container.querySelector('[data-test="scope-item"][aria-current="true"] code')?.textContent,mode==='last'?undefined:'a')}
   assert.equal(v.requests.filter(r=>r.method==='DELETE').length,1)
  }finally{v.close()}
+})
+for(const kind of ['users','permissions'])test('App native page-size 100 is atomic with page1, preserves filters and exact authorized rows: '+kind,async()=>{
+ const path=kind==='users'?'users':'application-groups/g/applications/~Y2xpZW50'
+ const filters=kind==='users'?'filters[subject][EQUALS]=user-030':'scopeKeys=a&filters[name][CONTAINS]=Permission'
+ const v=await mountScenario(path+'?page=2&size=25'+(kind==='permissions'?'&'+filters:''),kind)
+ try{
+  const beforeQuery={...v.router.currentRoute.value.query}
+  click(v.container.querySelector('[data-test="list-total"] .kel-select__wrapper'));await tick()
+  const options=[...document.querySelectorAll('[role="option"]')].filter(n=>n.textContent.trim()==='100/page');assert.equal(options.length,1,'native 100 option missing/ambiguous');click(options[0]);await tick()
+  await wait(()=>v.container.querySelector('main').getAttribute('aria-busy')==='false','page-size refresh incomplete');await tick()
+  assert.equal(v.router.currentRoute.value.query.size,'100','second same-tick page1 event must not overwrite size100')
+  assert.equal(v.router.currentRoute.value.query.page,undefined);assert(v.state.context.fullPath.includes('size=100'))
+  for(const [key,value]of Object.entries(beforeQuery))if(!['page','size'].includes(key))assert.deepEqual([v.router.currentRoute.value.query[key]].flat(),[value].flat(),'page-size change erased filter '+key)
+  const row=kind==='users'?'user-row':'permission-row',ids=[...v.container.querySelectorAll('[data-test="'+row+'"]')].map(n=>n.textContent)
+  assert.deepEqual(ids,Array.from({length:61},(_,i)=>(kind==='users'?'user-':'permission-')+String(i).padStart(3,'0')))
+  assert.equal(v.container.querySelector('[data-test="list-total"] [aria-current="true"]')?.textContent.trim(),'1')
+ }finally{v.close()}
+})
+test('group cards independent native page-size 100 resets local page without route write races',async()=>{
+ const {default:ApplicationGroupCards}=await import('../src/ApplicationGroupCards.vue')
+ const router=createRouter({history:createMemoryHistory(),routes:[{path:'/:pathMatch(.*)*',component:{render:()=>null}}]});await router.push('/groups')
+ const items=Array.from({length:61},(_,i)=>({id:'group-'+String(i).padStart(3,'0'),displayName:'Group',active:true,counts:{}}))
+ const container=document.createElement('div');document.body.append(container)
+ const app=Vue.createApp({render:()=>Vue.h(ElConfigProvider,{namespace:'kel'},()=>Vue.h(ApplicationGroupCards,{items,storageKey:'size-regression'}))})
+ for(const [name,component]of Object.entries(DS))if(name.startsWith('Ks')&&component&&typeof component==='object')app.component(name,component)
+ const i18n=createI18n({legacy:false,locale:'en',messages});await DS.registerDesignSystemI18n(i18n);app.use(router);app.use(i18n);app.provide('rbac-portals',document.body);app.mount(container)
+ try{
+  await tick();click(container.querySelector('.kel-pagination .btn-next'));await tick();assert.equal(container.querySelector('[data-group-id]')?.getAttribute('data-group-id'),'group-025')
+  click(container.querySelector('.kel-pagination .kel-select__wrapper'));await tick();const options=[...document.querySelectorAll('[role="option"]')].filter(n=>n.textContent.trim()==='100/page');assert.equal(options.length,1);click(options[0]);await tick()
+  assert.deepEqual([...container.querySelectorAll('[data-group-id]')].map(n=>n.getAttribute('data-group-id')),items.map(x=>x.id));assert.equal(container.querySelector('.kel-pagination [aria-current="true"]')?.textContent.trim(),'1');assert.equal(router.currentRoute.value.fullPath,'/groups')
+ }finally{app.unmount();container.remove()}
 })
 test.after(()=>{hooks.deregister();window.happyDOM.abort()})

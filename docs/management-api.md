@@ -234,3 +234,7 @@ DS0.5 移动筛选层由正式 SDK renderer 迁移至本扩展 portal。已 clai
 删除 scope、应用或组成功后，先完成授权数据重读，再通过公开宿主导航确认规范路径；事务与重读期间保留保存锁，不放行外部离开。删除非当前侧栏对象保留当前选中项；删除当前对象选择后继，最后项删除后进入父列表。规范导航异常必须显示错误，不自动重发删除；旧 generation 不覆盖新状态。
 
 管理资源构建必须保留公开 `@kestra-io/design-system/styleBase` JS 入口的 CSS side effect；该公开基础样式包含 kel namespace 的原生 overlay 定位、背景及主题变量。不得以自造遮罩或修改原生焦点样式替代缺失导入。构建规则与组件回归仅证明静态输入和导航链路；遮罩计算样式、全部主题及窄屏仍须生产浏览器验证。App 级原生分页和内存宿主 router 历史回归通过不代表已复现或解决生产运行的 query/历史失败。
+
+### 列表每页数量的原子更新
+
+管理表格切换每页数量时，ManagementTable 只转发一次公开 pageSize 事件，由列表消费者在同一次 query 更新中设置新 size 与 page=1，保留原有筛选和 scope 条件。不得在同 tick 再发基于旧 route 状态的 page1 更新覆盖新 size。组卡片的独立分页直接更新本地 size/page，不走这条 query 写入链路。真实 App、ManagementTable 和原生 ElPagination 的100选项回归检查宿主回传、page1、全部授权行及筛选保留；本地组件回归不代替生产浏览器验收。

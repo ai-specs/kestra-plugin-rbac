@@ -18,7 +18,7 @@ const paginationLocale = computed(() => nativeLocale(locale.value))
       <template #table><slot name="table" /></template>
     </KsDataTable>
     <ElConfigProvider namespace="kel" :locale="paginationLocale">
-      <ElPagination :total="total" :current-page="currentPage" :page-size="pageSize" :page-sizes="[10, 25, 50, 100]" layout="sizes, prev, pager, next, total" size="small" data-test="list-total" @update:current-page="emit('update:currentPage', $event)" @update:page-size="emit('update:pageSize', $event); emit('update:currentPage', 1)" />
+      <ElPagination :total="total" :current-page="currentPage" :page-size="pageSize" :page-sizes="[10, 25, 50, 100]" layout="sizes, prev, pager, next, total" size="small" data-test="list-total" @update:current-page="emit('update:currentPage', $event)" @update:page-size="emit('update:pageSize', $event)" />
     </ElConfigProvider>
   </div>
 </template>
