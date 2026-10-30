@@ -104,15 +104,22 @@ class AuthorizationDependencyPostgresTest {
         assertEquals(0,effects.get());assertEquals(before,state());
     }
     @Test void signedContextAuthorizeExplicitFailuresAre503SecurityAndUnknownRemain403()throws Exception {
-        var before=state();var runtime=mock(ApplicationGroupRuntimePolicies.class);var context=mock(ApplicationGroupRuntimePolicies.Context.class);
-        when(runtime.open(any(TrustedIdentityV1.Identity.class),eq("main"))).thenReturn(context);var effects=new AtomicInteger();
+        var before=state();var effects=new AtomicInteger();
         for(var reason:ApplicationGroupRuntimePolicies.Failure.values()) {
+            // Native evaluation cleanup may finish on another thread after the HTTP
+            // response. Never re-stub a context that an earlier cleanup can still use.
+            var runtime=mock(ApplicationGroupRuntimePolicies.class);var context=mock(ApplicationGroupRuntimePolicies.Context.class);
             doThrow(new ApplicationGroupRuntimePolicies.Rejected(reason)).when(context).authorize(any());
+            when(runtime.open(any(TrustedIdentityV1.Identity.class),eq("main"))).thenReturn(context);
             int expected=reason==ApplicationGroupRuntimePolicies.Failure.DIRECTORY_UNAVAILABLE||reason==ApplicationGroupRuntimePolicies.Failure.POLICY_UNAVAILABLE?503:403;
             assertEquals(expected,http(runtime,f.trusted,Runnable::run,effects),reason.name());
+            verify(context,timeout(3000).times(1)).close();
         }
+        var runtime=mock(ApplicationGroupRuntimePolicies.class);var context=mock(ApplicationGroupRuntimePolicies.Context.class);
         doThrow(new IllegalStateException("unknown private")).when(context).authorize(any());
+        when(runtime.open(any(TrustedIdentityV1.Identity.class),eq("main"))).thenReturn(context);
         assertEquals(403,http(runtime,f.trusted,Runnable::run,effects));
+        verify(context,timeout(3000).times(1)).close();
         assertEquals(0,effects.get());assertEquals(before,state());
     }
 }
