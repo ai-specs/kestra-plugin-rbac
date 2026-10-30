@@ -3,6 +3,7 @@ import {computed, inject, nextTick, onBeforeUnmount, reactive, ref, watch} from 
 import {useI18n} from 'vue-i18n'
 import {useRoute, useRouter} from 'vue-router'
 import KsButton from '@kestra-io/design-system/components/Basic/KsButton/KsButton'
+import KsFormItem from '@kestra-io/design-system/components/Form/KsForm/KsFormItem'
 import KsInput from '@kestra-io/design-system/components/Form/KsInput'
 import KsTabs from '@kestra-io/design-system/components/Navigation/KsTabs/KsTabs'
 import KsTabPane from '@kestra-io/design-system/components/Navigation/KsTabs/KsTabPane'
@@ -23,6 +24,7 @@ import {createAccount} from './account-actions.js'
 import {decodeSearchParams} from '@kestra-io/design-system'
 import {groupMetadataInput} from './text-limits.js'
 import {contextFullPath} from './navigation-lifecycle.js'
+import {deepestActiveElement, restoreFocus} from './focus.js'
 import {newOneTimeValue, clearOneTimeValue} from './credential-state.js'
 import {withAccountState, scopeRelations, blockingReferences, scopeReferenceLabels} from './scope-relations.js'
 import {createDraftNavigationGuard} from './draft-navigation.js'
@@ -201,7 +203,7 @@ function clearInvalidQuery() {
   const target = sourcePath.value.split('?')[0]
   void props.context.navigate(target, {replace: true})
 }
-async function mutate(action, afterSuccess) {
+async function mutate(action, afterSuccess, deletedTrigger) {
   if (busy.value || conflicted.value || denied.value || reauthenticate.value) return
   let current = generation
   busy.value = true; editor.saving = Boolean(editor.kind); error.value = ''; deletionError.value = ''
@@ -217,6 +219,13 @@ async function mutate(action, afterSuccess) {
     // The transaction and authorized reload have finished. The ordinary public
     // navigation guard now permits only this completed operation's canonical URL.
     if (canonicalTarget) await props.context.navigate(canonicalTarget, {replace: true})
+    if (deletedTrigger) {
+      // The dialog may have restored an old fallback before reload replaced it.
+      // Only a completed delete whose original trigger disappeared needs repair.
+      await nextTick()
+      if (disposed || current !== generation || !loaded.value || denied.value || reauthenticate.value) return
+      if (!deletedTrigger.isConnected) restoreFocus(null, main.value?.getRootNode())
+    }
     notice.value = t('saved')
   } catch (problem) {
     if (current === generation && !disposed && problem.name !== 'AbortError') {
@@ -286,19 +295,22 @@ function saveInline() {
     void mutate(() => draft.revision === undefined ? api.createApplication(groupId.value, input, group.value.revision) : api.updateApplication(groupId.value, draft.clientId, input, draft.revision))
   } else void mutate(() => api.updateApplicationGroup(groupId.value, {...groupMetadataInput(draft), active: draft.active}, draft.revision))
 }
-function askDelete(kind, value) {discardGuard(() => {
-  const references = kind === 'scope' ? blockingReferences(value.key, applications.value, subjects.value) : []
-  deletion.value = {kind, value, references, blocked: references.length > 0}; deletionError.value = ''
-})}
+function askDelete(kind, value) {
+  const trigger = deepestActiveElement(document)
+  discardGuard(() => {
+    const references = kind === 'scope' ? blockingReferences(value.key, applications.value, subjects.value) : []
+    deletion.value = {kind, value, references, blocked: references.length > 0, trigger}; deletionError.value = ''
+  })
+}
 function deleteConfirmed() {
-  const {kind, value} = deletion.value
+  const {kind, value, trigger} = deletion.value
   const next = kind === 'scope' ? (selectedScope.value?.key !== value.key ? selectedScope.value?.key : selectionAfterDelete(scopes.value, value.key)) : kind === 'application' ? (application.value?.clientId !== value.clientId ? application.value?.clientId : selectionAfterDelete(applications.value, value.clientId, 'clientId')) : ''
   if (deletion.value.blocked) return
   const operation = kind === 'user' ? () => api.deleteUser(value.subject, value.revision) : kind === 'permission' ? () => api.deletePermission(groupId.value, application.value.clientId, value.key, value.revision) : kind === 'scope' ? () => api.deleteApplicationGroupScope(groupId.value, value.key, value.revision) : kind === 'application' ? () => api.deleteApplication(groupId.value, value.clientId, value.revision) : kind === 'group' ? () => api.deleteApplicationGroup(groupId.value, value.revision) : () => api.deleteScopeGrant(groupId.value, value.subject, value.revision)
   void mutate(operation, () => {
     if (kind === 'scope' || kind === 'application') return groupBase.value + '/' + (kind === 'scope' ? 'scopes' : 'applications') + (next ? '/' + (kind === 'scope' ? encodeURIComponent(next) : encodeKey(next)) : '')
     if (kind === 'group') return 'application-groups'
-  })
+  }, trigger)
 }
 const toScope = key => navigate(groupBase.value + '/scopes/' + encodeURIComponent(key))
 const toApplication = (clientId, query = {}) => navigate(groupBase.value + '/applications/' + encodeKey(clientId), query)
@@ -434,8 +446,8 @@ onBeforeUnmount(() => {disposed = true; queryNavigationEpoch++; pendingQueryTarg
     <EditorDrawer :state="editor" :title="editorTitle" :disabled="editor.kind === 'permission' ? !permissionManage : !identityManage" :conflicted="conflicted" @save="saveEditor" @refresh="requestEditorClose(editor, () => load())">
       <template #default="{draft}"><template v-if="draft">
         <PermissionFields v-if="editor.kind === 'permission'" :draft="draft" :scopes="scopes" :known-scope-keys-only="!identityRead" :implementation-kind="application?.implementationKind ?? ''" :editing="draft.revision !== undefined" />
-        <template v-else-if="editor.kind === 'group'"><label class="rbac-kv-field"><span>{{ t('id') }}</span><KsInput v-model="draft.id" required maxlength="128" /></label><label class="rbac-kv-field"><span>{{ t('displayName') }}</span><KsInput v-model="draft.displayName" required maxlength="512" /></label><label class="rbac-kv-field"><span>{{ t('description') }}</span><KsInput v-model="draft.description" type="textarea" :rows="3" maxlength="8192" /></label></template>
-        <template v-else-if="editor.kind === 'subject'"><label class="rbac-kv-field"><span>subject</span><output v-if="draft.revision !== undefined"><code>{{ draft.subject }}</code></output><KsSelect v-else v-model="draft.subject" filterable><KsOption v-for="item in subjectCandidates" :key="item.subject" :value="item.subject" :label="item.subject" /></KsSelect></label><div class="rbac-kv-field"><span>{{ t('scopeKeys') }}</span><ScopePicker v-model="draft.scopeKeys" :scopes="scopes" /></div></template>
+        <template v-else-if="editor.kind === 'group'"><KsFormItem :label="t('id')"><KsInput v-model="draft.id" required maxlength="128" /></KsFormItem><KsFormItem :label="t('displayName')"><KsInput v-model="draft.displayName" required maxlength="512" /></KsFormItem><KsFormItem :label="t('description')"><KsInput v-model="draft.description" type="textarea" :rows="3" maxlength="8192" /></KsFormItem></template>
+        <template v-else-if="editor.kind === 'subject'"><KsFormItem label="subject"><output v-if="draft.revision !== undefined"><code>{{ draft.subject }}</code></output><KsSelect v-else v-model="draft.subject" filterable><KsOption v-for="item in subjectCandidates" :key="item.subject" :value="item.subject" :label="item.subject" /></KsSelect></KsFormItem><KsFormItem :label="t('scopeKeys')"><ScopePicker v-model="draft.scopeKeys" :scopes="scopes" /></KsFormItem></template>
         <UserFields v-else-if="editor.kind === 'user'" :draft="draft" />
       </template></template>
       <template #error><p v-if="error" role="alert" class="error" data-test="request-error">{{ error }}</p></template>

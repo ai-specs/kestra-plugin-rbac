@@ -47,7 +47,7 @@ watch(() => props.items, () => {page.value = 1})
           <span v-if="item.builtIn" class="builtin-indicator" data-test="builtin-group-card-indicator">{{ t('builtinGroup') }}</span>
         </KsButton>
         <div class="rbac-card-counts">
-          <KsButton v-for="section in [{field:'scopes', tab:'scopes', label:'scopes'}, {field:'applications', tab:'applications', label:'clients'}, {field:'subjects', tab:'scope-grants', label:'subject'}]" :key="section.field" link :disabled="busy || countValue(item.counts, section.field) === null" :data-test="`group-count-${section.field}`" @click="emit('section', item, section.tab)"><b>{{ countValue(item.counts, section.field) ?? '—' }}</b> {{ section.field === 'subjects' ? 'subject' : t(section.label) }}</KsButton>
+          <KsButton v-for="section in [{field:'scopes', tab:'scopes', label:'scopes'}, {field:'applications', tab:'applications', label:'clients'}, {field:'subjects', tab:'scope-grants', label:'subject'}]" :key="section.field" link :disabled="busy || countValue(item.counts, section.field) === null" :data-test="`group-count-${section.field}`" @click="emit('section', item, section.tab)"><span class="rbac-card-count-label"><b>{{ countValue(item.counts, section.field) ?? '—' }}</b> {{ section.field === 'subjects' ? 'subject' : t(section.label) }}</span></KsButton>
         </div>
       </KsCard>
       <p v-if="!cards.length">{{ t('noRows') }}</p>

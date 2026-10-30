@@ -1,12 +1,12 @@
 :host { display: block; color: var(--ks-text-primary); font-family: inherit; --ks-z-dropdown: 1000; --ks-z-overlay: 1030; }
 .rbac-page { min-height: 100%; padding: 0 32px 32px; background: var(--ks-bg-base); }
 main { max-width: 1400px; margin: auto; }
-header, .buttons { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.rbac-page header, .buttons { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .management-toolbar { justify-content: flex-end; min-height: 48px; padding: 0; }
 main > .kel-tabs { margin: 0 -32px; background: var(--ks-bg-surface); border-bottom: 1px solid var(--ks-border-default); }
 .toolbar-status { display: flex; gap: 16px; margin-right: auto; color: var(--ks-text-secondary); font-size: 12px; }
 fieldset { border: 0; padding: 0; margin: 16px 0; min-width: 0; }
-label { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; max-width: 720px; }
+label:not(.kel-form-item__label) { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; max-width: 720px; }
 label.checkbox { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; margin: 8px 20px 8px 0; }
 select { font: inherit; color: var(--ks-text-primary); background: var(--ks-bg-input); border: 1px solid var(--ks-border-default); border-radius: 4px; padding: 4px 12px; box-sizing: border-box; height: 32px; }
 :focus-visible { outline: 2px solid var(--ks-text-link); outline-offset: 3px; }
@@ -70,6 +70,7 @@ fieldset:disabled { opacity: .75; }
 .rbac-tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border: 1px solid var(--ks-border-default); border-radius: 4px; background: var(--ks-bg-surface); color: var(--ks-text-primary); overflow-wrap: anywhere; }
 .rbac-tag .kel-button { padding: 0 3px; min-height: 24px; height: 24px; }
 .rbac-card-counts { display: flex; flex-wrap: wrap; gap: 12px; padding: 0 16px 16px; }
+.rbac-card-count-label { display: inline-flex; align-items: baseline; gap: var(--ks-spacing-1); }
 .rbac-statistics { display: flex; gap: 24px; flex-wrap: wrap; padding-bottom: 20px; }
 .rbac-list .table-wrap { width: 100%; }
 .rbac-permission-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; max-width: 480px; overflow-wrap: anywhere; }
@@ -77,14 +78,8 @@ fieldset:disabled { opacity: .75; }
 .rbac-permission-summary p { margin: 0; width: 100%; }
 .rbac-inline-form { max-width: 760px; }
 .rbac-page a { color: var(--ks-text-link); text-decoration: none; }
-.rbac-editor-drawer .kel-drawer__body { padding: 0; }
-.rbac-editor-drawer { --kel-drawer-padding-primary: 0; }
-.rbac-drawer-content { color: var(--ks-text-primary); background: var(--ks-bg-surface); min-height: 100%; width: 100%; }
-.rbac-drawer-header { display: flex; align-items: center; gap: 10px; padding: 11px 20px; border-bottom: 1px solid var(--ks-border-default); }
-.rbac-drawer-header h2 { flex: 1; min-width: 0; font-size: 14px; margin: 0; }
-.rbac-drawer-header > .kel-button { width: 32px; height: 32px; padding: 0; }
-.rbac-drawer-form { padding: 20px; }
-.rbac-drawer-form fieldset { padding: 0; border: 0; margin: 0 0 20px; min-width: 0; }
+.rbac-drawer-actions { justify-content: flex-end; }
+.rbac-drawer-form fieldset { margin: 0; }
 .rbac-kv-field { display: grid; grid-template-columns: 124px minmax(0, 1fr); align-items: start; gap: 12px; margin: 0 0 16px; max-width: none; }
 .rbac-kv-field > span:first-child { padding-top: 7px; text-align: right; color: var(--ks-text-secondary); font-size: 13px; }
 .rbac-kv-field .kel-select { width: 100%; }
@@ -101,7 +96,6 @@ fieldset:disabled { opacity: .75; }
   .rbac-kv-field { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .rbac-kv-field > span:first-child { text-align: left; padding-top: 0; }
   .rbac-kv-field .rbac-tags { grid-column: 1; }
-  .rbac-drawer-form { padding: 16px; }
 }
 .rbac-one-time-value { white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; max-width: 100%; }
 @media (max-width: 390px) {
@@ -110,8 +104,6 @@ fieldset:disabled { opacity: .75; }
   .rbac-details { grid-template-columns: minmax(0, 1fr); }
   .rbac-details dt { border-bottom: 0; padding-bottom: 0; }
   .rbac-details dd { padding-top: 6px; }
-  .rbac-drawer-header { padding: 10px 12px; gap: 6px; }
-  .rbac-drawer-form { padding: 12px; }
   .rbac-permission-summary > span { max-width: 240px; }
   .buttons { gap: 6px; }
 }

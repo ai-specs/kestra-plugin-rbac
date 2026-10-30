@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs'
 import {fileURLToPath} from 'node:url'
 import {registerHooks} from 'node:module'
 import {Window} from 'happy-dom'
-import {parse,compileScript} from '@vue/compiler-sfc'
+import {parse,compileScript,compileTemplate} from '@vue/compiler-sfc'
 
 // Real Vue SFCs and published design-system/Element Plus DOM. No network or browser.
 const window=new Window({url:'http://localhost/'})
@@ -15,7 +15,9 @@ const hooks=registerHooks({load(url,context,next){
   if(url.endsWith('.css'))return {format:'module',source:'export default {}',shortCircuit:true}
   if(url.endsWith('.vue')) {
     const filename=fileURLToPath(url),{descriptor}=parse(readFileSync(filename,'utf8'),{filename})
-    return {format:'module',source:compileScript(descriptor,{id:filename,inlineTemplate:true}).content,shortCircuit:true}
+    const script=compileScript(descriptor,{id:filename,inlineTemplate:true})
+    const source=descriptor.scriptSetup?script.content:script.content.replace('export default','const component =')+'\n'+compileTemplate({source:descriptor.template.content,filename,id:filename}).code.replace('export function render','function render')+'\ncomponent.render=render;export default component'
+    return {format:'module',source,shortCircuit:true}
   }
   return next(url,context)
 }})
@@ -70,12 +72,15 @@ for(const kind of ['group','user','permission','subject'])test('drawer '+kind+':
   try {
     openEditor(state,kind,{name:'original'});state.draft.name='unsaved';await tick()
     const drawer=view.container.querySelector('[data-test="drawer-'+kind+'"]');assert(drawer)
-    const cancel=drawer.querySelector('footer button:last-child'),save=drawer.querySelector('[data-test="drawer-save"]')
+    const cancel=drawer.querySelector('.kel-drawer__footer button:first-child'),save=drawer.querySelector('[data-test="drawer-save"]')
     assert(disabled(drawer.querySelector('input')));assert(disabled(save));assert.equal(disabled(cancel),false)
     cancel.focus();assert.equal(document.activeElement,cancel);click(cancel);await tick();assert.equal(state.discard,true);assert.equal(state.draft.name,'unsaved')
     const dialog=view.container.querySelector('[data-test="discard-confirm"]');assert(dialog)
     click(dialog.querySelector('button:not(.kel-button--danger)'));await tick();assert.equal(state.discard,false);assert.equal(state.draft.name,'unsaved')
-    state.saving=true;await tick();assert(disabled(cancel));assert(disabled(drawer.querySelector('[data-test="drawer-close"]')))
+    state.saving=true;await tick();assert(disabled(cancel));assert.equal(drawer.querySelector('.kel-drawer__close-btn'),null,'native close is hidden while saving; beforeClose must still reject');assert.equal(drawer.querySelector('.kel-drawer__header .is-link').disabled,false)
+    const snapshot=JSON.stringify(state),maximize=drawer.querySelector('.kel-drawer__header .is-link')
+    click(maximize);await tick();assert(drawer.classList.contains('full-screen'));click(maximize);await tick();assert(!drawer.classList.contains('full-screen'))
+    assert.equal(JSON.stringify(state),snapshot,'saving maximize must not mutate the draft or editor state');assert.equal(saves,0);assert(disabled(drawer.querySelector('input')));assert(disabled(save))
     drawer.querySelector('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));assert.equal(saves,0)
     click(cancel);assert.equal(state.discard,false)
     state.saving=false;await tick();click(cancel);await tick()

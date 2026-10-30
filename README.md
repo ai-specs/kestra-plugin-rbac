@@ -91,6 +91,13 @@ with packages:read; no personal token or cross-repository source deploy key is r
 空态、无匹配与加载文案和业务vue-i18n同语言；分页复用相同解析函数。没有复制
 宿主私有翻译。真实组件可见文案、主题和Esc栈行为仍必须通过生产浏览器矩阵验证。
 
+本轮候选抽屉消费同一公开组件包的 `KsDrawer` 默认标题栏、最大化/关闭 SVG、body
+内边距和 footer slot；字段使用 `KsForm/KsFormItem` 的 `ks-horizontal` 布局。保存时隐藏
+原生关闭按钮，关闭入口仍执行保存/草稿检查，并禁止编辑、取消与重复提交。原生最大化
+仅切换呈现，保存期间仍可切换，不改变字段、不提交也不导航；不替换全局按钮、不派生
+或转接抽屉 setup。重新打开通过组件生命周期复位最大化。卡片计数在插件自有 wrapper 使用 `--ks-spacing-1` 显式分隔数量与
+名称，不覆盖全局按钮样式。组件测试不证明正式页面主题、窄屏或贴底几何验收通过。
+
 ## 数据库管理模式
 
 账号生命周期另设必需PostgreSQL发布门；H2默认test不执行该suite，也不将其计为跳过。
