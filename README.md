@@ -54,9 +54,9 @@ are extracted from the immutable published image, independently of any overlay s
 检查。该变量只用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
 每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。
 
-当前编译输入为正式宿主 commit `48946d63e4a806ac52b79d44e815240601a66a2b`（CI `41007119467`），
-镜像 digest `d0d770076f026dd6c94d1c46ee7b6bbaa0dc5d3858645245cd0d74766549bfbe`；
-arm64 executable SHA256 `2e91a34a3bd0751eff756bdd9ea38b85831d342600ba1c1ea62a102d7445721a`。
+当前编译输入为正式宿主 commit `851e9ea913b762da23a6c1bc8b327d85979545d0`（CI `41027744615`），
+镜像 digest `0238b214fdd284dab3017c8cd2049e5f599f2f2e71afe3dbf1d94c0d26ba4784`；
+arm64 executable SHA256 `6c4bd609bd6a5e19b521b543cf3811da6e20ea20f454524c66f75d512522f7f7`。
 该正式输入隔离授权初始化与关闭工厂的阻塞调用；公开SPI类型不变，插件仍须重新完成
 独立编译和全部本地/CI门，不直接读取宿主源码或其开发目录。
 构建以 `host-contract.properties` 和本仓独立提取的 `.integration/host-provenance.json` 为准。
