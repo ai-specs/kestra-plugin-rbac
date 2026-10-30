@@ -1,5 +1,5 @@
 <script setup>
-import {computed, inject, nextTick, onBeforeUnmount, useId, watch} from 'vue'
+import {computed, inject, nextTick, onBeforeUnmount, ref, useId, watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import KsButton from '@kestra-io/design-system/components/Basic/KsButton/KsButton'
 import KsForm from '@kestra-io/design-system/components/Form/KsForm/KsForm'
@@ -13,20 +13,28 @@ const {t} = useI18n()
 const formId = 'rbac-editor-' + useId()
 const portals = inject('rbac-portals')
 const open = computed(() => Boolean(props.state.kind))
+let cycle = 0
+const rendered = ref(open.value ? {kind: props.state.kind, key: cycle, closed: () => afterClosed(0)} : null)
 let trigger, focusRoot, disposed = false
-watch(open, async value => {
+watch(open, value => {
   if (value) {
     trigger = deepestActiveElement(document)
     focusRoot = portals?.getRootNode()
-    await nextTick()
-  } else {
-    await nextTick()
-    if (disposed || open.value) return
-    restoreFocus(trigger, focusRoot)
-    trigger = null
-    emit('closed')
+    const key = ++cycle
+    rendered.value = {kind: props.state.kind, key, closed: () => afterClosed(key)}
   }
 })
+async function afterClosed(key) {
+  if (disposed || open.value || key !== cycle) return
+  // Keep the published SDK registration alive until native focus-trap release.
+  // Its release handler cancels Element Plus restoring the old document BODY.
+  rendered.value = null
+  await nextTick()
+  if (disposed || open.value || key !== cycle) return
+  restoreFocus(trigger, focusRoot)
+  trigger = null
+  emit('closed')
+}
 function close(done) {
   if (requestEditorClose(props.state)) done?.()
 }
@@ -37,7 +45,7 @@ onBeforeUnmount(() => {disposed = true; trigger = null; focusRoot = null})
 </script>
 
 <template>
-  <KsDrawer v-if="open" :model-value="open" :title="title" :append-to="portals" :append-to-body="false" :before-close="close" :close-on-press-escape="!state.saving" :close-on-click-modal="!state.saving" :show-close="!state.saving" :data-test="`drawer-${state.kind}`" :aria-busy="state.saving" class="rbac-editor-drawer" @update:model-value="value => {if (!value) close()}">
+  <KsDrawer v-if="rendered" :key="rendered.key" :model-value="open" :title="title" :append-to="portals" :append-to-body="false" :before-close="close" :close-on-press-escape="!state.saving" :close-on-click-modal="!state.saving" :show-close="!state.saving" :data-test="`drawer-${rendered.kind}`" :aria-busy="state.saving" class="rbac-editor-drawer" @closed="rendered.closed" @update:model-value="value => {if (!value) close()}">
     <KsForm :id="formId" class="ks-horizontal rbac-drawer-form" :model="state.draft" @submit.prevent="save">
       <fieldset :disabled="state.saving || disabled || conflicted"><slot :draft="state.draft" /></fieldset>
       <slot name="error" />

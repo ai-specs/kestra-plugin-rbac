@@ -98,7 +98,10 @@ with packages:read; no personal token or cross-repository source deploy key is r
 内边距和 footer slot；字段使用 `KsForm/KsFormItem` 的 `ks-horizontal` 布局。保存时隐藏
 原生关闭按钮，关闭入口仍执行保存/草稿检查，并禁止编辑、取消与重复提交。原生最大化
 仅切换呈现，保存期间仍可切换，不改变字段、不提交也不导航；不替换全局按钮、不派生
-或转接抽屉 setup。重新打开通过组件生命周期复位最大化。卡片计数在插件自有 wrapper 使用 `--ks-spacing-1` 显式分隔数量与
+或转接抽屉 setup。关闭时保留本轮原生组件与公开 SDK 注册，直到原生 `closed` 事件后
+才卸载并恢复焦点，避免迟到的原生 focus-trap 释放把焦点送回 document BODY。
+重新打开使用独立组件周期复位最大化；旧周期的 closed 回调不能关闭新周期。
+卡片计数在插件自有 wrapper 使用 `--ks-spacing-1` 显式分隔数量与
 名称，不覆盖全局按钮样式。组件测试不证明正式页面主题、窄屏或贴底几何验收通过。
 保存按钮通过公开 `icon` 属性取得原生图标 wrapper 与文案间距；卡片标题、显示名和
 内置标记在插件自有纵向 wrapper 排列，不改原生按钮的全局 slot 样式。这两项后续
