@@ -54,11 +54,14 @@ are extracted from the immutable published image, independently of any overlay s
 检查。该变量只用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
 每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。
 
-当前编译输入为正式宿主 commit `851e9ea913b762da23a6c1bc8b327d85979545d0`（CI `41027744615`），
-镜像 digest `0238b214fdd284dab3017c8cd2049e5f599f2f2e71afe3dbf1d94c0d26ba4784`；
-arm64 executable SHA256 `6c4bd609bd6a5e19b521b543cf3811da6e20ea20f454524c66f75d512522f7f7`。
+当前编译输入为正式宿主 commit `ff707ddd05ed4a888a8f459d33b9a95f511a59bf`（CI `41129076310`），
+镜像 digest `15c7cace895531459fa1ef03446ec3945cd9ec1440c36a165c62b52e21472bac`；
+arm64 executable SHA256 `7142f7d86b29a611bd08a471616dc28d57f47c43b81081cef7cdb2462d218f22`。
 该正式输入隔离授权初始化与关闭工厂的阻塞调用；公开SPI类型不变，插件仍须重新完成
 独立编译和全部本地/CI门，不直接读取宿主源码或其开发目录。
+该版本还在 typed REST 入口显式绑定本次真实 HTTP 请求的最小调用来源，覆盖缺失或陈旧
+ambient 来源，不改变公开 SPI、授权业务或 SDK。宿主新增五项精确具名来源回归及全部既有
+发布门已通过；此前部署并发早拒绝是否同源仍须根仓真实组合复验，不把机制反例作为根因定论。
 构建以 `host-contract.properties` 和本仓独立提取的 `.integration/host-provenance.json` 为准。
 宿主发布与插件本地检查不表示最终生产 HTTP、UI 或 Compose 组合验收通过。
 
