@@ -13,9 +13,10 @@ select { font: inherit; color: var(--ks-text-primary); background: var(--ks-bg-i
 .grant { border: 1px solid var(--ks-border-default); border-radius: 8px; padding: 16px; margin: 16px 0; }
 .table-wrap { overflow-x: auto; margin: 16px 0; background: var(--ks-bg-base); }
 .application-group-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 16px; margin: 20px 0; }
-.application-group-card-link { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; min-height: 96px; padding: 16px; border: 0; background: transparent; color: var(--ks-text-primary); text-align: left; cursor: pointer; font: inherit; }
+.application-group-card-link { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; height: auto; min-height: 96px; padding: 16px; border: 0; background: transparent; color: var(--ks-text-primary); text-align: left; cursor: pointer; font: inherit; white-space: normal; }
+.rbac-card-heading { display: flex; flex-direction: column; align-items: flex-start; gap: var(--ks-spacing-2); min-width: 0; max-width: 100%; }
 .application-group-card-link:disabled { cursor: wait; }
-.application-group-card-title { font-size: 16px; font-weight: 600; }
+.application-group-card-title { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
 .application-group-card-id { color: var(--ks-text-secondary); overflow-wrap: anywhere; }
 .builtin-indicator { display: inline-block; margin-top: 4px; padding: 1px 8px; border: 1px solid var(--ks-border-default); border-radius: 9999px; font-size: 12px; color: var(--ks-text-secondary); background: var(--ks-bg-surface); width: fit-content; }
 .application-declaration-create { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; margin: 0 0 16px; }

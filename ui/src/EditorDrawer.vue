@@ -46,7 +46,7 @@ onBeforeUnmount(() => {disposed = true; trigger = null; focusRoot = null})
     <template #footer>
       <div class="buttons rbac-drawer-actions">
         <KsButton :disabled="state.saving" @click="close()">{{ t('cancel') }}</KsButton>
-        <KsButton type="primary" native-type="submit" :form="formId" :disabled="state.saving || disabled || conflicted" data-test="drawer-save"><ContentSave />{{ t(state.saving ? 'loading' : 'save') }}</KsButton>
+        <KsButton type="primary" native-type="submit" :icon="ContentSave" :form="formId" :disabled="state.saving || disabled || conflicted" data-test="drawer-save">{{ t(state.saving ? 'loading' : 'save') }}</KsButton>
       </div>
     </template>
   </KsDrawer>

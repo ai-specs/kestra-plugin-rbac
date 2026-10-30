@@ -59,6 +59,8 @@ test('native drawer owns title/header SVGs, footer/form association, body paddin
   const form=drawer.querySelector('form.ks-horizontal.kel-form'),save=drawer.querySelector('[data-test="drawer-save"]')
   assert(form);assert(drawer.querySelector('.kel-drawer__footer').contains(save));assert(!form.contains(save))
   assert.equal(save.getAttribute('form'),form.id);assert(save.querySelector('svg path'),'save uses native icon')
+  assert(save.querySelector(':scope > .kel-icon .content-save-icon svg'),'public icon prop must own native icon wrapper and spacing')
+  assert.equal(save.querySelector(':scope > span')?.textContent.trim(),'Save changes','localized label must stay outside the native icon wrapper')
   click(save);await tick();assert.equal(saves,1,'native footer submit must reach its associated form')
   form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));assert.equal(saves,2)
   click(drawer.querySelector('.kel-drawer__header .is-link'));await tick();assert(drawer.classList.contains('full-screen'));assert(drawer.querySelector('.arrow-collapse-icon svg'))
@@ -76,6 +78,7 @@ test('native drawer CSS leaves padding/header/width to published component and c
  const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8')
  assert.doesNotMatch(css,/\.rbac-editor-drawer[^}]*padding|\.rbac-drawer-header|\.rbac-drawer-form\s*\{[^}]*padding/)
  assert.match(css,/\.rbac-card-count-label\s*\{[^}]*gap: var\(--ks-spacing-1\)/)
+ assert.match(css,/\.rbac-card-heading\s*\{[^}]*flex-direction: column[^}]*gap: var\(--ks-spacing-2\)/)
  const cards=readFileSync(new URL('../src/ApplicationGroupCards.vue',import.meta.url),'utf8')
  assert.match(cards,/class="rbac-card-count-label"/)
 })
@@ -88,6 +91,8 @@ test('actual native card buttons retain spaced accessible text, counts, destinat
  const view=mount({render:()=>Vue.h(ApplicationGroupCards,{items,busy:busy.value,storageKey:'native-counts',onOpen:item=>events.push(item.id),onSection:(item,tab)=>events.push([item.id,tab])})},{router})
  try{
   await tick();const card=view.container.querySelector('[data-group-id="g"]')
+  const heading=card.querySelector('.application-group-card-link .rbac-card-heading');assert(heading,'card title and display name need an owned vertical layout inside native button slot')
+  assert.equal(heading.querySelector('.application-group-card-title').textContent,'g');assert.equal(heading.querySelector('.application-group-card-id').textContent,'Group')
   for(const [field,count,label,tab] of [['scopes',54,messages.en.scopes,'scopes'],['applications',29,messages.en.clients,'applications'],['subjects',54,'subject','scope-grants']]){
    const button=card.querySelector('[data-test="group-count-'+field+'"]'),wrapper=button.querySelector('.rbac-card-count-label')
    assert(wrapper);assert.equal(wrapper.querySelector('b').textContent,String(count));assert.equal(button.textContent.trim(),count+' '+label);click(button);assert.deepEqual(events.at(-1),['g',tab])

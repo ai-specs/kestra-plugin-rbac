@@ -1,8 +1,9 @@
 # 应用组管理接口契约
 
 状态：当前公开源码契约。宿主正式输入由 `host-contract.properties` 固定；正式插件
-`d0995943643f21dd9e8bcb9e347614978bbc0de0` 的成功 CI `40950658945` 已通过独立 Java/PG 门。
-该结果仅证明独立能力层，不代表当前未提交 UI 改动或最终生产 HTTP/UI/Compose 组合通过。
+检查点 `73fa96e6dbbb614daa466703b8355c54abff7727` 的成功 CI `40999171025` 已实际下载核对
+独立 Java286/PG108/生命周期24/UI172。该结果仅证明独立能力层，不代表之后源码或宿主
+输入变化已通过发布门，也不代表最终生产 HTTP/UI/Compose 组合通过。
 2026-10-27 R21 取代旧声明/实际策略双入口；自足模型、安装与显式升级形状见
 `application-groups.md` 顶部。用户/凭据已消费正式 UserDirectoryV2、TrustedIdentityV2、
 IdentityLifecycleParticipantV1 与 ClientCredentialsV1；ProjectionV2/currentResources 已接线，

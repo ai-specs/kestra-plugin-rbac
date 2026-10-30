@@ -42,9 +42,11 @@ watch(() => props.items, () => {page.value = 1})
     <div class="application-group-cards" data-test="application-group-cards">
       <KsCard v-for="item in cards" :key="item.id" shadow="hover" data-test="group-card" :data-group-id="item.id">
         <KsButton link class="application-group-card-link" :disabled="busy" @click="emit('open', item)">
-          <code class="application-group-card-title">{{ item.id }}</code>
-          <span class="application-group-card-id">{{ item.displayName }}</span>
-          <span v-if="item.builtIn" class="builtin-indicator" data-test="builtin-group-card-indicator">{{ t('builtinGroup') }}</span>
+          <span class="rbac-card-heading">
+            <code class="application-group-card-title">{{ item.id }}</code>
+            <span class="application-group-card-id">{{ item.displayName }}</span>
+            <span v-if="item.builtIn" class="builtin-indicator" data-test="builtin-group-card-indicator">{{ t('builtinGroup') }}</span>
+          </span>
         </KsButton>
         <div class="rbac-card-counts">
           <KsButton v-for="section in [{field:'scopes', tab:'scopes', label:'scopes'}, {field:'applications', tab:'applications', label:'clients'}, {field:'subjects', tab:'scope-grants', label:'subject'}]" :key="section.field" link :disabled="busy || countValue(item.counts, section.field) === null" :data-test="`group-count-${section.field}`" @click="emit('section', item, section.tab)"><span class="rbac-card-count-label"><b>{{ countValue(item.counts, section.field) ?? '—' }}</b> {{ section.field === 'subjects' ? 'subject' : t(section.label) }}</span></KsButton>

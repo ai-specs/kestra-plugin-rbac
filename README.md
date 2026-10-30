@@ -22,11 +22,12 @@
 通过helper适配已声明原生组件，生产插件UI及根仓Compose仍须独立验收。
 具体输入、缺口和版本证据入口见 `docs/application-groups.md`；本地候选测试不是发布结论。
 
-正式插件 `d099594`（成功 CI `40950658945`、已下载产物 `12931202803`）已包含账号HTTP：只接受username/name/email创建并提供强修订DELETE入口；Published适配器
+已验证独立检查点 `73fa96e`（成功 CI `40999171025`、已下载产物 `12952369487`）包含账号HTTP：只接受username/name/email创建并提供强修订DELETE入口；Published适配器
 消费正式UserDirectoryV2，唯一参与者借用连接完成全组清理、可信actor复查、最后管理员
-与提交审计。凭据HTTP已接正式ClientCredentialsV1。缺失/重复组件失败关闭。本轮新正式宿主
-输入消费及筛选/导航增量仍为候选；本地PG不替代该增量最终插件CI、浏览器或Compose验收，
-既有独立产物也不表示当前根仓组合通过。
+与提交审计。凭据HTTP已接正式ClientCredentialsV1。缺失/重复组件失败关闭。该检查点已通过
+Java286、PostgreSQL108、生命周期24及UI172，包含原生抽屉、计数间距和删除焦点修复。
+后续保存图标公开icon属性、卡片标题纵向布局及新宿主消费仍须对应源码重新完成本地门、
+独立CI和发布。独立产物不表示根仓组合通过。
 
 Independent, database-backed authorization extension for the Kestra OSS overlay. The business policy lives in this repository. Output: **`build/libs/kestra-rbac-authorizer.jar`**. The jar is thin, includes Micronaut generated bean indexes, and contains no Kestra, Micronaut, Jackson or other dependency classes.
 
@@ -38,8 +39,8 @@ are extracted from the immutable published image, independently of any overlay s
 
 用户、角色和授权管理功能的业务调查与阶段方案见
 [RBAC 管理功能方案](docs/rbac-management-plan.md)。该方案属于本插件，相关宿主机制
-需求向 overlay 独立提案。既有管理 API、页面和数据库策略的独立正式能力见 `d099594`
-对应成功 CI `40950658945` 及已下载产物；本轮输入与筛选/导航增量尚未发布，根仓完整组合
+需求向 overlay 独立提案。既有管理 API、页面和数据库策略的独立检查点见 `73fa96e`
+对应成功 CI `40999171025` 及已下载产物；之后改动必须重新取得独立发布证据，根仓完整组合
 验收仍待独立完成，不将既有独立发布写成当前组合通过。
 
 当前设计见 [应用组与 Kestra 权限实施设计](docs/application-groups.md)，HTTP 和修订语义见
@@ -53,9 +54,11 @@ are extracted from the immutable published image, independently of any overlay s
 检查。该变量只用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
 每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。
 
-当前编译输入为正式宿主 commit `e0e952ba77804e84724d23d415ec11bbcc8f3684`（CI `40964088091`），
-镜像 digest `1b2b11023c35adf44f3f0dd534d591eaeeb243acab76ddcb9fc98625486e269a`；
-arm64 executable SHA256 `9f563ad6d2498bf2923a0c9088c4f6152027bc89a2ab849cbfaa279fe740e450`。
+当前编译输入为正式宿主 commit `48946d63e4a806ac52b79d44e815240601a66a2b`（CI `41007119467`），
+镜像 digest `d0d770076f026dd6c94d1c46ee7b6bbaa0dc5d3858645245cd0d74766549bfbe`；
+arm64 executable SHA256 `2e91a34a3bd0751eff756bdd9ea38b85831d342600ba1c1ea62a102d7445721a`。
+该正式输入隔离授权初始化与关闭工厂的阻塞调用；公开SPI类型不变，插件仍须重新完成
+独立编译和全部本地/CI门，不直接读取宿主源码或其开发目录。
 构建以 `host-contract.properties` 和本仓独立提取的 `.integration/host-provenance.json` 为准。
 宿主发布与插件本地检查不表示最终生产 HTTP、UI 或 Compose 组合验收通过。
 
@@ -91,12 +94,15 @@ with packages:read; no personal token or cross-repository source deploy key is r
 空态、无匹配与加载文案和业务vue-i18n同语言；分页复用相同解析函数。没有复制
 宿主私有翻译。真实组件可见文案、主题和Esc栈行为仍必须通过生产浏览器矩阵验证。
 
-本轮候选抽屉消费同一公开组件包的 `KsDrawer` 默认标题栏、最大化/关闭 SVG、body
+抽屉消费同一公开组件包的 `KsDrawer` 默认标题栏、最大化/关闭 SVG、body
 内边距和 footer slot；字段使用 `KsForm/KsFormItem` 的 `ks-horizontal` 布局。保存时隐藏
 原生关闭按钮，关闭入口仍执行保存/草稿检查，并禁止编辑、取消与重复提交。原生最大化
 仅切换呈现，保存期间仍可切换，不改变字段、不提交也不导航；不替换全局按钮、不派生
 或转接抽屉 setup。重新打开通过组件生命周期复位最大化。卡片计数在插件自有 wrapper 使用 `--ks-spacing-1` 显式分隔数量与
 名称，不覆盖全局按钮样式。组件测试不证明正式页面主题、窄屏或贴底几何验收通过。
+保存按钮通过公开 `icon` 属性取得原生图标 wrapper 与文案间距；卡片标题、显示名和
+内置标记在插件自有纵向 wrapper 排列，不改原生按钮的全局 slot 样式。这两项后续
+修正必须包含在新提交的独立 CI 与部署仓实际呈现检查中，旧172项报告不能替代新源码检查。
 
 ## 数据库管理模式
 
