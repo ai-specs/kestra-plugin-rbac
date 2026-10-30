@@ -91,8 +91,22 @@ function discardGuard(action, allowQueryRefresh = false) {
   if (inlineDirty.value) {pendingNavigation = action; discardInline.value = true; return}
   inline.value = null; action()
 }
+let navigationAttempt = 0
+async function navigateHost(target, options) {
+  const attempt = ++navigationAttempt, current = generation
+  const origin = contextFullPath(props.context), tenant = props.context.tenant
+  try {
+    await props.context.navigate(target, options)
+    return true
+  } catch (problem) {
+    // A late rejection belongs to its original view, never to a newer route or tenant.
+    if (!disposed && attempt === navigationAttempt && current === generation &&
+        origin === contextFullPath(props.context) && tenant === props.context.tenant) failure(problem)
+    return false
+  }
+}
 function navigate(target, query = {}, replace = false) {
-  discardGuard(() => {void props.context.navigate(router.resolve({path: '/' + target, query}).fullPath.slice(1), {replace})})
+  discardGuard(() => {void navigateHost(router.resolve({path: '/' + target, query}).fullPath.slice(1), {replace})})
 }
 function beforeTabLeave(target) {
   const current = groupId.value ? tab.value : isUsers.value ? 'users' : 'application-groups'
@@ -189,7 +203,11 @@ async function readView(value = contextFullPath(props.context), preserveOneTime 
     group.value = g; groups.value = gs; scopes.value = ss; applications.value = apps; subjects.value = subs; users.value = us; permissions.value = ps; application.value = app; selectedScope.value = scope; loaded.value = true
     if (!selection.value && (scope || app)) {
       const key = scope ? encodeURIComponent(scope.key) : encodeKey(app.clientId)
-      void props.context.navigate(groupBase.value + '/' + tab.value + '/' + key, {replace: true})
+      // Authorized data is committed; release only the read lock before the host guard.
+      busy.value = false; queryRefreshing.value = false
+      await nextTick()
+      if (current !== generation || disposed) return
+      await navigateHost(groupBase.value + '/' + tab.value + '/' + key, {replace: true})
     }
   } catch (problem) {
     if (current === generation && !disposed && problem.name !== 'AbortError') {
@@ -201,7 +219,7 @@ async function readView(value = contextFullPath(props.context), preserveOneTime 
 }
 function clearInvalidQuery() {
   const target = sourcePath.value.split('?')[0]
-  void props.context.navigate(target, {replace: true})
+  discardGuard(() => {void navigateHost(target, {replace: true})})
 }
 async function mutate(action, afterSuccess, deletedTrigger) {
   if (busy.value || conflicted.value || denied.value || reauthenticate.value) return

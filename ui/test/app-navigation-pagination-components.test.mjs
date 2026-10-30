@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {readFileSync} from 'node:fs'
+import {readFileSync,readdirSync} from 'node:fs'
 import {fileURLToPath} from 'node:url'
 import {registerHooks} from 'node:module'
 import {Window} from 'happy-dom'
@@ -38,7 +38,7 @@ const DS=await import('@kestra-io/design-system')
 const {default:ApplicationGroupCards}=await import('../src/ApplicationGroupCards.vue')
 const {default:AccessList}=await import('../src/AccessList.vue')
 const {nativeChips,matchesChips,readListQuery}=await import('../src/access-control-model.js')
-const messages=Object.assign({},...['en','fr','de'].map(locale=>JSON.parse(readFileSync(new URL('../src/translations/'+locale+'.json',import.meta.url),'utf8'))))
+const messages=Object.assign({},...readdirSync(new URL('../src/translations/',import.meta.url)).filter(name=>name.endsWith('.json')).map(name=>JSON.parse(readFileSync(new URL('../src/translations/'+name,import.meta.url),'utf8'))))
 const tick=async()=>{await Vue.nextTick();await new Promise(resolve=>setTimeout(resolve,20));await Vue.nextTick()}
 const click=node=>{assert(node,'native control missing');assert(!node.disabled,'native control disabled');node.click()}
 const shown=node=>{for(let current=node;current;current=current.parentElement)if(current.style.display==='none'||current.getAttribute('aria-hidden')==='true')return false;return true}
@@ -49,7 +49,7 @@ const response=(body,status=200)=>({ok:status<400,status,json:async()=>structure
 const wait=async(predicate,message)=>{for(let i=0;i<80;i++){if(predicate())return;await tick()}assert(predicate(),message)}
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve}}
 
-async function mountScenario(path,kind,{scopeKeys=['a','b'],rejectCanonical=false}={}){
+async function mountScenario(path,kind,{scopeKeys=['a','b'],rejectCanonical=false,navigateHook,locale='en',expectInvalidQuery=false}={}){
  const router=createRouter({history:createMemoryHistory(),routes:[{path:'/:pathMatch(.*)*',component:{render:()=>null}}]})
  const hooks=createNavigationHooks(),requests=[],navigations=[],state=Vue.shallowReactive({context:null})
  const hostRouter=createRouter({history:createMemoryHistory(),routes:[{path:'/:pathMatch(.*)*',component:{render:()=>null}}]})
@@ -61,7 +61,7 @@ async function mountScenario(path,kind,{scopeKeys=['a','b'],rejectCanonical=fals
  let deleteWait=null,readWait=null
  const permissions=Array.from({length:61},(_,i)=>({key:'permission-'+String(i).padStart(3,'0'),name:'Permission',scopeKeys:kind==='permissions'?['a']:[],details:'',implementationKind:'external-declaration',revision:1,parentRevision:1}))
  const context={apiBase:'/api/v1/main',path:path.split('?')[0],fullPath:path,tenant:'main',signal:new AbortController().signal,
- navigate:async(target,options)=>{if(rejectCanonical&&requests.some(r=>r.method==='DELETE'))throw Object.assign(new Error('canonical navigation unavailable'),{status:503});const failure=await hostRouter[options?.replace?'replace':'push']('/'+target);navigations.push({target,allowed:!failure,replace:options?.replace});if(failure)throw Object.assign(new Error('host navigation rejected'),{status:409})},
+ navigate:async(target,options)=>{if(navigateHook)await navigateHook(target,options);if(rejectCanonical&&requests.some(r=>r.method==='DELETE'))throw Object.assign(new Error('canonical navigation unavailable'),{status:503});const failure=await hostRouter[options?.replace?'replace':'push']('/'+target);navigations.push({target,allowed:!failure,replace:options?.replace});if(failure)throw Object.assign(new Error('host navigation rejected'),{status:409})},
  request:async(url,options={})=>{requests.push({url,method:options.method??'GET'});
   if(url.includes('/capabilities'))return response({allowed:true,identityRead:true,identityManagement:true,userDirectory:true,subject:'manager',issuer:'issuer'})
   if(options.method==='DELETE'){if(deleteWait)await deleteWait;scopes.splice(scopes.findIndex(x=>x.key===url.split('/').at(-1)),1);return response(null,200)}
@@ -75,8 +75,8 @@ async function mountScenario(path,kind,{scopeKeys=['a','b'],rejectCanonical=fals
  const container=document.createElement('div');document.body.append(container)
  const app=Vue.createApp({render:()=>Vue.h(ElConfigProvider,{namespace:'kel'},()=>Vue.h(App,{context:state.context}))})
  for(const [name,component]of Object.entries(DS))if(name.startsWith('Ks')&&component&&typeof component==='object')app.component(name,component)
- const i18n=createI18n({legacy:false,locale:'en',messages});await DS.registerDesignSystemI18n(i18n);app.use(router);app.use(i18n);app.provide('rbac-portals',document.body);app.provide('rbac-navigation-hooks',hooks);app.mount(container)
- await wait(()=>container.querySelector('main')?.getAttribute('aria-busy')==='false'&&container.querySelector(kind==='scope'?'[data-test="scope-detail"]':kind==='groups'?'.management-toolbar':'[data-test="list-total"]'),'scenario did not load')
+ const i18n=createI18n({legacy:false,locale,messages});await DS.registerDesignSystemI18n(i18n);app.use(router);app.use(i18n);app.provide('rbac-portals',document.body);app.provide('rbac-navigation-hooks',hooks);app.mount(container)
+ await wait(()=>container.querySelector('main')?.getAttribute('aria-busy')==='false'&&((expectInvalidQuery&&container.querySelector('main > [data-test="request-error"]'))||container.querySelector(kind==='scope'?'[data-test="scope-detail"]':kind==='groups'?'.management-toolbar':'[data-test="list-total"]')),'scenario did not load')
  return {container,router,hostRouter,hooks,state,requests,navigations,setDeleteWait:p=>deleteWait=p,setReadWait:p=>readWait=p,close(){app.unmount();container.remove()}}
 }
 test('App successful scope deletion acknowledges canonical host navigation after write while pending write still rejects external leave',async()=>{
@@ -166,4 +166,73 @@ for(const level of ['top','group'])test('App '+level+' navigation uses published
   const updated=v.container.querySelector('main > .kel-tabs');assert(updated.classList.contains('kel-tabs--box'));assert.equal(updated.querySelector('[aria-selected="true"]')?.id.endsWith('-'+target),true)
  }finally{v.close()}
 })
+
+for(const locale of Object.keys(messages))test('App public navigation rejection stays visible in '+locale,async()=>{
+ const v=await mountScenario('application-groups','groups',{locale,navigateHook:async()=>{throw new Error('Extension navigation rejected')}})
+ try{
+  click([...v.container.querySelectorAll('main > .kel-tabs [role="tab"]')].find(n=>n.id.endsWith('-users')));await tick()
+  assert.equal(v.container.querySelector('[data-test="request-error"] p')?.textContent,messages[locale].error)
+  assert.equal(v.state.context.fullPath,'application-groups');assert.equal(v.router.currentRoute.value.path,'/application-groups')
+  assert.equal(v.requests.filter(r=>r.method!=='GET').length,0)
+ }finally{v.close()}
+})
+test('App automatic canonical navigation releases read lock and observes public rejection',async()=>{
+ const v=await mountScenario('application-groups/g/applications','permissions',{navigateHook:async()=>{throw new Error('Extension navigation rejected')}})
+ try{await tick();assert.equal(v.container.querySelector('[data-test="request-error"] p')?.textContent,messages.en.error);assert.equal(v.state.context.fullPath,'application-groups/g/applications');assert.equal(v.router.currentRoute.value.path,'/application-groups/g/applications')}
+ finally{v.close()}
+})
+test('App automatic canonical navigation passes actual host read guard',async()=>{
+ const v=await mountScenario('application-groups/g/applications','permissions')
+ try{await wait(()=>v.state.context.fullPath==='application-groups/g/applications/~Y2xpZW50','canonical route not accepted');assert.equal(v.container.querySelector('main > [data-test="request-error"]')?.textContent,undefined)}finally{v.close()}
+})
+test('App clear invalid query observes rejection and retains invalid URL without writes',async()=>{
+ const path='users?page=invalid',v=await mountScenario(path,'users',{expectInvalidQuery:true,navigateHook:async()=>{throw new Error('Extension navigation rejected')}})
+ try{click(v.container.querySelector('[data-test="request-error"] button'));await tick();assert.equal(v.container.querySelector('[data-test="request-error"] p')?.textContent,messages.en.error);assert.equal(v.state.context.fullPath,path);assert.equal(v.router.currentRoute.value.fullPath,'/'+path);assert.equal(v.requests.length,0)}finally{v.close()}
+})
+test('App overlapping navigation late rejection cannot overwrite accepted host destination',async()=>{
+ let rejectFirst;const first=new Promise((_,reject)=>{rejectFirst=reject});let calls=0
+ const v=await mountScenario('application-groups/g/scopes/a','scope',{navigateHook:()=>++calls===1?first:Promise.resolve()})
+ try{
+  const tabs=()=>[...v.container.querySelectorAll('main > .kel-tabs [role="tab"]')]
+  click(tabs().find(n=>n.id.endsWith('-applications')));await tick()
+  click(tabs().find(n=>n.id.endsWith('-overview')))
+  await wait(()=>v.state.context.fullPath==='application-groups/g'&&v.container.querySelector('main').getAttribute('aria-busy')==='false','new navigation incomplete')
+  rejectFirst(new Error('Extension navigation rejected'));await tick()
+  assert.equal(v.container.querySelector('main > [data-test="request-error"]')?.textContent,undefined);assert.equal(v.router.currentRoute.value.path,'/application-groups/g');assert.equal(v.requests.filter(r=>r.method!=='GET').length,0)
+ }finally{rejectFirst(new Error('Extension navigation rejected'));v.close()}
+})
+
+
+test('App overlapping rejected attempts keep latest failure and ignore stale authorization rejection',async()=>{
+ let rejectFirst;const first=new Promise((_,reject)=>{rejectFirst=reject});let calls=0
+ const v=await mountScenario('application-groups/g/scopes/a','scope',{navigateHook:()=>++calls===1?first:Promise.reject(new Error('Extension navigation rejected'))})
+ try{
+  const tabs=()=>[...v.container.querySelectorAll('main > .kel-tabs [role="tab"]')]
+  click(tabs().find(n=>n.id.endsWith('-applications')));await tick()
+  click(tabs().find(n=>n.id.endsWith('-overview')));await tick()
+  assert.equal(v.container.querySelector('main > [data-test="request-error"] p')?.textContent,messages.en.error)
+  rejectFirst(Object.assign(new Error('Extension navigation rejected'),{status:403}));await tick()
+  assert.equal(v.container.querySelector('main > [data-test="request-error"] p')?.textContent,messages.en.error)
+  assert.equal(Boolean(v.container.querySelector('[data-test="sign-in-again"]')),false)
+  assert.equal(v.state.context.fullPath,'application-groups/g/scopes/a')
+ }finally{rejectFirst(new Error('Extension navigation rejected'));v.close()}
+})
+test('App current public authorization rejection clears sensitive view and preserves host URL',async()=>{
+ const v=await mountScenario('application-groups/g/scopes/a','scope',{navigateHook:()=>{throw Object.assign(new Error('Extension navigation rejected'),{status:403})}})
+ try{
+  click([...v.container.querySelectorAll('main > .kel-tabs [role="tab"]')].find(n=>n.id.endsWith('-applications')));await tick()
+  assert.equal(v.container.querySelector('main > [data-test="request-error"] p')?.textContent,messages.en.denied)
+  assert.equal(Boolean(v.container.querySelector('[data-test="sign-in-again"]')),true)
+  assert.equal(Boolean(v.container.querySelector('[data-test="scope-detail"]')),false)
+  assert.equal(v.state.context.fullPath,'application-groups/g/scopes/a');assert.equal(v.requests.filter(r=>r.method!=='GET').length,0)
+ }finally{v.close()}
+})
+test('App observes pending public navigation rejection after unmount',async()=>{
+ let reject;const pending=new Promise((_,r)=>{reject=r})
+ const v=await mountScenario('application-groups','groups',{navigateHook:()=>pending})
+ click([...v.container.querySelectorAll('main > .kel-tabs [role="tab"]')].find(n=>n.id.endsWith('-users')));await tick()
+ v.close();reject(new Error('Extension navigation rejected'));await tick()
+ assert.equal(v.state.context.fullPath,'application-groups');assert.equal(v.requests.filter(r=>r.method!=='GET').length,0)
+})
+
 test.after(()=>{hooks.deregister();window.happyDOM.abort()})
