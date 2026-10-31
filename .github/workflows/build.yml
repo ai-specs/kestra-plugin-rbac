@@ -38,6 +38,7 @@ jobs:
         with:
           node-version: '24'
       - name: Extract published host compilation contract
+        id: host_contract
         run: rbac/scripts/prepare-host.sh
       - name: Build, test, and verify thin jar
         working-directory: rbac
@@ -74,6 +75,15 @@ jobs:
           cp -R build/test-results/lifecyclePostgresTest .evidence/lifecycle/results
           if [ "$status" -ne 0 ]; then exit "$status"; fi
           python3 scripts/check-lifecycle-tests.py .evidence/lifecycle/results > .evidence/lifecycle/summary.json
+      - name: Verify plugin UI in real Chromium
+        if: always() && !cancelled() && steps.host_contract.outcome == 'success'
+        working-directory: rbac/ui
+        run: |
+          node browser/initialize-report.mjs
+          npm ci --ignore-scripts
+          npx --no-install playwright install --with-deps chromium
+          npm run test:browser
+          node browser/check-report.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

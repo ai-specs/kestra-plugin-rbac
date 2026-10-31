@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/check-translations.mjs && vite build && node scripts/generate-ui-manifest.mjs",
-    "test:logic": "node scripts/test-logic.mjs"
+    "test:logic": "node scripts/test-logic.mjs",
+    "test:browser": "node browser/run.mjs"
   },
   "dependencies": {
     "@kestra-io/design-system": "0.5.0",
@@ -16,6 +17,7 @@
     "vue-router": "5.0.6"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "@vitejs/plugin-vue": "6.0.7",
     "happy-dom": "21.0.4",
     "postcss": "8",

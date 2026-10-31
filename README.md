@@ -95,7 +95,8 @@ with packages:read; no personal token or cross-repository source deploy key is r
 原生Element Plus文案通过公开locale模块消费正式context.locale，使用SDK相同的
 13语言、pt-BR/zh-CN别名与en回退。根ElConfigProvider随宿主locale更新，使Select
 空态、无匹配与加载文案和业务vue-i18n同语言；分页复用相同解析函数。没有复制
-宿主私有翻译。真实组件可见文案、主题和Esc栈行为仍必须通过生产浏览器矩阵验证。
+宿主私有翻译。真实组件可见文案、主题和 Esc 栈行为由本仓独立 Chromium 矩阵验证；
+root 验证生产装载、登录、持久化、授权与跨仓流程。
 
 抽屉消费同一公开组件包的 `KsDrawer` 默认标题栏、最大化/关闭 SVG、body
 内边距和 footer slot；字段使用 `KsForm/KsFormItem` 的 `ks-horizontal` 布局。保存时隐藏
@@ -105,10 +106,25 @@ with packages:read; no personal token or cross-repository source deploy key is r
 才卸载并恢复焦点，避免迟到的原生 focus-trap 释放把焦点送回 document BODY。
 重新打开使用独立组件周期复位最大化；旧周期的 closed 回调不能关闭新周期。
 卡片计数在插件自有 wrapper 使用 `--ks-spacing-1` 显式分隔数量与
-名称，不覆盖全局按钮样式。组件测试不证明正式页面主题、窄屏或贴底几何验收通过。
+名称，不覆盖全局按钮样式。Happy DOM 组件测试不证明主题、窄屏或贴底几何通过，相关呈现由本仓独立 Chromium 门验证。
 保存按钮通过公开 `icon` 属性取得原生图标 wrapper 与文案间距；卡片标题、显示名和
 内置标记在插件自有纵向 wrapper 排列，不改原生按钮的全局 slot 样式。这两项后续
-修正必须包含在新提交的独立 CI 与部署仓实际呈现检查中，旧172项报告不能替代新源码检查。
+修正必须包含在新提交的独立 Chromium CI 中，旧172项报告不能替代新源码检查。
+
+## 插件独立真实浏览器门
+
+本仓独立承接管理页面视觉和交互矩阵：真实 Chromium 装载本仓生产 UI bundle，
+消费固定发布镜像的公开 SDK 与 lock 固定原生组件。四主题 × en/zh_CN ×
+1280/768/390 × 30 具名行为共 720 项；其他 11 语言继续执行公开翻译完整性检查。
+运行 `cd ui && npm run test:browser`，随后执行 `node browser/check-report.mjs`。
+先执行上方独立构建并安装固定 Chromium；完整命令及报告 schema 见
+[浏览器门契约](ui/browser/README.md)。
+
+正式 `kestra-rbac-authorizer` artifact 纳入 `.evidence/ui-browser/report.json`、
+`manifest.json`、输入 provenance、jar/bundle 一致报告、HTML、失败 trace 和截图。
+未执行项明确为 notRun，不计通过。此门的内存管理 transport 仅用于页面呈现和交互；
+真实生产 CRUD、权限、拒绝副作用与认证流程仍由部署仓验证，不运行主题与几何矩阵。
+本地报告不表示 CI 或发布通过，Java 与 PostgreSQL 发布门保持独立执行。
 
 ## 数据库管理模式
 
@@ -304,7 +320,8 @@ UI 与 MCP 登录流程取得可信身份。测试密码仅为隔离环境常量
 交集、允许写入与执行/输出、零授权退出换号、未知 scope 混合、issuer/audience/tenant
 错误、CSRF、撤权、最后管理员保护、目录恢复、旧端点 410、组件缺失及关闭功能回归。
 拒绝必须比较持久化、存储、队列与延迟副作用；菜单可见、HTTP 200、mock 身份或单元
-测试绿灯都不能代替真实操作。UI 必须覆盖发布宿主支持的语言、主题与窄屏。
+测试绿灯都不能代替真实操作。插件独立 Chromium 门覆盖语言、主题与窄屏，部署仓消费匹配正式 jar 的完整成功报告，
+不重复主题及几何矩阵。
 
 Build/test results, artifact hash and image acceptance are recorded in [validation evidence](docs/validation.md).
 
