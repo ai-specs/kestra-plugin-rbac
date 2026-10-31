@@ -45,6 +45,45 @@ async function assertFocus(page,d){
   for(let i=0;i<12;i++)await page.keyboard.press('Shift+Tab')
   expect(await d.evaluate(node=>node.contains(node.getRootNode().activeElement))).toBe(true)
 }
+// Keep one exact popup across close/reopen. A broad :visible locator can change
+// identity, and visible alone does not mean the native entering transition ended.
+async function filterPopupState(page,id){
+  return root(page).evaluate((container,id)=>{
+    const shadow=container.shadowRoot,trigger=shadow.querySelector('.customize-button'),node=shadow.getElementById(id)
+    const transitions=node?[...node.classList].filter(name=>/-(?:enter|leave)-(?:from|active|to)$/.test(name)):[]
+    const animations=node?node.getAnimations({subtree:true}).filter(animation=>animation.pending || animation.playState==='running'):[]
+    const css=node?getComputedStyle(node):null
+    return {id,triggerDescription:trigger?.getAttribute('aria-describedby'),scrollY:window.scrollY,
+      exists:Boolean(node),ariaHidden:node?.getAttribute('aria-hidden')??null,classes:node?.className??null,
+      transitions,runningAnimations:animations.length,
+      visible:Boolean(node&&node.getClientRects().length&&css.display!=='none'&&css.visibility!=='hidden'),
+      owned:Boolean(node&&node.getRootNode()===shadow&&node.closest('.extension-portals')),
+      referenceHidden:node?.getAttribute('data-popper-reference-hidden')??null,
+      rect:node?node.getBoundingClientRect().toJSON():null}
+  },id)
+}
+async function stableFilterPopup(page,id){
+  await expect.poll(async()=>{
+    const state=await filterPopupState(page,id)
+    return state.transitions.length===0&&state.runningAnimations===0
+  },{message:'Exact filter popup must finish its native enter/leave before the next action'}).toBe(true)
+  return filterPopupState(page,id)
+}
+async function ownedFilterPopup(page,trigger,expectedId){
+  await expect(trigger).toHaveAttribute('aria-describedby',/^\S+$/)
+  const id=await trigger.getAttribute('aria-describedby')
+  if(expectedId!==undefined)expect(id,'Reopening keeps the same native popup identity').toBe(expectedId)
+  const popup=root(page).locator(`[id=${JSON.stringify(id)}]`)
+  await expect(popup).toHaveCount(1)
+  await expect(popup).toHaveClass(/\bkel-popover\b/)
+  await expect(popup.locator('.filters-panel')).toHaveCount(1)
+  const state=await stableFilterPopup(page,id)
+  expect(state.owned,'Filter popup stays in the extension portal').toBe(true)
+  expect(state.visible).toBe(true)
+  expect(state.ariaHidden).toBe('false')
+  expect(state.triggerDescription).toBe(id)
+  return {id,popup}
+}
 async function geometry(locator,width){const box=await locator.boundingBox();expect(box).toBeTruthy();expect(box.x).toBeGreaterThanOrEqual(-1);expect(box.x+box.width).toBeLessThanOrEqual(width+1);return box}
 for(const row of cases)test(row.id,async({page,context},info)=>{
   const unexpected=[]
@@ -127,17 +166,35 @@ for(const row of cases)test(row.id,async({page,context},info)=>{
           await sheet.locator('.sheet-apply').click();await expect(sheet).toBeHidden();await trigger.click();await expect(sheet).toBeVisible();await root(page).locator('.mobile-scrim').click({position:{x:2,y:2}});await expect(sheet).toBeHidden();await trigger.click();await expect(sheet).toBeVisible()
         }
       }else{
-      const trigger=root(page).locator('.customize-button');await trigger.click()
-      const popup=root(page).locator('.customize-panel:visible, .filter-panel:visible, .kel-popover:visible').last()
-      await expect(popup).toBeVisible();const box=await geometry(popup,row.width),anchor=await trigger.boundingBox()
-      expect(Math.abs(box.y-(anchor.y+anchor.height))).toBeLessThan(40)
-      await expect(popup.locator('.advanced-add')).toBeVisible()
-      if(behavior==='filter-popup-buttons-reopen-scroll'){
-        await popup.locator('.advanced-add').click();const builder=root(page).locator('.adv-builder');await expect(builder).toBeVisible();await geometry(builder,row.width)
-        await page.keyboard.press('Escape');await expect(builder).toBeHidden()
-        await trigger.click();await expect(popup).toBeVisible();await page.mouse.wheel(0,500);await geometry(popup,row.width)
-        await trigger.click();await expect(popup).toBeHidden();await trigger.click();await expect(popup).toBeVisible()
-      }
+        const trigger=root(page).locator('.customize-button');await expect(trigger).toHaveCount(1);await trigger.click()
+        const {id,popup}=await ownedFilterPopup(page,trigger)
+        const observations=[]
+        const observe=async step=>observations.push({step,...await filterPopupState(page,id)})
+        try{
+          await observe('initial-open-stable')
+          const box=await geometry(popup,row.width),anchor=await trigger.boundingBox()
+          expect(Math.abs(box.y-(anchor.y+anchor.height))).toBeLessThan(40)
+          await expect(popup.locator('.advanced-add')).toBeVisible()
+          if(behavior==='filter-popup-buttons-reopen-scroll'){
+            await popup.locator('.advanced-add').click();const builder=root(page).locator('.adv-builder');await expect(builder).toBeVisible();await geometry(builder,row.width)
+            await stableFilterPopup(page,id);await expect(popup).toBeHidden()
+            await page.keyboard.press('Escape');await expect(builder).toBeHidden()
+            await trigger.click();await ownedFilterPopup(page,trigger,id);await observe('reopened-stable-before-scroll')
+            const beforeScroll=await page.evaluate(()=>scrollY)
+            await page.mouse.wheel(0,500)
+            await expect.poll(()=>page.evaluate(()=>scrollY),{message:'Real wheel must scroll the fixture document'}).toBeGreaterThan(beforeScroll)
+            await stableFilterPopup(page,id);await observe('same-instance-after-scroll');await geometry(popup,row.width)
+            await trigger.click();await stableFilterPopup(page,id);await observe('same-instance-after-trigger-close')
+            // 0384: the old published SDK closes on mouseup then native click
+            // reopens this same id. Keep this assertion red until a formal fix.
+            await expect(popup).toBeHidden()
+            await expect(trigger).not.toHaveAttribute('aria-describedby',id)
+            await trigger.click();await ownedFilterPopup(page,trigger,id);await observe('reopened-after-confirmed-close')
+          }
+        }finally{
+          await observe('final-exact-instance')
+          await info.attach('filter-owned-instance-states',{body:JSON.stringify(observations,null,2),contentType:'application/json'})
+        }
       }
     }else if(behavior.startsWith('state-')){
       const state=behavior.slice(6).replace('-retry','');await boot(page,row,{state})

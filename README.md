@@ -54,14 +54,17 @@ are extracted from the immutable published image, independently of any overlay s
 检查。该变量只用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
 每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。
 
-当前编译输入为正式宿主 commit `ff707ddd05ed4a888a8f459d33b9a95f511a59bf`（CI `41129076310`），
-镜像 digest `15c7cace895531459fa1ef03446ec3945cd9ec1440c36a165c62b52e21472bac`；
-arm64 executable SHA256 `7142f7d86b29a611bd08a471616dc28d57f47c43b81081cef7cdb2462d218f22`。
-该正式输入隔离授权初始化与关闭工厂的阻塞调用；公开SPI类型不变，插件仍须重新完成
-独立编译和全部本地/CI门，不直接读取宿主源码或其开发目录。
-该版本还在 typed REST 入口显式绑定本次真实 HTTP 请求的最小调用来源，覆盖缺失或陈旧
-ambient 来源，不改变公开 SPI、授权业务或 SDK。宿主新增五项精确具名来源回归及全部既有
-发布门已通过；此前部署并发早拒绝是否同源仍须根仓真实组合复验，不把机制反例作为根因定论。
+当前编译输入为正式宿主 commit `253e5e9e0dc270ae638d9dd1d9fd04948da5477a`（CI `41224044004`，
+五个 job 成功并完成正式发布），镜像 digest
+`9f36f43a42151e4dde11ed31d630c6a0dccab50f57dbf9426f30b0af53d907e4`；
+双架构 executable SHA256 `f189928270dc700cf095164dd6c1c736c0654a98dade11526faa90e27ddd1993`。
+该版本正式公开 SDK 修复筛选 popup reference 归属；插件保留精确实例、原生动画结束、
+真实滚动、关闭解除关联及重开的 Chromium 断言，不手工修改提取的 SDK。
+来源为该正式 CI 发布的 registry 镜像，由本仓 `scripts/prepare-host.sh` 独立提取，
+不读取相邻源码、开发目录或未发布产物。宿主报告的 source/upstream/provenance
+completeness=false 限制仍保留，不据此声称完整来源证明。
+插件仍须对应本轮四文件修改完成独立本地门、最终提交 CI 和发布；此前插件 CI
+`41211531677` 的 713/720 结果为失败记录，不能作为正式可消费产物。
 构建以 `host-contract.properties` 和本仓独立提取的 `.integration/host-provenance.json` 为准。
 宿主发布与插件本地检查不表示最终生产 HTTP、UI 或 Compose 组合验收通过。
 

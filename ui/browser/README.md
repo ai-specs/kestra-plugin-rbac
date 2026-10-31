@@ -69,3 +69,26 @@ root 应消费匹配正式源码提交的成功发布 artifact，核对 manifest
 720 行 passed、summary 精确计数、errors=[]、七个输入与 finalInputs 全等，
 并自行从正式 jar 重新计算 bundleSha256。HTML、SDK 自测或 Happy DOM 不替代此报告。
 本地报告不证明发布、宿主装载或生产授权通过。
+
+## 0384：精确 popup 实例回归
+
+旧正式 SDK 存在已接收的 popup reference 归属缺陷：完成原生进入后，
+再次点击桌面筛选 trigger 会在 SDK mouseup outside 关闭后被原生 click 重开。
+旧输入下 `1280/filter-popup-buttons-reopen-scroll` 必须保持失败，不得标为 skip、
+使用 expected-failure、换关闭按钮、放宽断言或靠过渡尚未完成取得绿灯。
+该失败报告不能作为发布成功或 root 的 720 成功输入。
+
+桌面筛选通过 trigger 的 `aria-describedby` 定位唯一 popup id，检查它处于
+插件自己的 portal 且包含原生 `.filters-panel`；同一 id 贯穿关闭和重开，
+不再用泛 `.kel-popover:visible` 的最后一个匹配项代表它。
+下一步动作前，轮询该实例原生 enter/leave class 消失、原生动画结束，
+不使用固定 sleep、不提高 timeout。滚轮后验证真实文档 scrollY 改变，
+关闭后仍断言此精确实例隐藏和 trigger 解除关联，然后才允许再次打开。
+每项附加 `filter-owned-instance-states`，包含 id、关联、过渡、动画、
+滚动及几何快照，可区分误选、关闭后重开和真正关闭。
+
+旧正式 SDK 的 16/16 稳定红例及失败 CI 证据保留在本仓
+`.work/layer-plugin-publish-20261031-223634-dioctspf/`，不覆盖或改写为成功。
+当前消费已完成发布的宿主 CI `41224044004` 对应固定镜像（见本仓
+`host-contract.properties`），通过 `prepare-host.sh` 提取正式 SDK 后执行完整 720 项。
+本轮本地证据使用 `.work/plugin-final-ui-20261101/`；本地通过仍不表示插件 CI 或发布通过。
