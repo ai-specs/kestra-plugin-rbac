@@ -62,7 +62,9 @@ export function normalizeDeepLinkQuery(query, kind = 'permissions') {
   }
   if (scopes.length) {
     if (scopes.some(key => !/^[a-z][a-z0-9-]{0,63}$/.test(key)) || new Set(scopes).size !== scopes.length) throw invalidQuery()
-    native['filters[scopeKeys][IN]'] = scopes.join(',')
+    // Single scopes use EQUALS so the published KsFilter restores the chip into
+    // the bar; its IN serialization does not round-trip (vendor 0.5.0 limitation).
+    native[scopes.length === 1 ? 'filters[scopeKeys][EQUALS]' : 'filters[scopeKeys][IN]'] = scopes.join(',')
   }
   if (filterSubject.length) {
     if (kind === 'permissions' || !filterSubject[0] || [...filterSubject[0]].length > 256) throw invalidQuery()
