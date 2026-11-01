@@ -453,13 +453,9 @@ onBeforeUnmount(() => {disposed = true; queryNavigationEpoch++; pendingQueryTarg
             <KsButton v-if="identityManage" @click="openInline(selectedScope, 'scope')">{{ t('edit') }}</KsButton>
             <h2>{{ t('boundApplications') }}</h2>
             <div v-if="selectedApplications.length" class="rbac-bound-table">
-              <div class="rbac-bound-head"><span>{{ t('clients') }}</span><span>{{ t('permissionKey') }}</span></div>
+              <div class="rbac-bound-head"><span>{{ t('clients') }}</span></div>
               <div v-for="item in selectedApplications" :key="item.clientId" class="rbac-bound-row">
-                <KsButton link @click="toApplication(item.clientId)"><code>{{ item.clientId }}</code></KsButton>
-                <div class="rbac-tags">
-                  <KsButton v-for="permission in item.permissions" :key="permission.key" link :data-permission-key="permission.key" @click="toApplication(item.clientId, {permissionKey:permission.key})"><code>{{ permission.key }}</code></KsButton>
-                  <span v-if="!item.permissions?.length">—</span>
-                </div>
+                <KsButton link @click="toApplication(item.clientId, {scopeKeys: [selectedScope.key]})"><code>{{ item.clientId }}</code></KsButton>
               </div>
             </div>
             <p v-else>—</p>
