@@ -8,7 +8,7 @@ import KsTableColumn from '@kestra-io/design-system/components/Data/KsTable/KsTa
 import KsButton from '@kestra-io/design-system/components/Basic/KsButton/KsButton'
 import ManagementTable from './ManagementTable.vue'
 import {ownAndFilter} from './and-filter-owner.js'
-import {readListQuery, writeListQuery, clearListQuery, canonicalListPage, nativeChips, matchesChips, ordered, paginate} from './access-control-model.js'
+import {readListQuery, writeListQuery, clearListQuery, canonicalListPage, nativeChips, matchesChips, normalizeDeepLinkQuery, ordered, paginate} from './access-control-model.js'
 const props = defineProps({items: {type: Array, required: true}, kind: {type: String, required: true}, columns: {type: Array, required: true}, scopes: {type: Array, default: () => []}, busy: Boolean, canManage: Boolean})
 const emit = defineEmits(['refresh', 'create'])
 const {t, locale} = useI18n()
@@ -25,6 +25,17 @@ const query = computed(() => {
     return {state, chips: [...state.chips, ...nativeChips(decodeSearchParams(route.query), props.kind)], error: nativeError.value}
   } catch {return {state: {page: 1, size: 25, chips: []}, chips: [], error: true}}
 })
+// Deep-link vocabulary is normalized into the native bracket format so the
+// published KsFilter renders externally provided filters as its own chips.
+watch(() => route.query, next => {
+  try {
+    const native = normalizeDeepLinkQuery(next, props.kind)
+    if (!native) return
+    const canonical = {...next}
+    for (const key of ['permissionKey', 'filterSubject', 'scopeKeys']) delete canonical[key]
+    void router.replace({path: route.path, query: {...canonical, ...native}})
+  } catch {/* invalid deep links fail through the query computed's error path */}
+}, {immediate: true})
 const configuration = computed(() => {
   const keys = props.kind === 'permissions' ? ['key', 'name', 'scopeKeys'] : props.kind === 'subjects' ? ['subject', 'scopeKeys'] : ['subject']
   return {searchPlaceholder: t('search'), keys: keys.map(field => ({key: field, label: field === 'key' ? t('permissionKey') : field === 'name' ? t('permissionName') : field === 'subject' ? 'subject' : t('scopeKeys'), valueType: field === 'name' ? 'text' : 'select', comparators: [field === 'name' ? '*=' : '='], groupable: true, searchable: true, valueProvider: field === 'name' ? undefined : async () => [...new Set(field === 'scopeKeys' ? props.scopes.map(scope => scope.key) : props.items.map(item => item[field]))].map(value => ({value, label: value}))}))}
@@ -36,7 +47,6 @@ const rows = computed(() => {
   return paginate(filtered, query.value.state.page, query.value.state.size)
 })
 function update(patch) {void router.replace({path: route.path, query: writeListQuery({...query.value.state, ...patch}, route.query)})}
-function removeChip(index) {update({page: 1, chips: query.value.state.chips.filter((_, i) => i !== index)})}
 function clear() {owner?.reset(); nativeError.value = false; void router.replace({path: route.path, query: clearListQuery(route.query, props.kind)})}
 watch(() => [props.busy, query.value.error, rows.value.total, query.value.state.page, query.value.state.size], () => {
   if (props.busy || query.value.error) return
@@ -54,7 +64,6 @@ watch(() => route.query, (next, previous) => {
     <KsFilter v-if="!nativeError" :configuration="configuration" :default-scope="false" :default-time-range="false" :buttons="{savedFilters: {shown: false}, tableOptions: {shown: false}}" :table-options="{refresh: {shown: true}, columns: {shown: false}}" @search="search = $event" @refresh="emit('refresh')">
       <template #extra><KsButton v-if="canManage" :disabled="busy" :data-test="kind === 'permissions' ? 'permission-add' : kind === 'users' ? 'user-create' : 'subject-add'" @click="emit('create')">＋ {{ t('create') }}</KsButton></template>
     </KsFilter>
-    <div v-if="query.state.chips.length" class="rbac-tags"><span v-for="(chip, index) in query.state.chips" :key="index" class="rbac-tag" data-test="filter-chip"><span v-if="chip.field === 'scopeKeys'">scope ∈ {{ chip.values.join(' · ') }}</span><span v-else>{{ chip.field }} = {{ chip.value }}</span><KsButton :disabled="busy" :aria-label="t('close')" @click="removeChip(index)">×</KsButton></span><KsButton @click="clear">{{ t('clearFilters') }}</KsButton></div>
     <p v-if="query.error" role="alert" class="message error" data-test="request-error">{{ t(nativeError ? 'andFilterUnavailable' : 'invalidQuery') }} <KsButton @click="clear">{{ t('clearFilters') }}</KsButton></p>
     <div v-else class="table-wrap"><ManagementTable :data="rows.items" :total="rows.total" :current-page="rows.page" :page-size="rows.size" @update:current-page="update({page: $event})" @update:page-size="update({size: $event, page: 1})">
       <template #table><KsTable :data="rows.items" :row-key="kind === 'permissions' ? 'key' : 'subject'" :empty-text="t('noRows')">

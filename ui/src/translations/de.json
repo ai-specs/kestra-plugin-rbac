@@ -26,7 +26,7 @@
     "externalDeclaration": "Deklaration einer externen Anwendung; wird nicht von dieser Kestra-Instanz ausgeführt.",
     "involvedApplications": "Beteiligte Anwendungen",
     "boundApplications": "Zugeordnete Anwendungen",
-    "title": "Zugriffsverwaltung",
+    "title": "Zugriffskontrolle",
     "users": "Benutzer",
     "name": "Name",
     "applicationGroups": "Anwendungsgruppen",
@@ -109,6 +109,15 @@
     "supportedScopeKeys": "Unterstützte Scopes",
     "scopeKeys": "Scope-Zuweisungen",
     "andFilterOnly": "Alle Bedingungen müssen zutreffen (AND). Bedingungsgruppen und OR sind nicht verfügbar.",
-    "andFilterUnavailable": "Der Filter konnte nicht sicher zugeordnet werden. Filter löschen und erneut versuchen."
+    "andFilterUnavailable": "Der Filter konnte nicht sicher zugeordnet werden. Filter löschen und erneut versuchen.",
+    "add": "Hinzufügen",
+    "permission": "Berechtigung",
+    "user": "Benutzer",
+    "group": "Anwendungsgruppe",
+    "builtinTag": "Eingebaut",
+    "selectScope": "Scopes auswählen…",
+    "rotationConfirmTitle": "Client-Secret rotieren",
+    "rotationConfirmMessage": "Die Rotation erzeugt sofort ein neues Secret und macht das alte unbrauchbar: Der bisherige Wert gilt sofort nicht mehr; die Anwendung kann sich bis zur Aktualisierung ihrer Konfiguration nicht mehr anmelden oder Token tauschen. Bereits ausgestellte Benutzer-Token sind unberührt und unterliegen den üblichen Widerrufsprüfungen. Nach der Bestätigung wird das neue Secret nur einmal angezeigt.",
+    "rotationConfirmAction": "Rotieren"
   }
 }

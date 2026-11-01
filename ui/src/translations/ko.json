@@ -26,7 +26,7 @@
     "externalDeclaration": "외부 애플리케이션 선언이며 이 Kestra 인스턴스에서 실행되지 않습니다.",
     "involvedApplications": "관련 애플리케이션",
     "boundApplications": "연결된 애플리케이션",
-    "title": "접근 관리",
+    "title": "액세스 제어",
     "users": "사용자",
     "name": "이름",
     "applicationGroups": "애플리케이션 그룹",
@@ -109,6 +109,15 @@
     "supportedScopeKeys": "지원하는 범위",
     "scopeKeys": "scope 부여",
     "andFilterOnly": "모든 조건을 충족해야 합니다(AND). 조건 그룹과 OR는 사용할 수 없습니다.",
-    "andFilterUnavailable": "필터를 안전하게 연결할 수 없습니다. 필터를 지우고 다시 시도하세요."
+    "andFilterUnavailable": "필터를 안전하게 연결할 수 없습니다. 필터를 지우고 다시 시도하세요.",
+    "add": "추가",
+    "permission": "권한",
+    "user": "사용자",
+    "group": "애플리케이션 그룹",
+    "builtinTag": "내장",
+    "selectScope": "scope 선택…",
+    "rotationConfirmTitle": "client secret 순환",
+    "rotationConfirmMessage": "순환 시 즉시 새 secret이 발급되고 이전 값은 폐기됩니다. 기존 값은 즉시 사용할 수 없으며 구성을 업데이트하기 전까지 이 애플리케이션은 로그인이나 토큰 교환을 할 수 없습니다. 이미 발급된 사용자 토큰은 영향을 받지 않으며 표준 철회 검사를 유지합니다. 확인 후 새 secret은 한 번만 표시됩니다.",
+    "rotationConfirmAction": "순환 실행"
   }
 }

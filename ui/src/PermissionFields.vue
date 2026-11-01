@@ -11,7 +11,7 @@ const {t} = useI18n()
 <template>
   <KsFormItem :label="t('permissionKey')"><KsInput v-model="draft.key" required :disabled="editing" maxlength="128" name="permission-key" /></KsFormItem>
   <KsFormItem :label="t('permissionName')"><KsInput v-model="draft.name" required maxlength="512" name="permission-name" /></KsFormItem>
-  <KsFormItem :label="t('activationConditions')"><div><ScopePicker v-model="draft.scopeKeys" :scopes="scopes" :known-keys-only="knownScopeKeysOnly" /><small>{{ t('anyScope') }}</small></div></KsFormItem>
+  <KsFormItem :label="t('activationConditions')"><div class="rbac-field-stack"><ScopePicker v-model="draft.scopeKeys" :scopes="scopes" :known-keys-only="knownScopeKeysOnly" /><small>{{ t('anyScope') }}</small></div></KsFormItem>
   <template v-if="implementationKind === 'kestra-policy'">
     <p class="message">{{ t('kestraActualPermissions') }} · {{ t('completeScopeRule') }}</p>
     <KsFormItem :label="t('description')"><KsInput v-model="draft.description" type="textarea" :rows="3" maxlength="8192" name="permission-description" /></KsFormItem>

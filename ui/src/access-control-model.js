@@ -32,13 +32,43 @@ export function nativeChips(parameters, kind) {
     if (parameter.topLogical === 'OR' || parameter.wrapperLogical === 'OR') throw invalidQuery()
     const field = parameter.field
     if (field === 'scopeKeys' && ['EQUALS', 'IN'].includes(parameter.operation)) {
-      const values = Array.isArray(parameter.value) ? parameter.value : [parameter.value]
-      if (!values.length || values.some(value => typeof value !== 'string')) throw invalidQuery()
+      // The design system serializes array values comma-joined in one query value;
+      // scope keys never contain commas, so splitting is lossless.
+      const raw = Array.isArray(parameter.value) ? parameter.value : [parameter.value]
+      const values = raw.flatMap(value => String(value).split(',')).filter(Boolean)
+      if (!values.length || values.some(value => !/^[a-z][a-z0-9-]{0,63}$/.test(value))) throw invalidQuery()
       return {field, values}
     }
     if ((kind === 'permissions' ? ['key', 'name'] : ['subject']).includes(field) && parameter.operation === (field === 'name' ? 'CONTAINS' : 'EQUALS') && typeof parameter.value === 'string') return {field, value: parameter.value}
     throw invalidQuery()
   })
+}
+// Deep-link vocabulary (requirements §12.3) normalized into the native bracket
+// format the published KsFilter reads on mount, so externally provided filters
+// render as native chips in the filter bar. Returns null when nothing to normalize.
+// On the permissions list a filterSubject is consumed by the subject-grant
+// intersection in App.vue, which then rewrites the canonical query itself;
+// the list must not race that network-owned normalization.
+export function normalizeDeepLinkQuery(query, kind = 'permissions') {
+  const values = key => query[key] === undefined ? [] : Array.isArray(query[key]) ? query[key] : [query[key]]
+  const native = {}
+  const permissionKey = values('permissionKey'), filterSubject = values('filterSubject'), scopes = values('scopeKeys')
+  if (permissionKey.length > 1 || filterSubject.length > 1 || scopes.some(key => typeof key !== 'string')) return null
+  const subjectOwned = kind === 'permissions' && filterSubject.length > 0
+  if (subjectOwned) return null
+  if (permissionKey.length) {
+    if (kind !== 'permissions' || !/^[a-z][a-z0-9-]{0,127}$/.test(permissionKey[0])) throw invalidQuery()
+    native['filters[key][EQUALS]'] = permissionKey[0]
+  }
+  if (scopes.length) {
+    if (scopes.some(key => !/^[a-z][a-z0-9-]{0,63}$/.test(key)) || new Set(scopes).size !== scopes.length) throw invalidQuery()
+    native['filters[scopeKeys][IN]'] = scopes.join(',')
+  }
+  if (filterSubject.length) {
+    if (kind === 'permissions' || !filterSubject[0] || [...filterSubject[0]].length > 256) throw invalidQuery()
+    native['filters[subject][EQUALS]'] = filterSubject[0]
+  }
+  return Object.keys(native).length ? native : null
 }
 const invalidQuery = () => Object.assign(new Error('invalid_query'), {code: 'invalid_query', status: 400})
 export function readListQuery(query, kind = 'permissions') {

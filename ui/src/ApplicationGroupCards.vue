@@ -4,6 +4,7 @@ import {useI18n} from 'vue-i18n'
 import {useRoute, useRouter} from 'vue-router'
 import {decodeSearchParams} from '@kestra-io/design-system'
 import KsCard from '@kestra-io/design-system/components/Data/KsCard'
+import KsTag from '@kestra-io/design-system/components/Data/KsTag/KsTag'
 import KsButton from '@kestra-io/design-system/components/Basic/KsButton/KsButton'
 import {ElConfigProvider, ElPagination} from 'element-plus'
 import {nativeLocale} from './native-locale.js'
@@ -40,12 +41,12 @@ watch(() => props.items, () => {page.value = 1})
     <p v-if="nativeError || decoded === null" role="alert" data-test="request-error">{{ t(nativeError ? 'andFilterUnavailable' : 'invalidQuery') }} <KsButton @click="clear">{{ t('clearFilters') }}</KsButton></p>
     <template v-if="!nativeError && decoded !== null">
     <div class="application-group-cards" data-test="application-group-cards">
-      <KsCard v-for="item in cards" :key="item.id" shadow="hover" data-test="group-card" :data-group-id="item.id">
+      <KsCard v-for="item in cards" :key="item.id" shadow="hover" class="rbac-group-card" data-test="group-card" :data-group-id="item.id">
+        <KsTag v-if="item.builtIn" class="builtin-indicator" size="small" type="info" :label="t('builtinTag')" data-test="builtin-group-card-indicator" />
         <KsButton link class="application-group-card-link" :disabled="busy" @click="emit('open', item)">
           <span class="rbac-card-heading">
             <code class="application-group-card-title">{{ item.id }}</code>
             <span class="application-group-card-id">{{ item.displayName }}</span>
-            <span v-if="item.builtIn" class="builtin-indicator" data-test="builtin-group-card-indicator">{{ t('builtinGroup') }}</span>
           </span>
         </KsButton>
         <div class="rbac-card-counts">

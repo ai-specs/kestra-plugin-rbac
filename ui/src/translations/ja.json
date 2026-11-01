@@ -26,7 +26,7 @@
     "externalDeclaration": "外部アプリケーションの宣言です。この Kestra インスタンスでは実行されません。",
     "involvedApplications": "関連アプリケーション",
     "boundApplications": "紐付けられたアプリケーション",
-    "title": "アクセス管理",
+    "title": "アクセス制御",
     "users": "ユーザー",
     "name": "名前",
     "applicationGroups": "アプリケーショングループ",
@@ -109,6 +109,15 @@
     "supportedScopeKeys": "対応するスコープ",
     "scopeKeys": "scope の付与",
     "andFilterOnly": "すべての条件を満たす必要があります（AND）。条件グループとORは使用できません。",
-    "andFilterUnavailable": "フィルターを安全に関連付けできません。クリアして再試行してください。"
+    "andFilterUnavailable": "フィルターを安全に関連付けできません。クリアして再試行してください。",
+    "add": "追加",
+    "permission": "権限",
+    "user": "ユーザー",
+    "group": "アプリケーショングループ",
+    "builtinTag": "内蔵",
+    "selectScope": "scope を選択…",
+    "rotationConfirmTitle": "client secret をローテーション",
+    "rotationConfirmMessage": "ローテーションは直ちに新しい secret を発行し旧値を無効化します。旧値は即時に使用できなくなり、設定を更新するまでこのアプリはサインインやトークン交換ができません。発行済みのユーザー token は影響を受けず、通常の失効チェックが適用されます。確認後、新しい secret は一度だけ表示されます。",
+    "rotationConfirmAction": "ローテーション実行"
   }
 }

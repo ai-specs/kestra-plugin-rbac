@@ -200,8 +200,8 @@ for(const mode of ['revoked','partial','missing','disabled','invalid'])test('App
   assert(v.requests.slice(before).some(p=>p.includes('/scope-grants/detail?subject=alice')),'refresh must reread grant')
   if(mode==='missing'||mode==='disabled'){assert(v.container.querySelector('[data-test="request-error"]'));assert.deepEqual(rows(),[]);return}
   assert(v.requests.slice(before).some(p=>p.includes('/users/detail?subject=alice')),'refresh must reread account')
-  const expected=mode==='partial'?['scope-b']:[]
-  assert.deepEqual(v.router.currentRoute.value.query.scopeKeys===undefined?[]:[v.router.currentRoute.value.query.scopeKeys].flat(),expected,'expired scopeKeys must leave canonical router query')
+  const expected=mode==='partial'?'scope-b':undefined
+  assert.equal(v.router.currentRoute.value.query['filters[scopeKeys][IN]'],expected,'expired scope intersection must move into the native filter query')
   assert.equal(v.router.currentRoute.value.query.filterSubject,'alice')
   await wait(()=>v.state.context.fullPath===v.router.currentRoute.value.fullPath.slice(1),'canonical URL must reach host echo')
   assert.deepEqual(rows(),mode==='partial'?['permit-b']:[])
@@ -281,7 +281,9 @@ test('App slow subject query retains real credential-write and oneTime navigatio
   slow=true;v.state.context={...v.state.context,fullPath:initial+'&page=2'};await wait(()=>grantStarted,'slow same-path subject read absent')
   assert.equal(v.container.querySelector('main').getAttribute('aria-busy'),'true')
   // Public credential panel remains mounted during the same-path read; no private state injection.
-  click(v.container.querySelector('[data-test="credential-rotate"]'));await wait(()=>rotationStarted,'real rotation POST absent')
+  click(v.container.querySelector('[data-test="credential-rotate"]'));await tick()
+  const confirmRotate=document.querySelector('[data-test="credential-rotate-confirm"]');assert(confirmRotate,'rotation risk confirmation absent');click(confirmRotate)
+  await wait(()=>rotationStarted,'real rotation POST absent')
   click(overview());await tick();assert.equal(v.state.context.path,base);assert.equal(await v.hooks.beforeNavigate({fullPath:'users'}),false,'credential write must block external navigation during query read')
   credentialRevision=2;rotation.resolve(response({clientId:'client',credentialRevision:2,clientSecret:'isolated-component-test-secret'}));await wait(()=>dialog(),'real rotation oneTime absent')
   assert.equal(v.container.querySelector('main').getAttribute('aria-busy'),'true','subject read must remain pending')

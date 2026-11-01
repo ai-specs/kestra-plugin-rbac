@@ -82,9 +82,10 @@ for(const kind of ['users','permissions','subjects'])test(kind+': native Add con
     assert(nativeChips(DS.decodeSearchParams(view.router.currentRoute.value.query),kind).length===1)
     assert.deepEqual(ids(view,kind),[kind==='permissions'?'alpha':'alice'])
     if(kind==='users') {
-      // Native filters keep one condition per field/comparator. Conjoin with the existing deep link.
-      await view.router.push({query:{...view.router.currentRoute.value.query,filterSubject:'alice'}});await tick()
-      await select(rows(dialog)[0].querySelector('.cond-value-select'),'bob')
+      // Deep links normalize into native params, and the native bar keeps one
+      // condition per field/comparator: AND combination is proven across fields.
+      await view.router.push({query:{...view.router.currentRoute.value.query,scopeKeys:['b']}});await tick()
+      for(let i=0;i<40&&view.router.currentRoute.value.query.scopeKeys;i++)await tick()
     } else {
       click(add);await tick();assert.equal(rows(dialog).length,2)
       const second=rows(dialog)[1]

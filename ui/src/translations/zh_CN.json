@@ -26,7 +26,7 @@
     "externalDeclaration": "外部应用声明；不由此 Kestra 实例执行。",
     "involvedApplications": "涉及应用",
     "boundApplications": "绑定的应用",
-    "title": "权限管理",
+    "title": "访问控制",
     "users": "用户",
     "name": "名称",
     "applicationGroups": "应用组",
@@ -109,6 +109,15 @@
     "supportedScopeKeys": "支持的 scope",
     "scopeKeys": "scope 授予",
     "andFilterOnly": "此列表要求全部条件同时满足（AND），不支持条件组或OR。",
-    "andFilterUnavailable": "无法安全关联原生筛选。请清除筛选后重试。"
+    "andFilterUnavailable": "无法安全关联原生筛选。请清除筛选后重试。",
+    "add": "添加",
+    "permission": "权限",
+    "user": "用户",
+    "group": "应用组",
+    "builtinTag": "内置",
+    "selectScope": "选择 scope…",
+    "rotationConfirmTitle": "确认轮换 client secret",
+    "rotationConfirmMessage": "轮换会立即生成新 secret 并立刻废止旧值：旧 secret 马上失效，该应用在更新配置前将无法登录或换取 token。已签发的用户 token 不受影响，仍按标准撤权检查。确认后将显示新 secret，且仅此一次。",
+    "rotationConfirmAction": "确认轮换"
   }
 }

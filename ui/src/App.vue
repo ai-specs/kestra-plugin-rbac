@@ -7,6 +7,7 @@ import KsFormItem from '@kestra-io/design-system/components/Form/KsForm/KsFormIt
 import KsInput from '@kestra-io/design-system/components/Form/KsInput'
 import KsTabs from '@kestra-io/design-system/components/Navigation/KsTabs/KsTabs'
 import KsTabPane from '@kestra-io/design-system/components/Navigation/KsTabs/KsTabPane'
+import KsTag from '@kestra-io/design-system/components/Data/KsTag/KsTag'
 import ApplicationGroupCards from './ApplicationGroupCards.vue'
 import AccessSidebar from './AccessSidebar.vue'
 import AccessList from './AccessList.vue'
@@ -61,7 +62,12 @@ const isKestra = computed(() => application.value?.implementationKind === 'kestr
 const permissionRead = computed(() => isKestra.value ? caps.value?.localPolicyRead === true : identityRead.value)
 const permissionManage = computed(() => permissionRead.value && (isKestra.value ? access.value.local : identityManage.value))
 const inlineDirty = computed(() => inline.value !== null && JSON.stringify(inline.value) !== inlineBaseline.value)
-const editorTitle = computed(() => t(editor.draft?.revision !== undefined ? 'edit' : 'create') + ' · ' + (editor.kind === 'subject' ? 'subject' : editor.kind === 'permission' ? t('permissionName') : editor.kind === 'user' ? t('users') : t('applicationGroups')))
+const editorTitle = computed(() => {
+  const kind = editor.kind === 'subject' ? 'subject' : editor.kind === 'permission' ? t('permission') : editor.kind === 'user' ? t('user') : t('group')
+  const action = t(editor.draft?.revision !== undefined ? 'edit' : 'add')
+  const pureCjk = /^[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+$/.test(kind)
+  return pureCjk ? action + kind : action + ' ' + kind
+})
 const selectedApplications = computed(() => scopeRelations(selectedScope.value?.key, applications.value, subjects.value).applications)
 const selectedSubjects = computed(() => subjects.value.filter(item => item.scopeKeys.includes(selectedScope.value?.key)))
 const subjectCandidates = computed(() => ordered(users.value.filter(user => user.active && !subjects.value.some(subject => subject.issuer === group.value?.issuer && subject.subject === user.subject)), 'subject'))
@@ -106,7 +112,9 @@ async function navigateHost(target, options) {
   }
 }
 function navigate(target, query = {}, replace = false) {
-  discardGuard(() => {void navigateHost(router.resolve({path: '/' + target, query}).fullPath.slice(1), {replace})})
+  const destination = router.resolve({path: '/' + target, query}).fullPath.slice(1)
+  if (destination === sourcePath.value) return
+  discardGuard(() => {void navigateHost(destination, {replace})})
 }
 function beforeTabLeave(target) {
   const current = groupId.value ? tab.value : isUsers.value ? 'users' : 'application-groups'
@@ -188,13 +196,23 @@ async function readView(value = contextFullPath(props.context), preserveOneTime 
             const subject = await api.scopeGrant(id, query.filterSubject)
             const account = await api.user(subject.subject)
             if (account.active !== true) throw {status: 403}
-            const keys = (Array.isArray(query.scopeKeys) ? query.scopeKeys : [query.scopeKeys]).filter(key => subject.scopeKeys.includes(key))
+            const requested = query.scopeKeys !== undefined
+              ? (Array.isArray(query.scopeKeys) ? query.scopeKeys : [query.scopeKeys])
+              : String(query['filters[scopeKeys][IN]'] ?? '').split(',').filter(Boolean)
+            const keys = requested.filter(key => subject.scopeKeys.includes(key))
             if (!keys.length) ps = []
             if (current !== generation || disposed) return
             // This read-owned query correction must pass the same-path navigation guard,
             // including explicit refreshes, without releasing business save locks.
+            // The canonical query keeps the subject context and stores the surviving
+            // scope intersection in the native bracket format, so the published
+            // KsFilter renders it as its own chip.
+            const canonical = {...query}
+            delete canonical.scopeKeys
+            delete canonical['filters[scopeKeys][IN]']
+            if (keys.length) canonical['filters[scopeKeys][IN]'] = keys.join(',')
             queryRefreshing.value = true
-            await router.replace({path: route.path, query: {...query, scopeKeys: keys}})
+            await router.replace({path: route.path, query: canonical})
           }
         }
       }
@@ -418,13 +436,13 @@ onBeforeUnmount(() => {disposed = true; queryNavigationEpoch++; pendingQueryTarg
 <template>
   <main ref="main" tabindex="-1" data-test="access-control-root" :aria-busy="busy">
     <KsTabs type="box" v-if="!groupId" :model-value="isUsers ? 'users' : 'application-groups'" :before-leave="beforeTabLeave"><KsTabPane name="application-groups" :label="t('applicationGroups')" data-test="tab-application-groups" /><KsTabPane name="users" :label="t('users')" data-test="tab-users" /></KsTabs>
-    <template v-else><header class="rbac-detail-title"><KsButton :disabled="busy" :aria-label="t('back')" @click="navigate('application-groups')">←</KsButton><h1><code>{{ groupId }}</code></h1></header><KsTabs type="box" :model-value="tab" :before-leave="beforeTabLeave"><KsTabPane name="overview" :label="t('overview')" /><KsTabPane name="scopes" :label="t('scopes')" /><KsTabPane name="applications" :label="t('clients')" /><KsTabPane name="scope-grants" label="subject" /></KsTabs></template>
+    <template v-else><div class="rbac-detail-nav"><KsButton class="rbac-back" :disabled="busy" :aria-label="t('back')" @click="navigate('application-groups')">←</KsButton><KsTabs type="box" :model-value="tab" :before-leave="beforeTabLeave"><KsTabPane name="overview" :label="t('overview')" /><KsTabPane name="scopes" :label="t('scopes')" /><KsTabPane name="applications" :label="t('clients')" /><KsTabPane name="scope-grants" label="subject" /></KsTabs></div></template>
     <div v-if="error" class="message error" role="alert" tabindex="-1" data-test="request-error"><p>{{ error }}</p><KsButton v-if="invalidQuery" :disabled="busy" @click="clearInvalidQuery">{{ t('clearFilters') }}</KsButton><KsButton v-else-if="conflicted" :disabled="busy" data-test="conflict-refresh" @click="discardGuard(() => load())">{{ t('reload') }}</KsButton><KsButton v-else-if="!denied && !reauthenticate" :disabled="busy" @click="load()">{{ t('reload') }}</KsButton><a v-if="denied || reauthenticate" :href="loginHref" data-test="sign-in-again">{{ t('signInAgain') }}</a></div>
     <p v-if="notice" role="status" class="message">{{ notice }}</p><p v-if="busy && !loaded" role="status">{{ t('loading') }}</p>
     <template v-if="loaded && !denied && !reauthenticate">
       <template v-if="!groupId && !isUsers"><header class="management-toolbar"><KsButton v-if="identityManage" :disabled="busy" @click="openEditor(editor, 'group', {id: '', displayName: '', description: ''})">＋ {{ t('create') }}</KsButton></header><ApplicationGroupCards :items="groups" :busy="busy" storage-key="rbac-v3-groups" @open="navigate('application-groups/' + encodeURIComponent($event.id))" @section="(item, section) => navigate('application-groups/' + encodeURIComponent(item.id) + '/' + section)" @refresh="load()" /></template>
       <AccountList v-else-if="isUsers" :items="users" :busy="busy" :can-manage="identityManage" @create="openEditor(editor, 'user', {username:'', name:'', email:''})" @edit="openEditor(editor, 'user', $event)" @delete="askDelete('user', $event)" @state="row => mutate(() => api.updateState(row.subject, !row.active, row.revision))" @refresh="load()" />
-      <section v-else-if="tab === 'overview'" class="rbac-overview" data-test="group-detail"><template v-if="group"><dl class="rbac-details"><dt>{{ t('displayName') }}</dt><dd>{{ group.displayName }}</dd><dt>{{ t('id') }}</dt><dd><code>{{ group.id }}</code></dd><dt>{{ t('description') }}</dt><dd>{{ group.description || '—' }}</dd><template v-if="group.builtIn"><dt>{{ t('builtinGroup') }}</dt><dd>◆</dd></template><dt>Issuer</dt><dd>{{ group.issuer }}</dd></dl><div class="rbac-statistics"><KsButton v-for="stat in statistics" :key="stat.field" link :disabled="countValue(group.counts, stat.field) === null" @click="navigate(groupBase + '/' + stat.tab)"><b>{{ countValue(group.counts, stat.field) ?? '—' }}</b> {{ stat.label }}</KsButton></div><div v-if="identityManage && !inline" class="buttons"><KsButton data-test="group-edit" @click="openInline(group, 'group')">{{ t('edit') }}</KsButton><KsButton v-if="!group.builtIn" @click="askDelete('group', group)">{{ t('delete') }}</KsButton></div></template><InlineDetails v-if="inline" :draft="inline" :disabled="busy || conflicted" :busy="busy" @save="saveInline" @cancel="discardGuard(() => {inline = null})" /></section>
+      <section v-else-if="tab === 'overview'" class="rbac-overview" data-test="group-detail"><InlineDetails v-if="inline" :draft="inline" :disabled="busy || conflicted" :busy="busy" @save="saveInline" @cancel="discardGuard(() => {inline = null})" /><template v-else-if="group"><dl class="rbac-details"><dt>{{ t('displayName') }}</dt><dd>{{ group.displayName }}</dd><dt>{{ t('id') }}</dt><dd><code>{{ group.id }}</code></dd><dt>{{ t('description') }}</dt><dd>{{ group.description || '—' }}</dd><template v-if="group.builtIn"><dt>{{ t('builtinGroup') }}</dt><dd><KsTag size="small" type="info" :label="t('builtinTag')" /></dd></template><dt>Issuer</dt><dd>{{ group.issuer }}</dd><template v-for="stat in statistics" :key="stat.field"><dt>{{ stat.label }}</dt><dd><KsButton link class="rbac-stat-link" :disabled="countValue(group.counts, stat.field) === null" @click="navigate(groupBase + '/' + stat.tab)">{{ countValue(group.counts, stat.field) ?? '—' }}</KsButton></dd></template></dl><div v-if="identityManage" class="buttons"><KsButton data-test="group-edit" @click="openInline(group, 'group')">{{ t('edit') }}</KsButton><KsButton v-if="!group.builtIn" @click="askDelete('group', group)">{{ t('delete') }}</KsButton></div></template></section>
       <div v-else-if="tab === 'scopes'" class="rbac-split">
         <AccessSidebar :items="scopes" :selected="selectedScope?.key" :title="t('scopes')" :disabled="busy || credentialBusy" :can-manage="identityManage" kind="scope" @select="toScope($event.key)" @create="discardGuard(() => openInline({key:'',name:'',description:''}, 'scope'))" @delete="askDelete('scope', $event)" />
         <section class="rbac-detail" data-test="scope-detail">
@@ -434,12 +452,26 @@ onBeforeUnmount(() => {disposed = true; queryNavigationEpoch++; pendingQueryTarg
             <dl class="rbac-details"><dt>{{ t('roleName') }}</dt><dd>{{ selectedScope.name }}</dd><dt>{{ t('description') }}</dt><dd>{{ selectedScope.description || '—' }}</dd></dl>
             <KsButton v-if="identityManage" @click="openInline(selectedScope, 'scope')">{{ t('edit') }}</KsButton>
             <h2>{{ t('boundApplications') }}</h2>
-            <div v-for="item in selectedApplications" :key="item.clientId" class="rbac-tags">
-              <KsButton link @click="toApplication(item.clientId)"><code>{{ item.clientId }}</code></KsButton>
-              <KsButton v-for="permission in item.permissions" :key="permission.key" link :data-permission-key="permission.key" @click="toApplication(item.clientId, {permissionKey:permission.key})"><code>{{ permission.key }}</code></KsButton>
+            <div v-if="selectedApplications.length" class="rbac-bound-table">
+              <div class="rbac-bound-head"><span>{{ t('clients') }}</span><span>{{ t('permissionKey') }}</span></div>
+              <div v-for="item in selectedApplications" :key="item.clientId" class="rbac-bound-row">
+                <KsButton link @click="toApplication(item.clientId)"><code>{{ item.clientId }}</code></KsButton>
+                <div class="rbac-tags">
+                  <KsButton v-for="permission in item.permissions" :key="permission.key" link :data-permission-key="permission.key" @click="toApplication(item.clientId, {permissionKey:permission.key})"><code>{{ permission.key }}</code></KsButton>
+                  <span v-if="!item.permissions?.length">—</span>
+                </div>
+              </div>
             </div>
-            <p v-if="!selectedApplications.length">—</p><h2>{{ t('scopeKeys') }}</h2>
-            <div class="rbac-tags"><KsButton v-for="item in selectedSubjects" :key="item.subject" link @click="navigate(groupBase + '/scope-grants', {filterSubject:item.subject})"><code>{{ item.subject }}</code></KsButton><p v-if="!selectedSubjects.length">—</p></div>
+            <p v-else>—</p>
+            <h2>{{ t('scopeKeys') }}</h2>
+            <div v-if="selectedSubjects.length" class="rbac-bound-table">
+              <div class="rbac-bound-head"><span>subject</span><span>scope</span></div>
+              <div v-for="item in selectedSubjects" :key="item.subject" class="rbac-bound-row">
+                <KsButton link @click="navigate(groupBase + '/scope-grants', {filterSubject:item.subject})"><code>{{ item.subject }}</code></KsButton>
+                <div class="rbac-tags"><template v-for="key in item.scopeKeys" :key="key"><KsButton v-if="key !== selectedScope?.key" link @click="toScope(key)"><code>{{ key }}</code></KsButton><code v-else class="rbac-tag">{{ key }}</code></template></div>
+              </div>
+            </div>
+            <p v-else>—</p>
           </template><p v-else>{{ t('noRows') }}</p>
         </section>
       </div>

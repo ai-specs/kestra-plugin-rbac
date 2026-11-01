@@ -26,7 +26,7 @@
     "externalDeclaration": "Declaração de aplicação externa; não é executada por esta instância Kestra.",
     "involvedApplications": "Aplicações envolvidas",
     "boundApplications": "Aplicações associadas",
-    "title": "Gestão de acessos",
+    "title": "Controle de acesso",
     "users": "Utilizadores",
     "name": "Nome",
     "applicationGroups": "Grupos de aplicações",
@@ -109,6 +109,15 @@
     "supportedScopeKeys": "Scopes suportados",
     "scopeKeys": "Atribuições de scopes",
     "andFilterOnly": "Todas as condições devem corresponder (AND). Grupos e OR não estão disponíveis.",
-    "andFilterUnavailable": "Não foi possível associar o filtro com segurança. Limpe os filtros e tente novamente."
+    "andFilterUnavailable": "Não foi possível associar o filtro com segurança. Limpe os filtros e tente novamente.",
+    "add": "Adicionar",
+    "permission": "permissão",
+    "user": "usuário",
+    "group": "grupo de aplicativos",
+    "builtinTag": "Integrado",
+    "selectScope": "Selecionar scopes…",
+    "rotationConfirmTitle": "Rotacionar client secret",
+    "rotationConfirmMessage": "A rotação emite imediatamente um novo secret e invalida o antigo: o valor anterior deixa de funcionar de imediato, portanto a aplicação não poderá iniciar sessão nem trocar tokens até atualizar a configuração. Os tokens de utilizador emitidos não são afetados e mantêm as verificações de revogação padrão. Após confirmar, o novo secret é mostrado apenas uma vez.",
+    "rotationConfirmAction": "Rotacionar"
   }
 }

@@ -103,14 +103,17 @@ for(const kind of ['users','permissions'])test('App actual ManagementTable ElPag
  }finally{gate.resolve();v.close()}
 })
 test('App cross-path host push and real router back preserve permission query without duplicate replace echo after settled scope load',async()=>{
- const initial='application-groups/g/applications/~Y2xpZW50?permissionKey=permission-000'
- const v=await mountScenario(initial,'permissions')
+ const deepLink='application-groups/g/applications/~Y2xpZW50?permissionKey=permission-000'
+ const canonical='application-groups/g/applications/~Y2xpZW50?filters[key][EQUALS]=permission-000'
+ const v=await mountScenario(deepLink,'permissions')
  try{
+  for(let i=0;i<15;i++){await tick();if(decodeURIComponent(v.router.currentRoute.value.fullPath).replace(/^\//,'')===canonical)break}
+  assert(decodeURIComponent(v.router.currentRoute.value.fullPath).replace(/^\//,'')===canonical,'deep link must normalize into the native filter query')
   const target=v.container.querySelector('[data-test="application-supported-scopes"] button');assert(target);click(target)
   await wait(()=>v.state.context.path==='application-groups/g/scopes/a'&&v.container.querySelector('[data-test="scope-item"][aria-current="true"]')&&v.container.querySelector('main').getAttribute('aria-busy')==='false','scope navigation not settled')
   assert.equal(v.navigations.filter(n=>n.target==='application-groups/g/scopes/a').length,1,'host context echo must not replace successful cross-path push')
   assert.equal(v.navigations.at(-1).replace,false)
-  v.hostRouter.back();await wait(()=>v.state.context.fullPath===initial&&v.container.querySelector('[data-test="permission-row"]')&&v.container.querySelector('main').getAttribute('aria-busy')==='false','actual host-router back failed')
+  v.hostRouter.back();await wait(()=>decodeURIComponent(v.router.currentRoute.value.fullPath).replace(/^\//,'')===canonical&&v.container.querySelector('[data-test="permission-row"]')&&v.container.querySelector('main').getAttribute('aria-busy')==='false','actual host-router back failed')
   assert.equal(v.container.querySelector('[data-test="permission-row"]').textContent,'permission-000')
  }finally{v.close()}
 })
@@ -159,18 +162,18 @@ test('group cards independent native page-size 100 resets local page without rou
 for(const level of ['top','group'])test('App '+level+' navigation uses published box tabs and preserves real tab switching',async()=>{
  const v=await mountScenario(level==='top'?'application-groups':'application-groups/g/scopes/a',level==='top'?'groups':'scope')
  try{
-  const tabs=v.container.querySelector('main > .kel-tabs');assert(tabs,'native App tabs absent');assert(tabs.classList.contains('kel-tabs--box'),'App must consume public type=box, not default14px tabs or custom CSS')
+  const tabs=v.container.querySelector('main .kel-tabs');assert(tabs,'native App tabs absent');assert(tabs.classList.contains('kel-tabs--box'),'App must consume public type=box, not default14px tabs or custom CSS')
   const items=[...tabs.querySelectorAll('[role="tab"]')];assert.equal(items.length,level==='top'?2:4);assert.equal(items.filter(n=>n.getAttribute('aria-selected')==='true').length,1)
   const target=level==='top'?'users':'applications';const button=items.find(n=>n.id.endsWith('-'+target));assert(button,'native target tab missing');click(button)
   await wait(()=>v.state.context.path.startsWith(level==='top'?'users':'application-groups/g/applications')&&v.container.querySelector('main').getAttribute('aria-busy')==='false','native tab switch did not reach authorized content')
-  const updated=v.container.querySelector('main > .kel-tabs');assert(updated.classList.contains('kel-tabs--box'));assert.equal(updated.querySelector('[aria-selected="true"]')?.id.endsWith('-'+target),true)
+  const updated=v.container.querySelector('main .kel-tabs');assert(updated.classList.contains('kel-tabs--box'));assert.equal(updated.querySelector('[aria-selected="true"]')?.id.endsWith('-'+target),true)
  }finally{v.close()}
 })
 
 for(const locale of Object.keys(messages))test('App public navigation rejection stays visible in '+locale,async()=>{
  const v=await mountScenario('application-groups','groups',{locale,navigateHook:async()=>{throw new Error('Extension navigation rejected')}})
  try{
-  click([...v.container.querySelectorAll('main > .kel-tabs [role="tab"]')].find(n=>n.id.endsWith('-users')));await tick()
+  click([...v.container.querySelectorAll('main .kel-tabs [role="tab"]')].find(n=>n.id.endsWith('-users')));await tick()
   assert.equal(v.container.querySelector('[data-test="request-error"] p')?.textContent,messages[locale].error)
   assert.equal(v.state.context.fullPath,'application-groups');assert.equal(v.router.currentRoute.value.path,'/application-groups')
   assert.equal(v.requests.filter(r=>r.method!=='GET').length,0)
@@ -193,7 +196,7 @@ test('App overlapping navigation late rejection cannot overwrite accepted host d
  let rejectFirst;const first=new Promise((_,reject)=>{rejectFirst=reject});let calls=0
  const v=await mountScenario('application-groups/g/scopes/a','scope',{navigateHook:()=>++calls===1?first:Promise.resolve()})
  try{
-  const tabs=()=>[...v.container.querySelectorAll('main > .kel-tabs [role="tab"]')]
+  const tabs=()=>[...v.container.querySelectorAll('main .kel-tabs [role="tab"]')]
   click(tabs().find(n=>n.id.endsWith('-applications')));await tick()
   click(tabs().find(n=>n.id.endsWith('-overview')))
   await wait(()=>v.state.context.fullPath==='application-groups/g'&&v.container.querySelector('main').getAttribute('aria-busy')==='false','new navigation incomplete')
@@ -207,7 +210,7 @@ test('App overlapping rejected attempts keep latest failure and ignore stale aut
  let rejectFirst;const first=new Promise((_,reject)=>{rejectFirst=reject});let calls=0
  const v=await mountScenario('application-groups/g/scopes/a','scope',{navigateHook:()=>++calls===1?first:Promise.reject(new Error('Extension navigation rejected'))})
  try{
-  const tabs=()=>[...v.container.querySelectorAll('main > .kel-tabs [role="tab"]')]
+  const tabs=()=>[...v.container.querySelectorAll('main .kel-tabs [role="tab"]')]
   click(tabs().find(n=>n.id.endsWith('-applications')));await tick()
   click(tabs().find(n=>n.id.endsWith('-overview')));await tick()
   assert.equal(v.container.querySelector('main > [data-test="request-error"] p')?.textContent,messages.en.error)
@@ -220,7 +223,7 @@ test('App overlapping rejected attempts keep latest failure and ignore stale aut
 test('App current public authorization rejection clears sensitive view and preserves host URL',async()=>{
  const v=await mountScenario('application-groups/g/scopes/a','scope',{navigateHook:()=>{throw Object.assign(new Error('Extension navigation rejected'),{status:403})}})
  try{
-  click([...v.container.querySelectorAll('main > .kel-tabs [role="tab"]')].find(n=>n.id.endsWith('-applications')));await tick()
+  click([...v.container.querySelectorAll('main .kel-tabs [role="tab"]')].find(n=>n.id.endsWith('-applications')));await tick()
   assert.equal(v.container.querySelector('main > [data-test="request-error"] p')?.textContent,messages.en.denied)
   assert.equal(Boolean(v.container.querySelector('[data-test="sign-in-again"]')),true)
   assert.equal(Boolean(v.container.querySelector('[data-test="scope-detail"]')),false)
@@ -230,7 +233,7 @@ test('App current public authorization rejection clears sensitive view and prese
 test('App observes pending public navigation rejection after unmount',async()=>{
  let reject;const pending=new Promise((_,r)=>{reject=r})
  const v=await mountScenario('application-groups','groups',{navigateHook:()=>pending})
- click([...v.container.querySelectorAll('main > .kel-tabs [role="tab"]')].find(n=>n.id.endsWith('-users')));await tick()
+ click([...v.container.querySelectorAll('main .kel-tabs [role="tab"]')].find(n=>n.id.endsWith('-users')));await tick()
  v.close();reject(new Error('Extension navigation rejected'));await tick()
  assert.equal(v.state.context.fullPath,'application-groups');assert.equal(v.requests.filter(r=>r.method!=='GET').length,0)
 })

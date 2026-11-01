@@ -26,7 +26,7 @@
     "externalDeclaration": "External application declaration; not executed by this Kestra instance.",
     "involvedApplications": "Involved applications",
     "boundApplications": "Bound applications",
-    "title": "Access management",
+    "title": "Access control",
     "users": "Users",
     "name": "Name",
     "applicationGroups": "Application groups",
@@ -109,6 +109,15 @@
     "supportedScopeKeys": "Supported scopes",
     "scopeKeys": "Scope grants",
     "andFilterOnly": "This list requires all conditions to match (AND). Condition groups and OR are unavailable.",
-    "andFilterUnavailable": "The native filter could not be safely associated. Clear filters and retry."
+    "andFilterUnavailable": "The native filter could not be safely associated. Clear filters and retry.",
+    "add": "Add",
+    "permission": "permission",
+    "user": "user",
+    "group": "application group",
+    "builtinTag": "Built-in",
+    "selectScope": "Select scopes…",
+    "rotationConfirmTitle": "Rotate client secret",
+    "rotationConfirmMessage": "Rotation immediately issues a new secret and retires the old one: the previous value stops working right away, so the application can no longer sign in or exchange tokens until you update its configuration. Issued user tokens are unaffected and keep the standard revocation checks. The new secret is shown only once after confirmation.",
+    "rotationConfirmAction": "Rotate"
   }
 }
