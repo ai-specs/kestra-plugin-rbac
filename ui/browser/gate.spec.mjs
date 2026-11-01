@@ -34,7 +34,7 @@ async function styleSnapshot(locator){return locator.evaluate(node=>{
   const properties=['backgroundColor','color','fontFamily','fontSize','fontWeight','paddingTop','paddingRight','paddingBottom','paddingLeft','borderRadius','marginTop','marginRight','marginBottom','marginLeft','lineHeight','columnGap','rowGap','alignItems','justifyContent','borderTopColor','boxShadow']
   const style=selector=>{const element=selector?node.querySelector(selector):node;if(!element)throw new Error('Missing style target '+selector);const css=getComputedStyle(element);return Object.fromEntries(properties.map(key=>[key,css[key]]))}
   return {panel:style(''),header:style('.kel-drawer__header'),body:style('.kel-drawer__body'),footer:style('.kel-drawer__footer'),
-    icons:[...node.querySelectorAll('.kel-drawer__header svg')].map(svg=>({viewBox:svg.getAttribute('viewBox'),paths:[...svg.querySelectorAll('path')].map(path=>path.getAttribute('d')),width:svg.getBoundingClientRect().width,height:svg.getBoundingClientRect().height})),
+    icons:[...node.querySelectorAll('.kel-drawer__header svg')].map(svg=>({viewBox:svg.getAttribute('viewBox'),paths:[...svg.querySelectorAll('path')].map(path=>path.getAttribute('d')),width:Number(svg.getBoundingClientRect().width.toFixed(2)),height:Number(svg.getBoundingClientRect().height.toFixed(2))})),
     save:style('[data-test$="save"]'),saveIcon:style('[data-test$="save"] .kel-icon')}
 })}
 async function assertFocus(page,d){
