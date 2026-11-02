@@ -93,7 +93,7 @@ for(const kind of ['users','permissions','subjects'])test(kind+': native Add con
         const input=second.querySelector('.cond-value-input input');assert(input);input.value='Write';input.dispatchEvent(new Event('input',{bubbles:true}));await tick()
       } else await select(second.querySelector('.cond-value-select'),'b')
     }
-    const combined=()=>[...readListQuery(view.router.currentRoute.value.query,kind).chips,...nativeChips(DS.decodeSearchParams(view.router.currentRoute.value.query),kind)]
+    const combined=()=>nativeChips(DS.decodeSearchParams(view.router.currentRoute.value.query),kind)
     const chips=combined()
     assert.equal(chips.length,2);assert(view.items.some(item=>matchesChips(item,[chips[0]])));assert(view.items.some(item=>matchesChips(item,[chips[1]])))
     assert(!view.items.some(item=>matchesChips(item,chips)),'two separately matching predicates must combine as AND')

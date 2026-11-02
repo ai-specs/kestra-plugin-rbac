@@ -22,8 +22,8 @@ watch(locale, () => owner?.refresh(), {flush: 'post'})
 const query = computed(() => {
   try {
     const state = readListQuery(route.query, props.kind)
-    return {state, chips: [...state.chips, ...nativeChips(decodeSearchParams(route.query), props.kind)], error: nativeError.value}
-  } catch {return {state: {page: 1, size: 25, chips: []}, chips: [], error: true}}
+    return {state, chips: nativeChips(decodeSearchParams(route.query), props.kind), error: nativeError.value}
+  } catch {return {state: {page: 1, size: 25}, chips: [], error: true}}
 })
 // Deep-link vocabulary is normalized into the native bracket format so the
 // published KsFilter renders externally provided filters as its own chips.
@@ -38,7 +38,7 @@ watch(() => route.query, next => {
 }, {immediate: true})
 const configuration = computed(() => {
   const keys = props.kind === 'permissions' ? ['key', 'name', 'scopeKeys'] : props.kind === 'subjects' ? ['subject', 'scopeKeys'] : ['subject']
-  return {searchPlaceholder: t('search'), keys: keys.map(field => ({key: field, label: field === 'key' ? t('permissionKey') : field === 'name' ? t('permissionName') : field === 'subject' ? 'subject' : t('scopeKeys'), valueType: field === 'name' ? 'text' : 'select', comparators: [field === 'name' ? '*=' : '='], groupable: true, searchable: true, valueProvider: field === 'name' ? undefined : async () => [...new Set(field === 'scopeKeys' ? props.scopes.map(scope => scope.key) : props.items.map(item => item[field]))].map(value => ({value, label: value}))}))}
+  return {searchPlaceholder: t('search'), keys: keys.map(field => ({key: field, label: field === 'key' ? t('permissionKey') : field === 'name' ? t('permissionName') : field === 'subject' ? 'subject' : t('scopeKeys'), valueType: field === 'name' ? 'text' : 'select', comparators: field === 'name' ? ['*='] : field === 'scopeKeys' ? ['=', 'IN'] : ['='], groupable: true, searchable: true, valueProvider: field === 'name' ? undefined : async () => [...new Set(field === 'scopeKeys' ? props.scopes.map(scope => scope.key) : props.items.map(item => item[field]))].map(value => ({value, label: value}))}))}
 })
 const rows = computed(() => {
   if (query.value.error) return {items: [], total: 0, page: 1, size: query.value.state.size}
@@ -65,7 +65,7 @@ watch(() => route.query, (next, previous) => {
       <template #extra><KsButton v-if="canManage" :disabled="busy" :data-test="kind === 'permissions' ? 'permission-add' : kind === 'users' ? 'user-create' : 'subject-add'" @click="emit('create')">＋ {{ t('create') }}</KsButton></template>
     </KsFilter>
     <p v-if="query.error" role="alert" class="message error" data-test="request-error">{{ t(nativeError ? 'andFilterUnavailable' : 'invalidQuery') }} <KsButton @click="clear">{{ t('clearFilters') }}</KsButton></p>
-    <div v-else class="table-wrap"><ManagementTable :data="rows.items" :total="rows.total" :current-page="rows.page" :page-size="rows.size" @update:current-page="update({page: $event})" @update:page-size="update({size: $event, page: 1})">
+    <div class="table-wrap"><ManagementTable :data="rows.items" :total="rows.total" :current-page="rows.page" :page-size="rows.size" @update:current-page="update({page: $event})" @update:page-size="update({size: $event, page: 1})">
       <template #table><KsTable :data="rows.items" :row-key="kind === 'permissions' ? 'key' : 'subject'" :empty-text="t('noRows')">
         <KsTableColumn v-for="column in columns" :key="column.key" :label="column.label" :min-width="column.width ?? 160"><template #default="{row}"><slot :name="column.key" :row="row"><span>{{ row[column.key] ?? '—' }}</span></slot></template></KsTableColumn>
       </KsTable></template>

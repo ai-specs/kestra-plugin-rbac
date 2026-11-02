@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {compareKeys, supportedScopes, involvedApplications, permissionSummary, matchesChips, readListQuery, writeListQuery, paginate, selectionAfterDelete, countValue, permissionInput, detailTabs, collectPermissions, nativeChips} from '../src/access-control-model.js'
+import {compareKeys, supportedScopes, involvedApplications, permissionSummary, matchesChips, readListQuery, writeListQuery, paginate, selectionAfterDelete, countValue, permissionInput, detailTabs, collectPermissions, nativeChips, normalizeDeepLinkQuery} from '../src/access-control-model.js'
 
 test('N1/N6: four detail tabs, server counts never infer zero', () => {
   assert.deepEqual(detailTabs, ['overview', 'scopes', 'applications', 'scope-grants'])
@@ -30,16 +30,18 @@ test('N12/N15/T4: scope values ANY, chips AND including repeated same field; cas
   assert.equal(matchesChips(item, [{field: 'name', value: 'Read'}]), true)
   assert.equal(matchesChips(item, [{field: 'key', value: 'p'}, {field: 'key', value: 'q'}]), false)
 })
-test('N12–N16/T4: query round-trip, source and manual chips coexist without preference storage', () => {
-  const input = {permissionKey: 'read', filterSubject: 'user+中', scopeKeys: ['s1', 's2'], filter: ['{"field":"name","value":"Read"}'], page: '2', size: '50'}
-  assert.deepEqual(writeListQuery(readListQuery(input)), input)
-  const state = readListQuery(input)
-  state.chips = state.chips.filter(chip => chip.field !== 'scopeKeys')
-  assert.equal(writeListQuery(state).filterSubject, undefined)
-  assert.deepEqual(readListQuery({}), {page: 1, size: 25, chips: [], filterSubject: undefined})
+test('N12–N16/T4: deep links normalize into native params so chips match UI operations; pagination preserves native filters', () => {
+  assert.deepEqual(normalizeDeepLinkQuery({permissionKey: 'read'}, 'permissions'), {'filters[key][EQUALS]': 'read'})
+  assert.deepEqual(normalizeDeepLinkQuery({scopeKeys: 's1'}, 'permissions'), {'filters[scopeKeys][EQUALS]': 's1'})
+  assert.deepEqual(normalizeDeepLinkQuery({scopeKeys: ['s1', 's2']}, 'permissions'), {'filters[scopeKeys][IN]': 's1,s2'})
+  assert.deepEqual(normalizeDeepLinkQuery({filterSubject: 'user+中'}, 'subjects'), {'filters[subject][EQUALS]': 'user+中'})
+  assert.equal(normalizeDeepLinkQuery({permissionKey: 'read', filterSubject: 'u'}, 'permissions'), null)
+  assert.deepEqual(readListQuery({}), {page: 1, size: 25, filterSubject: undefined})
+  assert.deepEqual(writeListQuery({page: 2, size: 50}, {'filters[key][EQUALS]': 'read'}), {'filters[key][EQUALS]': 'read', page: '2', size: '50'})
+  assert.deepEqual(writeListQuery({page: 1, size: 25}, {'filters[key][EQUALS]': 'read', page: '3'}), {'filters[key][EQUALS]': 'read'})
 })
-test('N19/T4: invalid queries fail visibly, not broadened silently', () => {
-  for (const query of [{page: '0'}, {page: '1.2'}, {page: ['1', '2']}, {size: '20'}, {scopeKeys: ['a', 'a']}, {scopeKeys: ['../']}, {permissionKey: 'A'}, {filter: '{'}, {filter: '{"field":"unknown","value":"a"}'}]) assert.throws(() => readListQuery(query), /invalid_query/)
+test('N19/T4: invalid and retired vocabularies fail visibly, not broadened silently', () => {
+  for (const query of [{page: '0'}, {page: '1.2'}, {page: ['1', '2']}, {size: '20'}, {scopeKeys: ['a', 'a']}, {scopeKeys: ['../']}, {permissionKey: 'A'}, {filter: '{'}, {filter: '{"field":"unknown","value":"a"}'}, {filter: '{"field":"key","value":"p"}'}]) assert.throws(() => readListQuery(query), /invalid_query/)
 })
 test('N4/N12/N15/T4: filtered total, last-page clamp and code point selection', () => {
   const items = Array.from({length: 26}, (_, i) => i)

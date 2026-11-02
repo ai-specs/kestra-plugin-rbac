@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {createMemoryHistory, createRouter} from 'vue-router'
 import {readFile} from 'node:fs/promises'
-import {clearListQuery, canonicalListPage, readListQuery, matchesChips} from '../src/access-control-model.js'
+import {clearListQuery, canonicalListPage, readListQuery} from '../src/access-control-model.js'
 
 test('T4: clear recovers invalid size and subject queries without retaining malformed input', async () => {
   const router = createRouter({history: createMemoryHistory(), routes: [{path: '/:pathMatch(.*)*', component: {}}]})
@@ -18,7 +18,7 @@ test('T4: clear recovers invalid size and subject queries without retaining malf
 
 test('T4: deleting the sole final-page row replaces canonical page and preserves legal filters and size', async () => {
   const router = createRouter({history: createMemoryHistory(), routes: [{path: '/:pathMatch(.*)*', component: {}}]})
-  const query = {page: '2', size: '25', scopeKeys: ['a', 'b'], filter: '{"field":"name","value":"Read"}'}
+  const query = {page: '2', size: '25', 'filters[scopeKeys][IN]': 'a,b', 'filters[name][CONTAINS]': 'Read'}
   await router.push('/application-groups/g')
   await router.push({path: '/application-groups/g/applications/client', query})
   assert.equal(canonicalListPage(router.currentRoute.value.query, 'permissions', 26), null)
@@ -26,8 +26,8 @@ test('T4: deleting the sole final-page row replaces canonical page and preserves
   await router.replace({path: router.currentRoute.value.path, query: next})
   assert.equal(router.currentRoute.value.query.page, undefined)
   assert.equal(router.currentRoute.value.query.size, '25')
-  assert.deepEqual(router.currentRoute.value.query.scopeKeys, ['a', 'b'])
-  assert.equal(matchesChips({name: 'Read Flow', scopeKeys: ['b']}, readListQuery(router.currentRoute.value.query).chips), true)
+  assert.equal(router.currentRoute.value.query['filters[scopeKeys][IN]'], 'a,b')
+  assert.equal(router.currentRoute.value.query['filters[name][CONTAINS]'], 'Read')
   assert.deepEqual(canonicalListPage({page: '5', size: '10', permissionKey: 'p'}, 'permissions', 21), {page: '3', size: '10', permissionKey: 'p'})
   assert.deepEqual(canonicalListPage({page: '2', size: '25'}, 'permissions', 0), {size: '25'})
   await new Promise(resolve => {const remove = router.afterEach(() => {remove(); resolve()}); router.back()})

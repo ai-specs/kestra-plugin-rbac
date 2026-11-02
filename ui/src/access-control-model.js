@@ -44,16 +44,17 @@ export function nativeChips(parameters, kind) {
   })
 }
 // Deep-link vocabulary (requirements §12.3) normalized into the native bracket
-// format the published KsFilter reads on mount, so externally provided filters
-// render as native chips in the filter bar. Returns null when nothing to normalize.
-// On the permissions list a filterSubject is consumed by the subject-grant
-// intersection in App.vue, which then rewrites the canonical query itself;
-// the list must not race that network-owned normalization.
+// format, so externally provided filters render as native chips in the filter
+// bar — the same result shape a user produces with the filter controls.
+// Returns null when nothing to normalize. On the permissions list a
+// filterSubject is consumed by the subject-grant intersection in App.vue,
+// which then rewrites the canonical query itself; the list must not race that
+// network-owned normalization.
 export function normalizeDeepLinkQuery(query, kind = 'permissions') {
   const values = key => query[key] === undefined ? [] : Array.isArray(query[key]) ? query[key] : [query[key]]
   const native = {}
   const permissionKey = values('permissionKey'), filterSubject = values('filterSubject'), scopes = values('scopeKeys')
-  if (permissionKey.length > 1 || filterSubject.length > 1 || scopes.some(key => typeof key !== 'string')) return null
+  if (permissionKey.length > 1 || filterSubject.length > 1) return null
   const subjectOwned = kind === 'permissions' && filterSubject.length > 0
   if (subjectOwned) return null
   if (permissionKey.length) {
@@ -61,10 +62,9 @@ export function normalizeDeepLinkQuery(query, kind = 'permissions') {
     native['filters[key][EQUALS]'] = permissionKey[0]
   }
   if (scopes.length) {
-    if (scopes.some(key => !/^[a-z][a-z0-9-]{0,63}$/.test(key)) || new Set(scopes).size !== scopes.length) throw invalidQuery()
-    // Single scopes use EQUALS so the published KsFilter restores the chip into
-    // the bar; its IN serialization does not round-trip (vendor 0.5.0 limitation).
-    native[scopes.length === 1 ? 'filters[scopeKeys][EQUALS]' : 'filters[scopeKeys][IN]'] = scopes.join(',')
+    if (scopes.some(key => typeof key !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(key)) || new Set(scopes).size !== scopes.length) throw invalidQuery()
+    if (scopes.length === 1) native['filters[scopeKeys][EQUALS]'] = scopes[0]
+    else native['filters[scopeKeys][IN]'] = scopes.join(',')
   }
   if (filterSubject.length) {
     if (kind === 'permissions' || !filterSubject[0] || [...filterSubject[0]].length > 256) throw invalidQuery()
@@ -88,49 +88,22 @@ export function readListQuery(query, kind = 'permissions') {
   }
   const page = integer('page', 1), size = integer('size', 25)
   if (!pageSizes.includes(size)) throw invalidQuery()
-  const chips = []
   const permissionKey = single('permissionKey'), filterSubject = single('filterSubject')
   const scopes = values('scopeKeys')
   if (scopes.some(key => typeof key !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(key)) || new Set(scopes).size !== scopes.length) throw invalidQuery()
-  if (permissionKey !== undefined) {
-    if (kind !== 'permissions' || !/^[a-z][a-z0-9-]{0,127}$/.test(permissionKey)) throw invalidQuery()
-    chips.push({field: 'key', value: permissionKey, source: 'deep-link'})
-  }
-  if (filterSubject !== undefined) {
-    if (!filterSubject || [...filterSubject].length > 256) throw invalidQuery()
-    if (kind !== 'permissions') chips.push({field: 'subject', value: filterSubject, source: 'deep-link'})
-  }
-  if (scopes.length) chips.push({field: 'scopeKeys', values: [...scopes], source: 'deep-link', subject: filterSubject})
-  const filters = values('filter')
-  for (const text of filters) {
-    if (typeof text !== 'string') throw invalidQuery()
-    let chip
-    try {chip = JSON.parse(text)} catch {throw invalidQuery()}
-    if (!chip || typeof chip !== 'object' || Array.isArray(chip)) throw invalidQuery()
-    if (chip.field === 'scopeKeys') {
-      if (!Array.isArray(chip.values) || !chip.values.length || chip.values.some(value => typeof value !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(value))) throw invalidQuery()
-      chips.push({field: 'scopeKeys', values: [...new Set(chip.values)], source: 'manual'})
-    } else if ((kind === 'permissions' ? ['key', 'name'] : ['subject']).includes(chip.field) && typeof chip.value === 'string' && chip.value.length && [...chip.value].length <= 256) {
-      chips.push({field: chip.field, value: chip.value, source: 'manual'})
-    } else throw invalidQuery()
-  }
-  return {page, size, chips, filterSubject}
+  if (permissionKey !== undefined && (kind !== 'permissions' || !/^[a-z][a-z0-9-]{0,127}$/.test(permissionKey))) throw invalidQuery()
+  if (filterSubject !== undefined && (!filterSubject || [...filterSubject].length > 256)) throw invalidQuery()
+  // The retired filter=JSON vocabulary has no native chip shape; its presence
+  // fails closed as an invalid query instead of filtering invisibly.
+  if (query.filter !== undefined) throw invalidQuery()
+  return {page, size, filterSubject}
 }
 export function writeListQuery(state, previous = {}) {
   const result = {...previous}
-  for (const key of ['page', 'size', 'permissionKey', 'filterSubject', 'scopeKeys', 'filter']) delete result[key]
   if (state.page !== 1) result.page = String(state.page)
+  else delete result.page
   if (state.size !== 25) result.size = String(state.size)
-  const manual = []
-  for (const chip of state.chips) {
-    if (chip.source === 'deep-link' && chip.field === 'key') result.permissionKey = chip.value
-    else if (chip.source === 'deep-link' && chip.field === 'subject') result.filterSubject = chip.value
-    else if (chip.source === 'deep-link' && chip.field === 'scopeKeys') {
-      result.scopeKeys = [...chip.values]
-      if (chip.subject) result.filterSubject = chip.subject
-    } else manual.push(JSON.stringify(chip.field === 'scopeKeys' ? {field: chip.field, values: chip.values} : {field: chip.field, value: chip.value}))
-  }
-  if (manual.length) result.filter = manual
+  else delete result.size
   return result
 }
 export function clearListQuery(query, kind = 'permissions') {

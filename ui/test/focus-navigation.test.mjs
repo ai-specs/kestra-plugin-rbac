@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {createMemoryHistory, createRouter} from 'vue-router'
 import {deepestActiveElement, restoreFocus} from '../src/focus.js'
 import {createDraftNavigationGuard} from '../src/draft-navigation.js'
-import {readListQuery, writeListQuery, matchesChips} from '../src/access-control-model.js'
+import {readListQuery, matchesChips} from '../src/access-control-model.js'
 test('N17/T10: focus walks complete shadow chain and restores persistent fallback after trigger removal', () => {
   let focused = ''
   const button = {isConnected:true, focus:()=>{focused='trigger'}}
@@ -25,18 +25,16 @@ test('N17/T10: real Vue router navigation defers dirty route changes, cancel ret
   assert.equal(router.currentRoute.value.path,'/scopes/b')
   saving=true;await router.push('/users');assert.equal(router.currentRoute.value.path,'/scopes/b');remove()
 })
-test('N12/N15/T4: real memory-router copy and back preserve manual/deep-link conjunction; not a browser history assertion', async () => {
+test('N12/N15/T4: real memory-router copy and back preserve native conjunction; not a browser history assertion', async () => {
   const create=()=>createRouter({history:createMemoryHistory(),routes:[{path:'/:pathMatch(.*)*',component:{}}]})
   const router=create()
-  const initial={permissionKey:'p',filterSubject:'test-account',scopeKeys:['a','b']}
+  const initial={'filters[key][EQUALS]':'p','filters[scopeKeys][IN]':'a,b','filters[name][CONTAINS]':'Read'}
   await router.push({path:'/applications/client',query:initial})
-  const state=readListQuery(router.currentRoute.value.query)
-  state.chips.push({field:'name',value:'Read',source:'manual'})
-  await router.push({path:router.currentRoute.value.path,query:writeListQuery(state)})
   const copied=create();await copied.push(router.currentRoute.value.fullPath)
-  assert.deepEqual(readListQuery(copied.currentRoute.value.query),readListQuery(router.currentRoute.value.query))
-  assert.equal(matchesChips({key:'p',name:'Read',scopeKeys:['b']},readListQuery(copied.currentRoute.value.query).chips),true)
-  assert.equal(matchesChips({key:'p',name:'Write',scopeKeys:['b']},readListQuery(copied.currentRoute.value.query).chips),false)
+  assert.deepEqual(readListQuery(copied.currentRoute.value.query,'permissions'),readListQuery(router.currentRoute.value.query,'permissions'))
+  const chips=[{field:'key',value:'p'},{field:'scopeKeys',values:['a','b']},{field:'name',value:'Read'}]
+  assert.equal(matchesChips({key:'p',name:'Read',scopeKeys:['b']},chips),true)
+  assert.equal(matchesChips({key:'p',name:'Write',scopeKeys:['b']},chips),false)
   await new Promise(resolve=>{const remove=router.afterEach(()=>{remove();resolve()});router.back()})
   assert.deepEqual(router.currentRoute.value.query,initial)
 })
