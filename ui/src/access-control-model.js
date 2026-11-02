@@ -72,6 +72,30 @@ export function normalizeDeepLinkQuery(query, kind = 'permissions') {
   }
   return Object.keys(native).length ? native : null
 }
+// Fresh mounts normalize the deep-link vocabulary before any component reads
+// the route, so external filters settle as native chips without racing an
+// in-flight read. Returns null for paths without a list page or for invalid
+// input, which the normal query validation then fails closed on.
+export function normalizeDeepLinkLocation(fullPath) {
+  const [path, search = ''] = fullPath.split('?')
+  const segments = path.split('/').filter(Boolean)
+  const extension = segments.findIndex((segment, index) => segment === 'extensions' && segments[index + 1] === 'rbac')
+  const parts = extension >= 0 ? segments.slice(extension + 2) : segments
+  const last = parts.at(-1)
+  const kind = parts[0] === 'users' ? 'users' : last === 'scope-grants' ? 'subjects' : last === 'applications' || parts.at(-2) === 'applications' ? 'permissions' : null
+  if (!kind) return null
+  const grouped = {}
+  for (const [key, value] of new URLSearchParams(search)) (grouped[key] ??= []).push(value)
+  const query = Object.fromEntries(Object.entries(grouped).map(([key, values]) => [key, values.length === 1 ? values[0] : values]))
+  let native
+  try { native = normalizeDeepLinkQuery(query, kind) } catch { return null }
+  if (!native) return null
+  const merged = new URLSearchParams(search)
+  for (const key of ['permissionKey', 'filterSubject', 'scopeKeys']) merged.delete(key)
+  for (const [key, value] of new URLSearchParams(native)) merged.append(key, value)
+  const normalized = merged.toString()
+  return path + (normalized ? '?' + normalized : '')
+}
 const invalidQuery = () => Object.assign(new Error('invalid_query'), {code: 'invalid_query', status: 400})
 export function readListQuery(query, kind = 'permissions') {
   const values = key => query[key] === undefined ? [] : Array.isArray(query[key]) ? query[key] : [query[key]]

@@ -31,7 +31,7 @@ import {withAccountState, scopeRelations, blockingReferences, scopeReferenceLabe
 import {createDraftNavigationGuard} from './draft-navigation.js'
 import {createClient, encodeKey, decodeKey} from './client.js'
 import {canonicalPath, collectPages, copy, groupScopeInput, typedGrantsInput, managementAccess, requiresReauthentication, loginEntry, splitLines, isRuntimeApplication, permissionScopeKeys, permissionParentRevision} from './application-group-model.js'
-import {collectPermissions, countValue, detailTabs, ordered, permissionInput, permissionDraft, selectionAfterDelete, readListQuery, nativeChips} from './access-control-model.js'
+import {collectPermissions, countValue, detailTabs, ordered, permissionInput, permissionDraft, selectionAfterDelete, readListQuery, nativeChips, normalizeDeepLinkLocation} from './access-control-model.js'
 import {createEditorState, openEditor, requestEditorClose, editorDirty} from './editor-state.js'
 
 const props = defineProps({context: {type: Object, required: true}})
@@ -135,14 +135,18 @@ async function readView(value = contextFullPath(props.context), preserveOneTime 
   queryRefreshing.value = preserveView
   busy.value = true; invalidQuery.value = false; error.value = ''; notice.value = ''; conflicted.value = false; denied.value = false
   if (!preserveView) {loaded.value = false; clearSensitive(!preserveOneTime)}
-  sourcePath.value = value
+  // The deep-link vocabulary settles into native filter params before any read
+  // starts, so external filters cannot race or invalidate an in-flight read.
+  const requested = normalizeDeepLinkLocation('/' + value.replace(/^\/+/, '')) ?? '/' + value.replace(/^\/+/, '')
+  sourcePath.value = requested.slice(1)
   try {
     if (!preserveView) await nextTick()
     if (!['application-groups', 'users'].includes(parts.value[0])) throw {status: 404}
     routingFromHost = true
-    try {await router.replace('/' + value.replace(/^\/+/, ''))} finally {routingFromHost = false}
+    try {await router.replace(requested)} finally {routingFromHost = false}
     if (current !== generation || disposed) return
-    const query = router.resolve('/' + value.replace(/^\/+/, '')).query
+    if (requested.slice(1) !== value) {pendingQueryTarget = requested.slice(1); void flushQueryNavigation()}
+    const query = router.resolve(requested).query
     const queryKind = isUsers.value ? 'users' : tab.value === 'scope-grants' ? 'subjects' : 'permissions'
     if (isUsers.value || groupId.value && ['applications', 'scope-grants'].includes(tab.value)) {
       try {

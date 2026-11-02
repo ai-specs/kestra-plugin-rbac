@@ -6,6 +6,7 @@ import {ElConfigProvider, ID_INJECTION_KEY} from 'element-plus'
 import {createMemoryHistory, createRouter} from 'vue-router'
 import {registerDesignSystemI18n, KsButton, KsInput, KsSearch, KsPopover, KsTooltip, KsIcon, KsSelect, KsOption, KsTag, KsSegmented} from '@kestra-io/design-system'
 import App from './App.vue'
+import {normalizeDeepLinkLocation} from './access-control-model.js'
 import {resolveLocale} from '../../.integration/ui-sdk/locales.mjs'
 import {createShadowOverlayScope, createShadowRenderer, shadowOverlayComponents} from '../../.integration/ui-sdk/shadow-overlays.mjs'
 import {contextFullPath, createNavigationHooks} from './navigation-lifecycle.js'
@@ -83,7 +84,8 @@ export async function mountPage(container, initial) {
     app.provide('rbac-navigation-hooks', hooks)
     app.use(i18n)
     const router = createRouter({history: createMemoryHistory(), routes: [{path: '/:pathMatch(.*)*', name: 'rbac-management', component: {render: () => null}}]})
-    await router.push('/' + contextFullPath(initial))
+    const initialLocation = '/' + contextFullPath(initial)
+    await router.push(normalizeDeepLinkLocation(initialLocation) ?? initialLocation)
     app.use(router)
     await registerDesignSystemI18n(i18n)
     if (disposed) throw new Error('Management page mount cancelled')

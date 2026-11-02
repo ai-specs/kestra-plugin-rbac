@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {compareKeys, supportedScopes, involvedApplications, permissionSummary, matchesChips, readListQuery, writeListQuery, paginate, selectionAfterDelete, countValue, permissionInput, detailTabs, collectPermissions, nativeChips, normalizeDeepLinkQuery} from '../src/access-control-model.js'
+import {compareKeys, supportedScopes, involvedApplications, permissionSummary, matchesChips, readListQuery, writeListQuery, paginate, selectionAfterDelete, countValue, permissionInput, detailTabs, collectPermissions, nativeChips, normalizeDeepLinkQuery, normalizeDeepLinkLocation} from '../src/access-control-model.js'
 
 test('N1/N6: four detail tabs, server counts never infer zero', () => {
   assert.deepEqual(detailTabs, ['overview', 'scopes', 'applications', 'scope-grants'])
@@ -42,6 +42,19 @@ test('N12–N16/T4: deep links normalize into native params so chips match UI op
 })
 test('N19/T4: invalid and retired vocabularies fail visibly, not broadened silently', () => {
   for (const query of [{page: '0'}, {page: '1.2'}, {page: ['1', '2']}, {size: '20'}, {scopeKeys: ['a', 'a']}, {scopeKeys: ['../']}, {permissionKey: 'A'}, {filter: '{'}, {filter: '{"field":"unknown","value":"a"}'}, {filter: '{"field":"key","value":"p"}'}]) assert.throws(() => readListQuery(query), /invalid_query/)
+})
+test('N12/T4: fresh-mount location normalization rewrites list deep links before any read', () => {
+  const base = '/ui/main/extensions/rbac'
+  assert.equal(normalizeDeepLinkLocation(base + '/application-groups/g/applications/~abc?scopeKeys=s1&size=50'), base + '/application-groups/g/applications/~abc?size=50&' + encodeURIComponent('filters[scopeKeys][EQUALS]') + '=s1')
+  assert.equal(normalizeDeepLinkLocation(base + '/application-groups/g/applications/~abc?scopeKeys=s1&scopeKeys=s2'), base + '/application-groups/g/applications/~abc?' + encodeURIComponent('filters[scopeKeys][IN]') + '=s1%2Cs2')
+  assert.equal(normalizeDeepLinkLocation(base + '/application-groups/g/scope-grants?filterSubject=u'), base + '/application-groups/g/scope-grants?' + encodeURIComponent('filters[subject][EQUALS]') + '=u')
+  assert.equal(normalizeDeepLinkLocation(base + '/users?filterSubject=u&page=2'), base + '/users?page=2&' + encodeURIComponent('filters[subject][EQUALS]') + '=u')
+  assert.equal(normalizeDeepLinkLocation(base + '/application-groups/g/applications/~abc?permissionKey=k&filterSubject=u'), null)
+  assert.equal(normalizeDeepLinkLocation(base + '/application-groups'), null)
+  assert.equal(normalizeDeepLinkLocation(base + '/application-groups/g'), null)
+  assert.equal(normalizeDeepLinkLocation(base + '/application-groups/g/scopes/s'), null)
+  assert.equal(normalizeDeepLinkLocation(base + '/application-groups/g/applications/~abc?permissionKey=BAD!'), null)
+  assert.equal(normalizeDeepLinkLocation(base + '/application-groups/g/applications/~abc'), null)
 })
 test('N4/N12/N15/T4: filtered total, last-page clamp and code point selection', () => {
   const items = Array.from({length: 26}, (_, i) => i)
