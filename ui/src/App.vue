@@ -142,10 +142,23 @@ async function readView(value = contextFullPath(props.context), preserveOneTime 
   try {
     if (!preserveView) await nextTick()
     if (!['application-groups', 'users'].includes(parts.value[0])) throw {status: 404}
-    routingFromHost = true
-    try {await router.replace(requested)} finally {routingFromHost = false}
+    if (canonicalQueryPath(requested.slice(1)) !== canonicalQueryPath(value)) {
+      // The normalized query is new information for the host. The replace is
+      // suppressed from the host sync and queued explicitly so its background
+      // harmonization can be told apart from a user-initiated query write.
+      // The query-refresh flag keeps the draft guard from treating this
+      // busy-time query-only replace as an unsaved navigation.
+      routingFromHost = true
+      queryRefreshing.value = true
+      try {
+        await router.replace(requested)
+        if (current === generation && !disposed) {pendingQueryTarget = requested.slice(1); harmonizedTargets.add(pendingQueryTarget); void flushQueryNavigation()}
+      } finally {queryRefreshing.value = false; routingFromHost = false}
+    } else {
+      routingFromHost = true
+      try {await router.replace(requested)} finally {routingFromHost = false}
+    }
     if (current !== generation || disposed) return
-    if (canonicalQueryPath(requested.slice(1)) !== canonicalQueryPath(value)) {pendingQueryTarget = requested.slice(1); void flushQueryNavigation()}
     const query = router.resolve(requested).query
     const queryKind = isUsers.value ? 'users' : tab.value === 'scope-grants' ? 'subjects' : 'permissions'
     if (isUsers.value || groupId.value && ['applications', 'scope-grants'].includes(tab.value)) {
@@ -377,6 +390,7 @@ if (navigationHooks) {
 }
 let pendingQueryTarget = null, queryNavigationRunning = false, queryNavigationEpoch = 0
 const queryAcknowledgements = new Map()
+const harmonizedTargets = new Set()
 // The host may re-encode an identical query, so every ownership comparison
 // between host-provided paths and owned paths must stay encoding-insensitive.
 const canonicalQueryPath = fullPath => {
@@ -387,11 +401,13 @@ async function flushQueryNavigation() {
   if (queryNavigationRunning) return
   const epoch = queryNavigationEpoch
   queryNavigationRunning = true
+  let harmonizing = false
   try {
     while (pendingQueryTarget && !disposed && epoch === queryNavigationEpoch) {
       const target = pendingQueryTarget
       pendingQueryTarget = null
       queryAcknowledgements.set(target, epoch)
+      harmonizing = harmonizedTargets.has(target)
       try {
         await props.context.navigate(target, {replace: true})
         await nextTick()
@@ -407,14 +423,18 @@ async function flushQueryNavigation() {
       } finally {queryAcknowledgements.delete(target)}
     }
   } catch (problem) {
+    // Background deep-link harmonization never owns user-visible errors: the
+    // memory route already holds the accepted destination, so restore it
+    // quietly. A user-initiated query write keeps its rejection visible.
     if (!disposed && epoch === queryNavigationEpoch) {
       pendingQueryTarget = null
       routingFromHost = true
       try {await router.replace('/' + contextFullPath(props.context))} finally {routingFromHost = false}
-      failure(problem)
+      if (!harmonizing) failure(problem)
     }
   } finally {
     queryNavigationRunning = false
+    harmonizedTargets.clear()
     if (pendingQueryTarget && !disposed) void flushQueryNavigation()
   }
 }
