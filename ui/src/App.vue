@@ -137,8 +137,12 @@ async function readView(value = contextFullPath(props.context), preserveOneTime 
   if (!preserveView) {loaded.value = false; clearSensitive(!preserveOneTime)}
   // The deep-link vocabulary settles into native filter params before any read
   // starts, so external filters cannot race or invalidate an in-flight read.
+  // The owned path is taken from the router's own serialization: URLSearchParams
+  // and vue-router encode brackets differently, and every ownership comparison
+  // (acknowledgements, host echo, source path) must share one encoding.
   const requested = normalizeDeepLinkLocation('/' + value.replace(/^\/+/, '')) ?? '/' + value.replace(/^\/+/, '')
-  sourcePath.value = requested.slice(1)
+  const owned = router.resolve(requested).fullPath.replace(/^\//, '')
+  sourcePath.value = owned
   try {
     if (!preserveView) await nextTick()
     if (!['application-groups', 'users'].includes(parts.value[0])) throw {status: 404}
@@ -152,7 +156,7 @@ async function readView(value = contextFullPath(props.context), preserveOneTime 
       queryRefreshing.value = true
       try {
         await router.replace(requested)
-        if (current === generation && !disposed) {pendingQueryTarget = requested.slice(1); harmonizedTargets.add(pendingQueryTarget); void flushQueryNavigation()}
+        if (current === generation && !disposed) {pendingQueryTarget = owned; harmonizedTargets.add(owned); void flushQueryNavigation()}
       } finally {queryRefreshing.value = false; routingFromHost = false}
     } else {
       routingFromHost = true

@@ -237,5 +237,21 @@ test('App observes pending public navigation rejection after unmount',async()=>{
  v.close();reject(new Error('Extension navigation rejected'));await tick()
  assert.equal(v.state.context.fullPath,'application-groups');assert.equal(v.requests.filter(r=>r.method!=='GET').length,0)
 })
+test('App host echo of a re-encoded deep-link query must not trigger a phantom second read',async()=>{
+ const deepLink='application-groups/g/applications/~Y2xpZW50?scopeKeys=a'
+ const v=await mountScenario(deepLink,'permissions')
+ try{
+  await wait(()=>decodeURIComponent(v.router.currentRoute.value.fullPath).includes('filters[scopeKeys][EQUALS]=a')&&v.container.querySelector('main').getAttribute('aria-busy')==='false','deep link did not normalize')
+  const readsBefore=v.requests.filter(r=>r.url.includes('/permissions?')).length,navigationsBefore=v.navigations.length
+  // The host serializes its echo with its own encoding; both encodings of the
+  // same accepted query must be recognized as already-loaded content.
+  const route=v.router.currentRoute.value.fullPath.replace(/^\//,'')
+  const echo=new URL('http://x/'+route.split('?')[0]+'?'+new URLSearchParams(route.split('?')[1] ?? '').toString()).pathname.slice(1)+'?'+new URLSearchParams(route.split('?')[1] ?? '').toString()
+  v.state.context={...v.state.context,fullPath:echo}
+  await tick();await tick();await new Promise(resolve=>setTimeout(resolve,30))
+  assert.equal(v.requests.filter(r=>r.url.includes('/permissions?')).length,readsBefore,'re-encoded host echo triggered a phantom reload')
+  assert.equal(v.navigations.length,navigationsBefore,'re-encoded host echo re-acknowledged its own query')
+ }finally{v.close()}
+})
 
 test.after(()=>{hooks.deregister();window.happyDOM.abort()})
