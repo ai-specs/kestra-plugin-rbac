@@ -145,7 +145,7 @@ async function readView(value = contextFullPath(props.context), preserveOneTime 
     routingFromHost = true
     try {await router.replace(requested)} finally {routingFromHost = false}
     if (current !== generation || disposed) return
-    if (requested.slice(1) !== value) {pendingQueryTarget = requested.slice(1); void flushQueryNavigation()}
+    if (canonicalQueryPath(requested.slice(1)) !== canonicalQueryPath(value)) {pendingQueryTarget = requested.slice(1); void flushQueryNavigation()}
     const query = router.resolve(requested).query
     const queryKind = isUsers.value ? 'users' : tab.value === 'scope-grants' ? 'subjects' : 'permissions'
     if (isUsers.value || groupId.value && ['applications', 'scope-grants'].includes(tab.value)) {
@@ -377,6 +377,12 @@ if (navigationHooks) {
 }
 let pendingQueryTarget = null, queryNavigationRunning = false, queryNavigationEpoch = 0
 const queryAcknowledgements = new Map()
+// The host may re-encode an identical query, so every ownership comparison
+// between host-provided paths and owned paths must stay encoding-insensitive.
+const canonicalQueryPath = fullPath => {
+  const [path, search = ''] = fullPath.split('?')
+  return path + '?' + JSON.stringify([...new URLSearchParams(search)].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0))
+}
 async function flushQueryNavigation() {
   if (queryNavigationRunning) return
   const epoch = queryNavigationEpoch
@@ -393,7 +399,7 @@ async function flushQueryNavigation() {
           // An external navigation or tenant update cancelled this owned query.
           // Its delayed acknowledgement must not undo the accepted host destination.
           await activeLoad
-          if (!disposed && contextFullPath(props.context) !== sourcePath.value) {
+          if (!disposed && canonicalQueryPath(contextFullPath(props.context)) !== canonicalQueryPath(sourcePath.value)) {
             await props.context.navigate(sourcePath.value, {replace: true})
             await nextTick()
           }
@@ -429,7 +435,7 @@ window.addEventListener('beforeunload', beforeUnload)
 watch(() => contextFullPath(props.context), value => {
   if (queryAcknowledgements.has(value) && (queryAcknowledgements.get(value) !== queryNavigationEpoch || router.currentRoute.value.fullPath.replace(/^\//, '') !== value)) return
   if (value.split('?')[0] !== sourcePath.value.split('?')[0]) {queryNavigationEpoch++; pendingQueryTarget = null}
-  if (value === sourcePath.value && loaded.value) return
+  if (canonicalQueryPath(value) === canonicalQueryPath(sourcePath.value) && loaded.value) return
   const preserveView = loaded.value && !denied.value && !reauthenticate.value && value.split('?')[0] === sourcePath.value.split('?')[0]
   discardGuard(() => {void load(value, false, preserveView)}, preserveView)
 }, {immediate: true})
