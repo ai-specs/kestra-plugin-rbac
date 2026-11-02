@@ -374,7 +374,7 @@ const toApplication = (clientId, query = {}) => navigate(groupBase.value + '/app
 const subjectApps = subject => subject.active === false ? [] : applications.value.filter(item => item.active !== false && item.supportedScopeKeys?.some(key => subject.scopeKeys.includes(key)))
 function beforeUnload(event) {if (editorDirty(editor) || inlineDirty.value) {event.preventDefault(); event.returnValue = ''}}
 const removeRouteGuard = router.beforeEach(createDraftNavigationGuard(
-  () => ({saving: !routingFromHost && (busy.value && !queryRefreshing.value || editor.saving || credentialBusy.value || Boolean(oneTime.value)), dirty: !routingFromHost && (editorDirty(editor) || inlineDirty.value)}),
+  () => ({saving: !routingFromHost && (busy.value && !queryRefreshing.value && !queryNavigationRunning || editor.saving || credentialBusy.value || Boolean(oneTime.value)), dirty: !routingFromHost && (editorDirty(editor) || inlineDirty.value)}),
   resolve => {
     pendingRoute.value = resolve
     if (editor.kind) requestEditorClose(editor, () => {pendingRoute.value = null; resolve(true)})
@@ -383,7 +383,7 @@ const removeRouteGuard = router.beforeEach(createDraftNavigationGuard(
 ))
 if (navigationHooks) {
   navigationHooks.guard = createDraftNavigationGuard(
-    () => ({saving: busy.value && !queryRefreshing.value || editor.saving || credentialBusy.value || Boolean(oneTime.value), dirty: editorDirty(editor) || inlineDirty.value}),
+    () => ({saving: busy.value && !queryRefreshing.value && !queryNavigationRunning || editor.saving || credentialBusy.value || Boolean(oneTime.value), dirty: editorDirty(editor) || inlineDirty.value}),
     resolve => {
       pendingRoute.value = resolve
       if (editor.kind) requestEditorClose(editor, () => {pendingRoute.value = null; resolve(true)})
@@ -405,6 +405,9 @@ async function flushQueryNavigation() {
   if (queryNavigationRunning) return
   const epoch = queryNavigationEpoch
   queryNavigationRunning = true
+  // The queue only carries same-path query refreshes; the armed draft guards
+  // treat an active drain as a query refresh so it passes even while a read
+  // is still busy, instead of being rejected and silently rolled back.
   let harmonizing = false
   try {
     while (pendingQueryTarget && !disposed && epoch === queryNavigationEpoch) {
@@ -459,7 +462,10 @@ window.addEventListener('beforeunload', beforeUnload)
 watch(() => contextFullPath(props.context), value => {
   if (queryAcknowledgements.has(value) && (queryAcknowledgements.get(value) !== queryNavigationEpoch || router.currentRoute.value.fullPath.replace(/^\//, '') !== value)) return
   if (value.split('?')[0] !== sourcePath.value.split('?')[0]) {queryNavigationEpoch++; pendingQueryTarget = null}
-  if (canonicalQueryPath(value) === canonicalQueryPath(sourcePath.value) && loaded.value) return
+  // An in-flight or completed read of the same logical destination already
+  // owns this echo: re-running it would reopen the busy window and swallow
+  // user interactions that land between the two loads.
+  if (canonicalQueryPath(value) === canonicalQueryPath(sourcePath.value) && (loaded.value || busy.value)) return
   const preserveView = loaded.value && !denied.value && !reauthenticate.value && value.split('?')[0] === sourcePath.value.split('?')[0]
   discardGuard(() => {void load(value, false, preserveView)}, preserveView)
 }, {immediate: true})
