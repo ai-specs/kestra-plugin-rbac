@@ -58,4 +58,23 @@ authorization_required={
 assert int(authorization.get('tests','0'))==3 and all(int(authorization.get(key,'0'))==0 for key in ('failures','errors','skipped')), 'Authorization dependency PostgreSQL cases missing or failed'
 assert {case.get('name','').removesuffix('()') for case in authorization.findall('testcase')}==authorization_required, 'Authorization dependency named cases differ'
 summary['authorizationDependency']={'suite':authorization_name,'tests':3,'failures':0,'errors':0,'skipped':0,'signedTestJwt':True,'publishedHttpFilter':True,'backend':'PostgreSQL','productionLogin':False}
+initial_name='io.kestra.extensions.rbac.applicationgroup.InitialApplicationGroupPostgresTest'
+initial=ET.parse(Path(sys.argv[1])/('TEST-'+initial_name+'.xml')).getroot()
+initial_required={
+    'borrowedConnectionRollbackRemovesEveryDirectoryAndAuditTableAndAllowsRetry',
+    'committedInstallationCreatesOnlyCurrentSchemaAndProtectsBuiltinGroup',
+    'repeatedInitializationRejectsWithoutChangingAnyDirectoryOrGrant',
+    'partialLegacyStorageIsRejectedWithoutImplicitUpgradeOrNewTables',
+    'concurrentInitializationCommitsExactlyOneInitialDirectory',
+    'firstSubjectAloneReceivesEditableTypedScopeAndNoAdministratorNameBypass',
+}
+assert int(initial.get('tests','0'))==len(initial_required)
+assert all(int(initial.get(key,'0'))==0 for key in ('failures','errors','skipped')), 'Initial-account PostgreSQL cases failed or skipped'
+assert {case.get('name','').removesuffix('()') for case in initial.findall('testcase')}==initial_required
+initial_output='\n'.join(initial.itertext())
+assert 'Initial-account backend: PostgreSQL; host: published-initial-account-participant;' in initial_output
+assert 'executable: '+provenance['sha256']+'; image: '+provenance['image'] in initial_output
+summary['initialAccount']={'suite':initial_name,'tests':len(initial_required),'failures':0,'errors':0,'skipped':0,
+    'backend':'PostgreSQL','hostAdapter':'published-initial-account-participant','hostExecutableSha256':provenance['sha256'],
+    'hostImage':provenance['image'],'productionLogin':False}
 print(json.dumps(summary,sort_keys=True))

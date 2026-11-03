@@ -32,6 +32,8 @@ REQUIRED['io.kestra.extensions.rbac.store.ManagementAuditSchemaCommandTest'] = 2
 REQUIRED['io.kestra.extensions.rbac.store.NewInstallMigrationTest'] = 3
 REQUIRED['io.kestra.extensions.rbac.management.PublishedUserDirectoryAccessTest'] = 8
 REQUIRED['io.kestra.extensions.rbac.AuthorizationDependencyTest'] = 5
+REQUIRED['io.kestra.extensions.rbac.applicationgroup.InitialApplicationGroupPlanTest'] = 6
+REQUIRED['io.kestra.extensions.rbac.InitialApplicationGroupParticipantTest'] = 6
 results=Path(sys.argv[1])
 for name,count in REQUIRED.items():
     report=ET.parse(results/('TEST-'+name+'.xml')).getroot()

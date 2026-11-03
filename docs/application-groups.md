@@ -290,7 +290,26 @@ schema2 declaration-upgrade 必须显式 preview/apply，默认拒绝静默升�
 初始化 CLI 必须使用新权限格式。PG preview/apply/冲突/故障注入/回滚/幂等是真实必需门，
 等主控提供单个隔离实例，不自行创建实例；H2 不能替代 PG。
 
-### 初始化 CLI 输入（候选，供部署仓同步）
+### 网页首账号事务初始化（2026-11-03，实施中，未发布）
+
+宿主公开 `OidcInitialAccountParticipantV1` 的借用连接回调是新的首次安装入口。
+插件仅消费宿主生成的 `issuer/installationId/configuredLoginClientId/subject`，
+不从网页输入接受组、scope、grants 或管理员身份。该回调早于标准账号/client 行写入，
+不能调用要求安装已完成的 `verifyInstallation`，也不能自行提交、回滚或关闭连接。
+
+`InitialApplicationGroupPlan` 生成一组 `main`、一个 `admin` scope、配置 UI client、
+一条 `initial-administrator` typed 权限和首账号唯一授予。默认资源范围与管理权限
+逐项列在本仓 README 的“网页自动首装”；所有初始修订为1。它不是第二个策略源：
+实际策略仍为目录应用内 permissions，投影、编辑及撤权仍走现有运行机制。
+
+`InitialApplicationGroupParticipant` 在同一协议安全锁内拒绝任何已有 `rbac_` 表，
+之后创建当前五张统一业务表并原子保存内置组。历史、部分或已有目录不通过首装
+隐式修复；外部应用不自动登记，普通名为 admin 的其他账号不会获得授权。
+宿主失败时数据库变更一起回滚，初始化成功后不提供可重复调用的匿名插件写 API。
+正式宿主新 SPI 已随 overlay c4a1eb22/CI41628600618 发布；插件自身独立编译、
+CI、jar 发布及组合验收仍须对应本次提交执行，源码存在不能代替这些结果。
+
+### 初始化 CLI 输入（现有手动维护入口）
 
 保留 `ApplicationGroupDirectoryCommand preview <plan.json>` 和
 `ApplicationGroupDirectoryCommand apply <plan.json> <approvalHash>`，formatVersion=2。

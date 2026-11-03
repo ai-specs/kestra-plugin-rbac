@@ -145,6 +145,10 @@ suite为`io.kestra.extensions.rbac.applicationgroup.AccountLifecyclePostgresTest
 标准账号、可信身份与参与者调度来自固定正式镜像，生产插件适配器/参与者实际接线。
 同任务另执行PublishedManagementPostgresTest的15项真实管理集成，包含身份目录的
 缺组404、零授权403和真实创建/更新/删除事务回归。
+自动首装另有 `InitialApplicationGroupPostgresTest` 的6项具名用例：借用连接回滚后
+全部表消失并可重试、当前五张表与内置组保护、重复初始化零变更、部分旧存储拒绝、
+并发仅一次成功、仅首账号获得可编辑 typed scope。它与原生命周期门一起运行，使用
+同一正式宿主 provenance，不能用H2或纯默认计划测试替代。
 Controller互删/互停用检查一个成功及一个明确安全拒绝/冲突，不接受任意RuntimeException。
 SQL和投影依赖故障保持503并验证无副作用。检查器核对两个suite的精确名称集合、PostgreSQL及hostImage/executable hash；摘要gatePassed仅
 表示此门通过，不表示整仓可发布。正式HTTP/CSRF、插件浏览器及Compose仍须独立验收。
@@ -204,6 +208,31 @@ scope 名称和说明不授予资源权限。旧项目路径、完整恢复和�
 不可复用。第一个内置应用组始终不可删除。
 
 ## 新安装应用组
+
+### 网页自动首装（实施中，尚未发布）
+
+目标流程是部署方准备正式兼容 jar 并开启 RBAC 后，在宿主 `/oidc/setup` 页面创建首个账号。
+插件通过宿主 `OidcInitialAccountParticipantV1` 在借用的同一 PostgreSQL 事务内创建目录、
+统一 typed 权限和首账号授予；不执行 CLI，不提供额外匿名初始化 API，不依据账号名字
+授予管理员。宿主契约已随 overlay `c4a1eb22` 的成功 CI `41628600618` 正式发布，
+`host-contract.properties` 固定其正式镜像。不得使用相邻源码、候选 executable 或临时
+接口编译本插件；本插件自身 CI、jar 发布与根仓组合验收通过前，不代表能力已交付。
+
+初始业务设计：唯一内置组 `main`，人类名称 `Kestra`；scope `admin`，人类名称
+`Administrator`；仅本次可信首账号获得该 scope，UI client 是普通应用成员。初始所有
+修订与授权版本为 1。单条可编辑的 `initial-administrator` 权限包含：
+
+- `IDENTITY`、`LOCAL_POLICY`、`BUSINESS_INSTANCE` 各 `READ/MANAGE`；LOCAL_POLICY 明确仅组 `main`。
+- `METADATA` 为 `main` tenant 的 `READ/LIST`；`MCP_SERVER` 为该 tenant 的 `READ/LIST/CREATE/UPDATE/DELETE`。
+- FLOW、EXECUTION、TRIGGER、NAMESPACE、KVSTORE、SECRET、NAMESPACE_FILE、LOG、METRIC、DASHBOARD、BLUEPRINT、AI
+  仅命名空间 `company` 及子空间，动作明确为 `READ/LIST/CREATE/UPDATE/DELETE/EXECUTE/ACCESS_OUTPUTS`。
+- 资源 audience 精确为当前 issuer 下 `/api/v1/main/mcp/default`；不登记外部应用，不采用通配 audience。
+
+这不是永久超级权限。范围外业务仍拒绝，其他账号不继承首账号权限；管理员可通过现有
+管理页面复核并修改初始权限。已存在任意 `rbac_` 表时不允许网页首装隐式覆盖或升级。
+回调不提交、不回滚、不关闭连接；宿主后续失败必须使插件写入一起回滚。
+
+### 现有正式手动维护入口
 
 先使用宿主正式首装流程创建初始账号和配置中的 UI client。停止业务 JVM，在同一部署的
 数据库和持久卷上运行插件 CLI。命令要求 `RBAC_POLICY_JDBC_URL`、`RBAC_POLICY_JDBC_USER`、

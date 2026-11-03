@@ -31,6 +31,8 @@ class BeanDiscoveryTest {
             assertNotNull(context.getBean(ApplicationGroupProtocolProjectionV1.class));
             assertSame(context.getBean(ApplicationGroupProtocolProjectionV1.class),context.getBean(ApplicationGroupProtocolProjectionV2.class));
             assertEquals(1,context.getBeansOfType(IdentityLifecycleParticipantV1.class).size());
+            assertEquals(1,context.getBeansOfType(OidcInitialAccountParticipantV1.class).size());
+            assertInstanceOf(InitialApplicationGroupParticipant.class,context.getBean(OidcInitialAccountParticipantV1.class));
             assertNotNull(context.getBean(io.kestra.extensions.rbac.management.ClientCredentialController.class));
             assertNotNull(context.getBean(io.kestra.extensions.rbac.management.ManagementAuditController.class));
             assertNotNull(context.getBean(IdentityLifecycleGuardV1.class));
@@ -53,6 +55,7 @@ class BeanDiscoveryTest {
             assertFalse(context.containsBean(AuthorizationEvaluationProviderV2.class));
             assertFalse(context.containsBean(PolicyEngine.class));
             assertFalse(context.containsBean(SafeFlowDependencies.class));
+            assertFalse(context.containsBean(OidcInitialAccountParticipantV1.class));
         }
     }
 }
