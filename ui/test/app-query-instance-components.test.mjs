@@ -253,6 +253,12 @@ test('App native box tabs retain active and host URL during real editor save and
   inputText(document.querySelector('[data-test="drawer-user"] input[name="username"]'),'tab-lock-account')
   document.querySelector('[data-test="drawer-user"] form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));await wait(()=>saving,'real editor POST not started')
   click(tab('application-groups'));await tick();assert.equal(v.state.context.fullPath,'users');assert.equal(tab('users').getAttribute('aria-selected'),'true');assert.equal(await v.hooks.beforeNavigate({fullPath:'application-groups'}),false,'saving must block external host navigation')
+  const reads=v.requests.filter(path=>path.includes('/capabilities')).length
+  v.state.context={...v.state.context,fullPath:'users?page=2'};await tick()
+  assert.equal(v.router.currentRoute.value.query.page,undefined)
+  assert.equal(v.requests.filter(path=>path.includes('/capabilities')).length,reads,'preserveView must not bypass editor.saving')
+  assert(document.querySelector('[data-test="drawer-user"]'))
+  v.state.context={...v.state.context,fullPath:'users'};await tick()
   receipt.resolve(response({subject:'tab-lock-account',revision:1,temporaryPassword:'isolated-component-test-value'}));await wait(()=>dialog()&&v.container.querySelector('main').getAttribute('aria-busy')==='false','one-time dialog absent')
   click(tab('application-groups'));await tick();assert.equal(v.state.context.fullPath,'users');assert.equal(tab('users').getAttribute('aria-selected'),'true');assert(dialog());assert.equal(await v.hooks.beforeNavigate({fullPath:'application-groups'}),false,'oneTime must block external host navigation')
   click([...dialog().querySelectorAll('button')].find(n=>n.textContent.trim()==='Close'));await tick()
@@ -285,12 +291,61 @@ test('App slow subject query retains real credential-write and oneTime navigatio
   const confirmRotate=document.querySelector('[data-test="credential-rotate-confirm"]');assert(confirmRotate,'rotation risk confirmation absent');click(confirmRotate)
   await wait(()=>rotationStarted,'real rotation POST absent')
   click(overview());await tick();assert.equal(v.state.context.path,base);assert.equal(await v.hooks.beforeNavigate({fullPath:'users'}),false,'credential write must block external navigation during query read')
+  const reads=v.requests.filter(path=>path.includes('/capabilities')).length
+  v.state.context={...v.state.context,path:'users',fullPath:'users'};await tick()
+  assert.equal(v.router.currentRoute.value.path,'/'+base,'queryRefreshing must not bypass credential write')
+  assert.equal(v.requests.filter(path=>path.includes('/capabilities')).length,reads)
+  v.state.context={...v.state.context,path:base,fullPath:initial+'&page=2'};await tick()
   credentialRevision=2;rotation.resolve(response({clientId:'client',credentialRevision:2,clientSecret:'isolated-component-test-secret'}));await wait(()=>dialog(),'real rotation oneTime absent')
   assert.equal(v.container.querySelector('main').getAttribute('aria-busy'),'true','subject read must remain pending')
   click(overview());await tick();assert.equal(v.state.context.path,base);assert.equal(v.container.querySelector('[role="tab"][id="tab-applications"]').getAttribute('aria-selected'),'true');assert.equal(await v.hooks.beforeNavigate({fullPath:'users'}),false,'oneTime must block external navigation during query read')
+  v.state.context={...v.state.context,path:'users',fullPath:'users'};await tick()
+  assert.equal(v.router.currentRoute.value.path,'/'+base,'queryRefreshing must not bypass oneTime')
+  assert(dialog());assert.equal(v.requests.filter(path=>path.includes('/capabilities')).length,reads)
+  v.state.context={...v.state.context,path:base,fullPath:initial+'&page=2'};await tick()
   click([...dialog().querySelectorAll('button')].find(n=>n.textContent.trim()==='Close'));await tick()
   grant.resolve(response({subject:'alice',scopeKeys:[]}));await wait(()=>v.container.querySelector('main').getAttribute('aria-busy')==='false'&&!v.state.context.fullPath.includes('scopeKeys'),'released subject read must normalize host URL')
   assert.equal(v.router.currentRoute.value.query.filterSubject,'alice');assert.equal(v.container.querySelectorAll('[data-test="permission-row"]').length,0)
  }finally{grant.resolve(response({subject:'alice',scopeKeys:[]}));rotation.resolve(response({clientId:'client',credentialRevision:2,clientSecret:'isolated-component-test-secret'}));v.close()}
 })
+test('App context watcher releases only read-refresh busy and supersedes stale responses on a different path',async()=>{
+ const pending=deferred(),v=await mountApp();let started=false
+ try{
+  v.setGroupResponse(()=>{started=true;return pending.promise})
+  v.state.context={...v.state.context,fullPath:'application-groups?size=10'}
+  await wait(()=>started&&v.container.querySelector('main').getAttribute('aria-busy')==='true','read refresh did not start')
+  assert.equal(await v.hooks.beforeNavigate({fullPath:'users'}),true)
+  v.state.context={...v.state.context,path:'users',fullPath:'users'}
+  await wait(()=>v.container.querySelector('[data-test="user-row"]')&&v.container.querySelector('main').getAttribute('aria-busy')==='false','context watcher blocked read-only navigation')
+  pending.resolve(response({items:[{id:'stale-group',displayName:'Stale secret'}],total:1,page:1,size:100}));await tick()
+  assert.equal(v.router.currentRoute.value.path,'/users');assert(!v.container.textContent.includes('Stale secret'))
+ }finally{pending.resolve(response({items:[],total:0,page:1,size:100}));v.close()}
+})
+
+test('App dirty inline draft during query refresh still requires explicit discard for host context navigation',async()=>{
+ const pending=deferred();let slow=false,started=false
+ const v=await mountApp(path=>{
+  if(path.endsWith('/application-groups/kestra-a')){if(slow){started=true;return pending.promise}return response({id:'kestra-a',displayName:'First',description:'Original',issuer:'issuer-a',revision:1})}
+ })
+ try{
+  v.state.context={...v.state.context,path:'application-groups/kestra-a',fullPath:'application-groups/kestra-a'}
+  await wait(()=>v.container.querySelector('[data-test="group-edit"]')&&v.container.querySelector('main').getAttribute('aria-busy')==='false','group detail did not load')
+  slow=true;v.state.context={...v.state.context,fullPath:'application-groups/kestra-a?size=10'}
+  await wait(()=>started,'read refresh did not start')
+  click(v.container.querySelector('[data-test="group-edit"]'));await tick()
+  inputText(v.container.querySelector('.rbac-inline-form textarea'),'Protected dirty draft')
+  const reads=v.requests.filter(path=>path.includes('/capabilities')).length
+  v.state.context={...v.state.context,path:'users',fullPath:'users'};await tick()
+  const dialog=[...document.querySelectorAll('[data-test="discard-confirm"]')].find(shown);assert(dialog,'read busy bypass must still show discard confirmation')
+  assert.equal(v.router.currentRoute.value.path,'/application-groups/kestra-a')
+  assert.equal(v.requests.filter(path=>path.includes('/capabilities')).length,reads)
+  assert.equal(v.container.querySelector('.rbac-inline-form textarea').value,'Protected dirty draft')
+  pending.resolve(response({id:'kestra-a',displayName:'First',description:'Original',issuer:'issuer-a',revision:1}))
+  await wait(()=>v.container.querySelector('main').getAttribute('aria-busy')==='false','read refresh did not finish')
+  click([...dialog.querySelectorAll('button')].find(node=>node.textContent.trim()==='Cancel'));await tick()
+  assert.equal(v.container.querySelector('.rbac-inline-form textarea').value,'Protected dirty draft')
+  assert.equal(v.router.currentRoute.value.path,'/application-groups/kestra-a')
+ }finally{pending.resolve(response({id:'kestra-a',displayName:'First',description:'Original',issuer:'issuer-a',revision:1}));v.close()}
+})
+
 test.after(()=>{hooks.deregister();window.happyDOM.abort()})
