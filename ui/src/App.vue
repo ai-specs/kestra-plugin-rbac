@@ -118,10 +118,49 @@ function navigate(target, query = {}, replace = false) {
 }
 function beforeTabLeave(target) {
   const current = groupId.value ? tab.value : isUsers.value ? 'users' : 'application-groups'
-  // Accept host-owned model synchronization; native clicks must first pass
-  // the existing save/credential/draft guard and await the host destination.
   if (target === current) return true
-  navigate(groupId.value ? groupBase.value + (target === 'overview' ? '' : '/' + target) : target)
+
+  // 优化：从有 groupId 的详情页切换到 scopes/applications tab 时，
+  // 先在后台加载列表数据，知道第一个项是什么，然后一次性导航到详情页，
+  // 避免中间的列表页导致两次渲染闪烁。
+  if (groupId.value && ['scopes', 'applications'].includes(target)) {
+    discardGuard(async () => {
+      try {
+        busy.value = true
+        const capability = await api.capabilities(groupId.value)
+        if (current !== generation || disposed) return
+        if (!capability.identityRead) throw {status: 403}
+
+        const g = await api.applicationGroup(groupId.value)
+        if (current !== generation || disposed) return
+
+        let firstKey = ''
+        if (target === 'scopes') {
+          const ss = await collectPages((page, size) => api.applicationGroupScopes(groupId.value, page, size), g.revision)
+          if (current !== generation || disposed) return
+          const firstScope = ordered(ss)[0]
+          if (firstScope) firstKey = encodeURIComponent(firstScope.key)
+        } else if (target === 'applications') {
+          const apps = await collectPages((page, size) => api.applications(groupId.value, page, size), g.revision)
+          if (current !== generation || disposed) return
+          const firstApp = ordered(apps, 'clientId')[0]
+          if (firstApp) firstKey = encodeKey(firstApp.clientId)
+        }
+
+        // 一次性导航到详情页
+        const destination = groupBase.value + '/' + target + (firstKey ? '/' + firstKey : '')
+        await navigateHost(destination, {replace: true})
+      } catch (problem) {
+        if (current === generation && !disposed && problem.name !== 'AbortError') failure(problem)
+      } finally {
+        if (current === generation && !disposed) busy.value = false
+      }
+    })
+  } else {
+    // 其他情况（overview tab、从列表页切换等），保持原有逻辑
+    navigate(groupId.value ? groupBase.value + (target === 'overview' ? '' : '/' + target) : target)
+  }
+
   return false
 }
 function openInline(value, kind) {inline.value = {...copy(value), _kind: kind}; inlineBaseline.value = JSON.stringify(inline.value)}
