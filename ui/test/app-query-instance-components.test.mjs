@@ -215,7 +215,9 @@ for(const kind of ['group','scope','application'])test('App native box tab cance
  const v=await mountApp(path=>{
   if(path.endsWith('/application-groups/kestra-a'))return response({id:'kestra-a',displayName:'First',issuer:'issuer-a',active:true,revision:1})
   if(path.includes('/scopes?'))return page([{key:'scope-a',name:'Scope A',description:'',revision:1}])
+  if(path.includes('/scopes/detail?'))return response({key:'scope-a',name:'Scope A',description:'',revision:1})
   if(path.includes('/applications?'))return page([{clientId:'app-a',description:'',revision:1}])
+  if(path.includes('/applications/detail?'))return response({clientId:'app-a',description:'',revision:1,supportedScopeKeys:[]})
   if(path.includes('/scope-grants?'))return page([])
  })
  const base='application-groups/kestra-a',source=kind==='group'?'overview':kind==='scope'?'scopes':'applications',target=source==='overview'?'scopes':'overview'
@@ -226,8 +228,11 @@ for(const kind of ['group','scope','application'])test('App native box tab cance
  const visibleDialog=()=>[...document.querySelectorAll('[data-test="discard-confirm"]')].find(shown)
  const tab=name=>v.container.querySelector('[role="tab"][id="tab-'+name+'"]')
  try{
-  v.state.context={...v.state.context,path:initial,fullPath:initial};await wait(()=>v.container.querySelector(kind==='group'?'[data-test="group-edit"]':kind==='scope'?'[data-test="scope-add"]':'[data-test="application-register"]'),'inline entry absent')
-  click(v.container.querySelector(kind==='group'?'[data-test="group-edit"]':kind==='scope'?'[data-test="scope-add"]':'[data-test="application-register"]'));await tick()
+  v.state.context={...v.state.context,path:initial,fullPath:initial};
+  // 对于 scopes/applications tab，初始在详情页，需要等待详情内容加载
+  const inlineSelector=kind==='group'?'[data-test="group-edit"]':kind==='scope'?'[data-test="scope-edit"]':'[data-test="application-edit"]'
+  await wait(()=>v.container.querySelector(inlineSelector),'inline entry absent')
+  click(v.container.querySelector(inlineSelector));await tick()
   const form=v.container.querySelector('.rbac-inline-form'),input=form.querySelector('input');inputText(input,'changed-draft');await tick()
   const destination=tab(target);assert(destination);destination.focus();click(destination)
   await wait(()=>visibleDialog(),'first tab click must confirm discard')
