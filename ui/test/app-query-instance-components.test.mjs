@@ -440,7 +440,7 @@ for(const mode of ['identity-before-list','identity-after-list','permission','de
   if(path.includes('/capabilities')&&capabilityReads){
    capabilityReads++
    if(mode==='identity-before-list'||mode==='identity-after-list'&&capabilityReads>=3)return response({...view.capability(),subject:'bob'})
-   if(mode==='permission')return response({...view.capability(),identityManagement:false})
+   if(mode==='permission')return response({...view.capability(),identityRead:false})
    if(mode==='denied')return response({...view.capability(),allowed:false})
   }
  })
@@ -475,6 +475,78 @@ for(const change of ['path','tenant','request','signal','abort','dispose'])test(
    if(change==='path')assert(view.container.querySelector('.customize-button'),'accepted new path must load users')
   }
  }finally{pending.resolve(tabPage([]));if(!closed)view.close()}
+})
+
+for(const mode of ['revision','field-order','read-only','manage-change'])test('App same-subject tab prefetch accepts '+mode+' without false authorization denial',async()=>{
+ let changed=false
+ const view=await mountTabApp(path=>{
+  if(!changed||!path.includes('/capabilities'))return
+  const value={...view.capability(),runtimePolicyRevision:2}
+  if(mode==='read-only'||mode==='manage-change')value.identityManagement=false
+  return response(mode==='field-order'?Object.fromEntries(Object.entries(value).reverse()):value)
+ })
+ try {
+  if(mode==='read-only'){
+   view.setCapability({...view.capability(),identityManagement:false,runtimePolicyRevision:1})
+   view.state.context={...view.state.context,fullPath:'application-groups/kestra-a?size=10'}
+   await wait(()=>tabSettled(view)&&!view.container.querySelector('[data-test="group-edit"]'),'read-only page did not reload')
+  }
+  changed=true;click(nativeTab(view,'scopes'))
+  await wait(()=>view.state.context.fullPath.endsWith('/scopes/scope-a')&&tabSettled(view),'permitted metadata/permission change blocked navigation')
+  assert.deepEqual(view.navigations,['application-groups/kestra-a/scopes/scope-a'])
+  assert(!view.container.querySelector('[data-test="sign-in-again"]'));assert(!view.container.querySelector('[data-test="request-error"]'))
+  assert(view.container.querySelector('[data-test="scope-detail"]'))
+  if(mode==='read-only'||mode==='manage-change')assert(![...view.container.querySelectorAll('[data-test="scope-detail"] button')].some(node=>node.textContent.trim()==='Edit'))
+ }finally{view.close()}
+})
+for(const preference of ['theme','locale','signal'])test('App '+preference+' context with new request wrapper preserves inline draft and leave guard',async()=>{
+ const view=await mountTabApp()
+ try {
+  click(view.container.querySelector('[data-test="group-edit"]'));await tick()
+  inputText(view.container.querySelector('.rbac-inline-form textarea'),'Protected wrapper draft');await tick()
+  const form=view.container.querySelector('.rbac-inline-form'),reads=view.requests.length,request=view.state.context.request
+  view.state.context={...view.state.context,request:(...args)=>request(...args),...(preference==='theme'?{theme:'dark'}:preference==='locale'?{locale:'zh_CN'}:{signal:new AbortController().signal})}
+  await tick()
+  assert.equal(view.container.querySelector('.rbac-inline-form'),form);assert.equal(form.querySelector('textarea').value,'Protected wrapper draft');assert.equal(view.requests.length,reads)
+  click(nativeTab(view,'scopes'));await wait(()=>[...document.querySelectorAll('[data-test="discard-confirm"]')].some(shown),'wrapper replacement bypassed draft guard')
+  assert.deepEqual(view.navigations,[])
+ }finally{view.close()}
+})
+for(const preference of ['theme','locale'])test('App '+preference+' wrapper invalidates old tab prefetch without navigation or identity denial',async()=>{
+ const pending=deferred();let started=false,pause=true
+ const view=await mountTabApp(path=>{if(pause&&path.includes('/scopes?')){started=true;return pending.promise}})
+ try {
+  const detail=view.container.querySelector('[data-test="group-detail"]')
+  click(nativeTab(view,'scopes'));await wait(()=>started,'prefetch did not start')
+  const request=view.state.context.request
+  view.state.context={...view.state.context,request:(...args)=>request(...args),...(preference==='theme'?{theme:'dark'}:{locale:'zh_CN'})}
+  await wait(()=>tabSettled(view),'wrapper change did not release obsolete prefetch')
+  pending.resolve(tabPage([{key:'obsolete-scope',name:'Obsolete',revision:1}]))
+  await tick();await tick()
+  assert.deepEqual(view.navigations,[]);assert.equal(view.container.querySelector('[data-test="group-detail"]'),detail)
+  assert(!view.container.querySelector('[data-test="sign-in-again"]'));assert(!view.container.textContent.includes('obsolete-scope'))
+  pause=false;click(nativeTab(view,'scopes'));await wait(()=>view.state.context.fullPath.endsWith('/scopes/scope-a')&&tabSettled(view),'fresh tab attempt did not recover')
+  assert.deepEqual(view.navigations,['application-groups/kestra-a/scopes/scope-a'])
+ }finally{pending.resolve(tabPage([]));view.close()}
+})
+for(const preference of ['theme','locale','signal'])test('App '+preference+' wrapper preserves actual one-time credential and its navigation lock',async()=>{
+ const view=await mountApp((path,options)=>path.endsWith('/users')&&options.method==='POST'?response({subject:'wrapper-account',revision:1,temporaryPassword:'isolated-wrapper-secret'}):undefined)
+ const dialog=()=>[...document.querySelectorAll('[data-test="temporary-password-once"]')].find(shown)
+ try {
+  click(nativeTab(view,'users'));await wait(()=>view.state.context.fullPath==='users'&&tabSettled(view),'users not loaded')
+  click([...view.container.querySelectorAll('button')].find(node=>/Create/.test(node.textContent)))
+  await wait(()=>document.querySelector('[data-test="drawer-user"] input[name="username"]'),'user drawer absent')
+  inputText(document.querySelector('[data-test="drawer-user"] input[name="username"]'),'wrapper-account')
+  document.querySelector('[data-test="drawer-user"] form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))
+  await wait(()=>dialog()&&tabSettled(view),'actual one-time credential absent')
+  const existing=dialog(),request=view.state.context.request,reads=view.requests.length
+  view.state.context={...view.state.context,request:(...args)=>request(...args),...(preference==='theme'?{theme:'dark'}:preference==='locale'?{locale:'zh_CN'}:{signal:new AbortController().signal})}
+  await tick()
+  assert.equal(dialog(),existing);assert.equal(view.requests.length,reads)
+  click(nativeTab(view,'application-groups'));await tick()
+  assert.equal(view.state.context.fullPath,'users');assert.equal(dialog(),existing)
+  assert.equal(await view.hooks.beforeNavigate({fullPath:'application-groups'}),false)
+ }finally{view.close()}
 })
 
 test.after(()=>{hooks.deregister();window.happyDOM.abort()})

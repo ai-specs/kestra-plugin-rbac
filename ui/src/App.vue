@@ -127,17 +127,21 @@ function beforeTabLeave(target) {
       const viewGeneration = ++generation
       tabPrefetchGeneration = viewGeneration
       const context = props.context, id = groupId.value, base = groupBase.value
-      const origin = contextFullPath(context)
+      const origin = contextFullPath(context), subject = caps.value?.subject
       const client = createClient(() => context)
       const current = () => !disposed && viewGeneration === generation && !context.signal?.aborted &&
         context.tenant === props.context.tenant && context.apiBase === props.context.apiBase &&
         context.request === props.context.request && context.signal === props.context.signal &&
         origin === contextFullPath(props.context)
       const authorized = capability => {
-        if (caps.value?.subject !== capability.subject || caps.value?.issuer !== capability.issuer) {
+        if (subject !== capability.subject) {
           throw {status: 401, code: 'stale_identity'}
         }
-        if (!capability.allowed || !capability.identityRead || JSON.stringify(caps.value) !== JSON.stringify(capability)) throw {status: 403}
+        if (!capability.allowed || !capability.identityRead) throw {status: 403}
+        if (['identityManagement', 'localPolicyRead', 'localPolicyManagement', 'userDirectory'].some(key => caps.value?.[key] !== capability[key])) {
+          loaded.value = false; clearSensitive()
+        }
+        caps.value = capability
       }
       busy.value = true; error.value = ''; conflicted.value = false
       try {
@@ -530,7 +534,11 @@ watch(() => contextFullPath(props.context), value => {
     (value.split('?')[0] === sourcePath.value.split('?')[0] || defaultSelection)
   discardGuard(() => {void load(value, false, preserveView)}, preserveView || queryRefreshing.value || tabPrefetchGeneration === generation)
 }, {immediate: true})
-watch([() => props.context.tenant, () => props.context.apiBase, () => props.context.request, () => props.context.signal], () => {queryNavigationEpoch++; pendingQueryTarget = null; generation++; caps.value = null; clearSensitive(); void load()})
+watch([() => props.context.tenant, () => props.context.apiBase], () => {queryNavigationEpoch++; pendingQueryTarget = null; generation++; caps.value = null; clearSensitive(); void load()})
+watch([() => props.context.request, () => props.context.signal], () => {
+  if (tabPrefetchGeneration !== generation) return
+  generation++; tabPrefetchGeneration = null; busy.value = false
+})
 onBeforeUnmount(() => {disposed = true; queryNavigationEpoch++; pendingQueryTarget = null; queryAcknowledgements.clear(); canonicalSelection = null; generation++; removeRouteGuard(); removeRouteSync(); cancelPendingRoute(); window.removeEventListener('beforeunload', beforeUnload); clearSensitive()})
 </script>
 
