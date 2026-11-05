@@ -9,7 +9,10 @@ export const behaviors = [
   'cards-counts-title', 'list-permission-summary', 'filter-popup-geometry',
   'filter-popup-buttons-reopen-scroll', 'state-normal', 'state-empty', 'state-loading',
   'state-error-retry', 'state-denied', 'state-reauthentication', 'user-edit-save',
-  'inline-discard', 'credential-copy-retry', 'theme-switch-refresh-system'
+  'inline-discard', 'credential-copy-retry', 'theme-switch-refresh-system',
+  'default-application-continuity-query', 'default-scope-continuity-query',
+  'default-selection-rejection-clears', 'default-selection-identity-change',
+  'default-selection-rapid-navigation'
 ]
 export const cases = themes.flatMap(theme => locales.flatMap(locale => widths.flatMap(width => behaviors.map(behavior => ({
   id: `plugin-ui/${theme}/${locale}/${width}/${behavior}`, theme, locale, width, behavior

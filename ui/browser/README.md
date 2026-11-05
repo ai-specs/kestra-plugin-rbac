@@ -26,7 +26,7 @@ CI 安装 Chromium 时使用 `--with-deps`。Playwright 及浏览器 revision �
 Playwright webServer 管理并在执行结束关闭；不复用外部 server。
 
 矩阵定义唯一入口为 `matrix.mjs`：4 主题（light/dark/dark-2/system）×
-2 语言（en/zh_CN）× 3 宽度（1280/768/390）× 30 行为 = **720**。
+2 语言（en/zh_CN）× 3 宽度（1280/768/390）× 35 行为 = **840**。
 每个 ID 为 `plugin-ui/{theme}/{locale}/{width}/{behavior}`，顺序为 theme、locale、
 width、behavior 的嵌套展开。其他 11 语言沿用公开 SDK 的 key、非空与占位完整性门。
 `system` 由 transport 按原生 matchMedia 解析为 SDK 接受的主题，不新增偏好存储。
@@ -42,7 +42,7 @@ width、behavior 的嵌套展开。其他 11 语言沿用公开 SDK 的 key、�
 正式 artifact 名称仍为 `kestra-rbac-authorizer`，入口：
 
 - `.evidence/ui-browser/report.json`：逐项状态、计数、输入、最终输入与 runner errors。
-- `.evidence/ui-browser/manifest.json`：精确 720 行对象及 ID 顺序。
+- `.evidence/ui-browser/manifest.json`：精确 840 行对象及 ID 顺序。
 - `.evidence/ui-browser/inputs.json`：运行开始 provenance 及逐文件 hash。
 - `.evidence/ui-browser/jar-bundle.json`：真实 jar 和受测生产 bundle 的逐文件一致检查。
 - `.evidence/ui-browser/html/index.html`：人工审阅报告。
@@ -60,15 +60,24 @@ bundle 相对 jar 中 `ui-extensions/rbac/`（排除 `manifest.json`）。
 每行含 `id/theme/locale/width/behavior/status/durationMs/errors/attachments`。
 status 仅 `passed/failed/notRun/skipped`，summary 含
 `planned/executed/passed/failed/notRun/skipped`；executed=passed+failed。
-仅全部 720 通过、无 runner errors、开始和结束输入相同才可 gatePassed=true。
+仅全部 840 通过、无 runner errors、开始和结束输入相同才可 gatePassed=true。
 筛选单项执行仅供排查，其余明确 notRun，不能通过正式门。
 未知 console warning/error、page error、request failure、HTTP >=400 均使对应项失败；
 内存 transport 的拒绝状态不会生成真实 HTTP 失败或被网络 allowlist 忽略。
 
 root 应消费匹配正式源码提交的成功发布 artifact，核对 manifest 完整顺序、全部
-720 行 passed、summary 精确计数、errors=[]、七个输入与 finalInputs 全等，
+840 行 passed、summary 精确计数、errors=[]、七个输入与 finalInputs 全等，
 并自行从正式 jar 重新计算 bundleSha256。HTML、SDK 自测或 Happy DOM 不替代此报告。
 本地报告不证明发布、宿主装载或生产授权通过。
+
+默认项导航增加五类行为，各自运行完整主题、语言和宽度矩阵：应用/scope 默认详情
+连续性及 query 保留、导航拒绝清敏、身份变化清敏、快速导航与迟到响应隔离。静态
+transport 可以暂停一次规范导航和指定读取；测试仍点击原生 tab，装载生产 bundle，
+使用真实 MutationObserver、requestAnimationFrame、计算样式和几何检查详情连续可见。
+能力变化后立即清除旧详情，拒绝显示换号入口。快速导航验证宿主已接受路径与内容一致，
+慢旧响应释放后不得覆盖新 scope 页面。此门不证明生产身份或数据库授权通过。
+正式门使用 `.work/plugin-browser`，不复用外部 server。旧实现重放输入和报告单独保留，
+不得把旧输入或诊断配置作为正式门输入。
 
 ## 0384：精确 popup 实例回归
 

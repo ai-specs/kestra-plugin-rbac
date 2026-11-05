@@ -21,12 +21,30 @@ const permission = {implementationKind:'external-declaration',parentRevision:1,k
 let scenario = qs.get('state') || 'normal', release, saveRelease
 let holdWrites = false
 const requests = []
+const navigations = []
+const requestHolds = new Map()
+let navigationHold = null, navigationRejection = null, releaseNavigation
+function holdNavigation(prefix) {
+  const promise = new Promise(resolve=>{releaseNavigation=resolve})
+  navigationHold = {prefix,promise}
+}
+let capability = {allowed:true,identityRead:true,identityManagement:true,userDirectory:true,localPolicyRead:true,localPolicyManagement:true,subject:'alice',issuer:group.issuer}
+function holdRequest(route, once = false) {
+  let release
+  const promise = new Promise(resolve=>{release=resolve})
+  requestHolds.set(route,{promise,release,once})
+}
 const response = (data,status=200) => ({ok:status<400,status,json:async()=>structuredClone(data)})
 const page = items => response({items: scenario === 'empty' ? [] : items,total:scenario === 'empty'?0:items.length,page:1,size:100,directoryRevision:1,parentRevision:1,revision:1})
 async function request(path, options={}) {
   const url = new URL(path,location.origin), route = url.pathname.split('/extensions/rbac')[1]
   const method = options.method || 'GET'
   requests.push({route,method,body:options.body})
+  if (requestHolds.has(route) && !(requestHolds.get(route).once && requestHolds.get(route).entered)) {
+    const hold = requestHolds.get(route)
+    hold.entered = true
+    await hold.promise
+  }
   if (scenario === 'loading') await new Promise(resolve=>{release=resolve})
   if (scenario === 'error') return response({code:'dependency_unavailable'},503)
   if (scenario === 'denied') return response({code:'forbidden'},403)
@@ -39,7 +57,7 @@ async function request(path, options={}) {
     if (route.endsWith('/rotate')) return response({clientId:'client',credentialRevision:2,clientSecret:'fixture-secret-only'})
     return response({...input,revision:2})
   }
-  if (route === '/capabilities') return response({allowed:true,identityRead:true,identityManagement:true,userDirectory:true,localPolicyRead:true,localPolicyManagement:true})
+  if (route === '/capabilities') return response(capability)
   if (route === '/application-groups') return page([group])
   if (route === '/application-groups/team') return response(group)
   if (route.endsWith('/scopes')) return page([{key:'read',name:'Read scope',revision:1}])
@@ -61,12 +79,26 @@ function makeContext(path) {
   const url = new URL(path, 'http://fixture.invalid/')
   return {contractVersion:1,apiBase:'/api/v1/main',tenant:'main',path:url.pathname.slice(1),fullPath:path,query:Object.fromEntries(url.searchParams),locale,theme:effective(),styles,signal:controller.signal,request,
     navigate:async(next,options={})=>{
-      if (!(await mounted.beforeNavigate(next))) return false
+      if (!(await mounted.beforeNavigate(next))) {navigations.push({target:next,status:'guard-rejected'});return false}
+      const navigation = {target:next,replace:Boolean(options.replace),status:'pending'}
+      navigations.push(navigation)
+      if (navigationHold && next.startsWith(navigationHold.prefix)) {
+        const hold = navigationHold
+        navigationHold = null
+        await hold.promise
+      }
+      if (navigationRejection && next.startsWith(navigationRejection.prefix)) {
+        const rejection = navigationRejection
+        navigationRejection = null
+        navigation.status = 'rejected'
+        throw Object.assign(new Error('In-memory navigation rejected'),{status:rejection.status})
+      }
       if(options.replace) history.replaceState({extensionPath:next},'',location.pathname+'?'+qs.toString())
       else history.pushState({extensionPath:next},'',location.pathname+'?'+qs.toString())
-      context = makeContext(next); mounted.update(context); return true
+      context = makeContext(next); mounted.update(context); navigation.status = 'accepted'; return true
     }}
 }
+if (qs.get('holdCanonical')) holdNavigation(qs.get('holdCanonical'))
 context=makeContext(qs.get('path') || 'application-groups')
 mounted=await mount(document.querySelector('#plugin'),context)
 history.replaceState({extensionPath:context.fullPath},'',location.href)
@@ -95,7 +127,12 @@ async function reference(open=true) {
   refApp=renderer.createApp({render:()=>Vue.h(ElConfigProvider,{namespace:'kel',locale:nativeLocale(locale)},()=>Vue.h(adapted.KsDrawer,{modelValue:true,title:'Native reference',appendTo:portal,appendToBody:false,'data-test':'native-reference'},{default:()=>Vue.h('p','Native body'),footer:()=>Vue.h('div',{},[Vue.h(KsButton,{},()=>i18n.global.t('cancel')),Vue.h(KsButton,{type:'primary',icon:ContentSave,'data-test':'reference-save'},()=>i18n.global.t('save'))])}))})
   refApp.use(i18n);refApp.mount(content)
 }
-window.fixture={ready:true,requests,reference,locale,messages:messages[locale],navigate:path=>context.navigate(path),
+window.fixture={ready:true,requests,navigations,reference,locale,messages:messages[locale],navigate:path=>context.navigate(path),
+  holdRequest,releaseRequest:route=>{const hold=requestHolds.get(route);requestHolds.delete(route);hold?.release()},
+  holdNavigation,
+  releaseNavigation:()=>releaseNavigation?.(),
+  rejectNavigation:(prefix,status)=>{navigationRejection={prefix,status}},
+  capabilities:changes=>{capability={...capability,...changes}},
   theme:updateTheme,holdWrites:()=>{holdWrites=true},releaseSave:()=>{holdWrites=false;saveRelease?.()},
   recover:()=>{scenario='normal';release?.()},
-  snapshot:()=>({theme,effective:effective(),context:{locale:context.locale,theme:context.theme}})}
+  snapshot:()=>({theme,effective:effective(),context:{locale:context.locale,theme:context.theme,path:context.path,fullPath:context.fullPath,tenant:context.tenant}})}

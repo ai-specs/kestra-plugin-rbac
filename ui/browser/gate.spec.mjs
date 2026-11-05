@@ -4,10 +4,10 @@ const paths={group:'application-groups',user:'users',permission:'application-gro
 const root=page=>page.locator('#plugin')
 const by=(page,id)=>root(page).locator(`[data-test="${id}"]`)
 const drawer=(page,kind)=>by(page,`drawer-${kind}`)
-async function boot(page,row,{path='application-groups',state='normal'}={}){
+async function boot(page,row,{path='application-groups',state='normal',holdCanonical=''}={}){
   await page.setViewportSize({width:row.width,height:900})
   await page.emulateMedia({colorScheme:'light',reducedMotion:'reduce'})
-  await page.goto('/?'+new URLSearchParams({theme:row.theme,locale:row.locale,path,state}))
+  await page.goto('/?'+new URLSearchParams({theme:row.theme,locale:row.locale,path,state,holdCanonical}))
   await page.waitForFunction(()=>window.fixture?.ready)
   if(state==='normal'||state==='empty')await expect(by(page,'access-control-root')).toHaveAttribute('aria-busy','false')
 }
@@ -85,6 +85,32 @@ async function ownedFilterPopup(page,trigger,expectedId){
   return {id,popup}
 }
 async function geometry(locator,width){const box=await locator.boundingBox();expect(box).toBeTruthy();expect(box.x).toBeGreaterThanOrEqual(-1);expect(box.x+box.width).toBeLessThanOrEqual(width+1);return box}
+async function canonicalPending(page,prefix){
+  await expect.poll(()=>page.evaluate(prefix=>window.fixture.navigations.some(item=>item.target.startsWith(prefix)&&item.status==='pending'),prefix)).toBe(true)
+}
+async function observeDetail(page,selector){
+  await root(page).evaluate((container,selector)=>{
+    const shadow=container.shadowRoot,node=shadow.querySelector(selector)
+    if(!node)throw new Error('Authorized detail missing before canonical acknowledgement')
+    const state={removed:false,frames:[],running:true,node}
+    const sample=()=>{
+      const css=getComputedStyle(node),rect=node.getBoundingClientRect()
+      state.frames.push({connected:node.isConnected,display:css.display,visibility:css.visibility,width:rect.width,height:rect.height})
+      if(state.running)requestAnimationFrame(sample)
+    }
+    const observer=new MutationObserver(records=>{for(const record of records)for(const removed of record.removedNodes)if(removed===node||removed.contains?.(node))state.removed=true})
+    observer.observe(shadow,{childList:true,subtree:true})
+    state.stop=()=>{state.running=false;observer.disconnect();return {removed:state.removed,same:shadow.querySelector(selector)===node,frames:state.frames}}
+    window.detailContinuity=state;requestAnimationFrame(sample)
+  },selector)
+}
+async function assertContinuity(page,info){
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))
+  const observed=await page.evaluate(()=>window.detailContinuity.stop())
+  await info.attach('canonical-detail-continuity',{body:JSON.stringify(observed,null,2),contentType:'application/json'})
+  expect(observed.removed).toBe(false);expect(observed.same).toBe(true);expect(observed.frames.length).toBeGreaterThan(0)
+  for(const frame of observed.frames){expect(frame.connected).toBe(true);expect(frame.display).not.toBe('none');expect(frame.visibility).toBe('visible');expect(frame.width).toBeGreaterThan(0);expect(frame.height).toBeGreaterThan(0)}
+}
 for(const row of cases)test(row.id,async({page,context},info)=>{
   const unexpected=[]
   page.on('pageerror',error=>unexpected.push('page: '+error.stack))
@@ -218,6 +244,61 @@ for(const row of cases)test(row.id,async({page,context},info)=>{
       const session=await context.newCDPSession(page);const {targetInfo}=await session.send('Target.getTargetInfo');const browserContextId=targetInfo.browserContextId;await session.send('Browser.setPermission',{browserContextId,permission:{name:'clipboard-write'},setting:'denied',origin:'http://127.0.0.1:4179'})
       const copy=dialog.getByRole('button',{name:await text(page,'copyValue'),exact:true});await copy.click();await expect(dialog).toContainText(await text(page,'copyFailed'))
       await context.clearPermissions();await context.grantPermissions(['clipboard-read','clipboard-write']);await copy.click();await expect(dialog).toContainText(await text(page,'copied'));await dialog.getByRole('button',{name:await text(page,'close'),exact:true}).click();await expect(dialog).toBeHidden();await expect.poll(()=>root(page).evaluate(node=>Boolean(node.shadowRoot.activeElement?.isConnected))).toBe(true)
+    }else if(behavior.startsWith('default-')){
+      const section=behavior==='default-scope-continuity-query'?'scopes':'applications'
+      const prefix='application-groups/team/'+section+'/'
+      const selector=section==='scopes'?'scope-detail':'application-detail'
+      const query=behavior.endsWith('continuity-query')?(section==='applications'?'?permissionKey=read&size=10':'?size=10&probe=scope-query'):''
+      await boot(page,row,{path:'application-groups/team/'+section+query,holdCanonical:prefix})
+      await canonicalPending(page,prefix);await expect(by(page,selector)).toBeVisible()
+      if(behavior.endsWith('continuity-query')){
+        await observeDetail(page,`[data-test="${selector}"]`)
+        await page.evaluate(()=>window.fixture.holdRequest('/capabilities'))
+        const capabilities=await page.evaluate(()=>window.fixture.requests.filter(item=>item.route==='/capabilities').length)
+        await page.evaluate(()=>window.fixture.releaseNavigation())
+        await expect(by(page,'access-control-root')).toHaveAttribute('aria-busy','true')
+        await expect(by(page,selector)).toBeVisible()
+        await expect.poll(()=>page.evaluate(()=>window.fixture.requests.filter(item=>item.route==='/capabilities').length)).toBe(capabilities+1)
+        await page.evaluate(()=>window.fixture.releaseRequest('/capabilities'))
+        await expect(by(page,'access-control-root')).toHaveAttribute('aria-busy','false')
+        await assertContinuity(page,info)
+        const destination=await page.evaluate(()=>window.fixture.snapshot().context.fullPath)
+        const location=new URL(destination,'https://fixture.invalid/')
+        expect(location.pathname).toBe('/'+prefix+(section==='scopes'?'read':'~Y2xpZW50'))
+        expect(location.searchParams.get('size')).toBe('10')
+        if(section==='applications'){expect(location.searchParams.get('permissionKey')).toBe(null);expect(location.searchParams.get('filters[key][EQUALS]')).toBe('read');await expect(by(page,'permission-row')).toHaveText('read')}
+        else expect(location.searchParams.get('probe')).toBe('scope-query')
+        await info.attach('canonical-query',{body:JSON.stringify({destination,requests:await page.evaluate(()=>window.fixture.requests)},null,2),contentType:'application/json'})
+        await info.attach('canonical-rendered-page',{body:await page.screenshot({fullPage:true}),contentType:'image/png'})
+      }else if(behavior==='default-selection-rejection-clears'){
+        await page.evaluate(prefix=>window.fixture.rejectNavigation(prefix,403),prefix)
+        await page.evaluate(()=>window.fixture.releaseNavigation())
+        await expect(by(page,'request-error').locator('p')).toHaveText(await text(page,'denied'))
+        await expect(by(page,'sign-in-again')).toBeVisible();await expect(by(page,'application-detail')).toHaveCount(0);await expect(by(page,'permission-row')).toHaveCount(0)
+        expect(await page.evaluate(()=>window.fixture.snapshot().context.path)).toBe('application-groups/team/applications')
+      }else if(behavior==='default-selection-identity-change'){
+        await page.evaluate(()=>{window.fixture.capabilities({subject:'bob'});window.fixture.holdRequest('/application-groups/team')})
+        await page.evaluate(()=>window.fixture.releaseNavigation())
+        await expect(by(page,'access-control-root')).toHaveAttribute('aria-busy','true')
+        await expect(by(page,'application-detail')).toHaveCount(0);await expect(by(page,'permission-row')).toHaveCount(0)
+        await page.evaluate(()=>window.fixture.releaseRequest('/application-groups/team'))
+        await expect(by(page,'access-control-root')).toHaveAttribute('aria-busy','false');await expect(by(page,'application-detail')).toBeVisible()
+      }else{
+        const before=await page.evaluate(()=>window.fixture.requests.filter(item=>item.route.endsWith('/permissions')).length)
+        await page.evaluate(()=>window.fixture.holdRequest('/application-groups/team/applications/~Y2xpZW50/permissions',true))
+        await page.evaluate(()=>window.fixture.releaseNavigation())
+        await expect(by(page,'access-control-root')).toHaveAttribute('aria-busy','true')
+        await expect.poll(()=>page.evaluate(()=>window.fixture.requests.filter(item=>item.route.endsWith('/permissions')).length)).toBe(before+1)
+        await page.evaluate(()=>window.fixture.navigate('application-groups/team'))
+        await expect(by(page,'group-detail')).toBeVisible();await expect(by(page,'access-control-root')).toHaveAttribute('aria-busy','false')
+        await root(page).getByRole('tab').filter({hasText:await text(page,'scopes')}).click()
+        await expect(by(page,'scope-detail')).toBeVisible();await expect(by(page,'access-control-root')).toHaveAttribute('aria-busy','false')
+        await page.evaluate(()=>window.fixture.releaseRequest('/application-groups/team/applications/~Y2xpZW50/permissions'))
+        await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))
+        expect(await page.evaluate(()=>window.fixture.snapshot().context.path)).toBe('application-groups/team/scopes/read')
+        await expect(by(page,'scope-detail')).toBeVisible();await expect(by(page,'application-detail')).toHaveCount(0)
+        await info.attach('rapid-navigation',{body:JSON.stringify(await page.evaluate(()=>({context:window.fixture.snapshot().context,navigations:window.fixture.navigations,requests:window.fixture.requests})),null,2),contentType:'application/json'})
+      }
     }else if(behavior==='theme-switch-refresh-system'){
       await boot(page,row);const colors={}
       for(const theme of ['light','dark','dark-2']){await page.evaluate(theme=>window.fixture.theme(theme),theme);colors[theme]=await root(page).locator('.rbac-page').evaluate(node=>{const css=getComputedStyle(node);return {background:css.backgroundColor,color:css.color}})}

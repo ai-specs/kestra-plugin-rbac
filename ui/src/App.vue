@@ -75,6 +75,7 @@ const columnsSubjects = computed(() => [{key: 'subject', label: 'subject'}, {key
 const statistics = computed(() => [{field: 'scopes', tab: 'scopes', label: t('scopes')}, {field: 'applications', tab: 'applications', label: t('clients')}, {field: 'subjects', tab: 'scope-grants', label: 'subject'}])
 let generation = 0, disposed = false, pendingNavigation = null, routingFromHost = false
 let activeLoad = Promise.resolve()
+let canonicalSelection = null
 const loginHref = computed(() => loginEntry(props.context.apiBase))
 function clearSensitive(clearCredential = true) {
   if (clearCredential) clearOneTimeValue(oneTime)
@@ -285,7 +286,14 @@ async function readView(value = contextFullPath(props.context), preserveOneTime 
       busy.value = false; queryRefreshing.value = false
       await nextTick()
       if (current !== generation || disposed) return
-      await navigateHost(groupBase.value + '/' + tab.value + '/' + key, {replace: true})
+      const target = router.resolve({path: '/' + groupBase.value + '/' + tab.value + '/' + key, query: route.query}).fullPath.slice(1)
+      const canonical = {target, generation: current, tenant: props.context.tenant, origin: sourcePath.value}
+      canonicalSelection = canonical
+      try {
+        await navigateHost(target, {replace: true})
+      } finally {
+        if (canonicalSelection === canonical) canonicalSelection = null
+      }
     }
   } catch (problem) {
     if (current === generation && !disposed && problem.name !== 'AbortError') {
@@ -505,11 +513,15 @@ watch(() => contextFullPath(props.context), value => {
   // owns this echo: re-running it would reopen the busy window and swallow
   // user interactions that land between the two loads.
   if (canonicalQueryPath(value) === canonicalQueryPath(sourcePath.value) && (loaded.value || busy.value)) return
-  const preserveView = loaded.value && !denied.value && !reauthenticate.value && value.split('?')[0] === sourcePath.value.split('?')[0]
-  discardGuard(() => {void load(value, false, preserveView)}, preserveView)
+  const defaultSelection = canonicalSelection && canonicalSelection.generation === generation &&
+    canonicalSelection.tenant === props.context.tenant && canonicalSelection.origin === sourcePath.value &&
+    canonicalQueryPath(canonicalSelection.target) === canonicalQueryPath(value)
+  const preserveView = loaded.value && !denied.value && !reauthenticate.value &&
+    (value.split('?')[0] === sourcePath.value.split('?')[0] || defaultSelection)
+  discardGuard(() => {void load(value, false, preserveView)}, preserveView || queryRefreshing.value)
 }, {immediate: true})
 watch(() => props.context.tenant, () => {queryNavigationEpoch++; pendingQueryTarget = null; generation++; clearSensitive(); void load()})
-onBeforeUnmount(() => {disposed = true; queryNavigationEpoch++; pendingQueryTarget = null; queryAcknowledgements.clear(); generation++; removeRouteGuard(); removeRouteSync(); cancelPendingRoute(); window.removeEventListener('beforeunload', beforeUnload); clearSensitive()})
+onBeforeUnmount(() => {disposed = true; queryNavigationEpoch++; pendingQueryTarget = null; queryAcknowledgements.clear(); canonicalSelection = null; generation++; removeRouteGuard(); removeRouteSync(); cancelPendingRoute(); window.removeEventListener('beforeunload', beforeUnload); clearSensitive()})
 </script>
 
 <template>

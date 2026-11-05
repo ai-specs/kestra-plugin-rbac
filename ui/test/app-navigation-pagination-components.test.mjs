@@ -49,7 +49,7 @@ const response=(body,status=200)=>({ok:status<400,status,json:async()=>structure
 const wait=async(predicate,message)=>{for(let i=0;i<80;i++){if(predicate())return;await tick()}assert(predicate(),message)}
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve}}
 
-async function mountScenario(path,kind,{scopeKeys=['a','b'],rejectCanonical=false,navigateHook,locale='en',expectInvalidQuery=false}={}){
+async function mountScenario(path,kind,{scopeKeys=['a','b'],rejectCanonical=false,navigateHook,locale='en',expectInvalidQuery=false,expectDenied=false}={}){
  const router=createRouter({history:createMemoryHistory(),routes:[{path:'/:pathMatch(.*)*',component:{render:()=>null}}]})
  const hooks=createNavigationHooks(),requests=[],navigations=[],state=Vue.shallowReactive({context:null})
  const hostRouter=createRouter({history:createMemoryHistory(),routes:[{path:'/:pathMatch(.*)*',component:{render:()=>null}}]})
@@ -76,7 +76,7 @@ async function mountScenario(path,kind,{scopeKeys=['a','b'],rejectCanonical=fals
  const app=Vue.createApp({render:()=>Vue.h(ElConfigProvider,{namespace:'kel'},()=>Vue.h(App,{context:state.context}))})
  for(const [name,component]of Object.entries(DS))if(name.startsWith('Ks')&&component&&typeof component==='object')app.component(name,component)
  const i18n=createI18n({legacy:false,locale,messages});await DS.registerDesignSystemI18n(i18n);app.use(router);app.use(i18n);app.provide('rbac-portals',document.body);app.provide('rbac-navigation-hooks',hooks);app.mount(container)
- await wait(()=>container.querySelector('main')?.getAttribute('aria-busy')==='false'&&((expectInvalidQuery&&container.querySelector('main > [data-test="request-error"]'))||container.querySelector(kind==='scope'?'[data-test="scope-detail"]':kind==='groups'?'.management-toolbar':'[data-test="list-total"]')),'scenario did not load')
+ await wait(()=>container.querySelector('main')?.getAttribute('aria-busy')==='false'&&((expectDenied&&container.querySelector('[data-test="sign-in-again"]'))||(expectInvalidQuery&&container.querySelector('main > [data-test="request-error"]'))||container.querySelector(kind==='scope'?'[data-test="scope-detail"]':kind==='groups'?'.management-toolbar':'[data-test="list-total"]')),'scenario did not load')
  return {container,router,hostRouter,hooks,state,requests,navigations,setDeleteWait:p=>deleteWait=p,setReadWait:p=>readWait=p,close(){app.unmount();container.remove()}}
 }
 test('App successful scope deletion acknowledges canonical host navigation after write while pending write still rejects external leave',async()=>{
@@ -263,6 +263,112 @@ test('App host echo of a re-encoded deep-link query must not trigger a phantom s
   assert.equal(v.requests.filter(r=>r.url.includes('/permissions?')).length,readsAfter,'re-encoded host echo triggered a phantom reload')
   assert.equal(v.navigations.length,navigationsBefore,'re-encoded host echo re-acknowledged its own query')
  }finally{gate.resolve();v.close()}
+})
+
+for(const section of ['scopes','applications'])test('App default '+section+' canonical acknowledgement retains authorized DOM while revalidating',async()=>{
+ const gate=deferred(),entered=deferred()
+ const v=await mountScenario('application-groups/g/scopes/a','scope',{navigateHook:async target=>{if(target.startsWith('application-groups/g/'+section+'/')){entered.resolve();await gate.promise}}})
+ try{
+  await v.hostRouter.push('/application-groups/g');await wait(()=>v.container.querySelector('[data-test="group-detail"]')&&v.container.querySelector('main').getAttribute('aria-busy')==='false','overview did not load')
+  const before=v.requests.length
+  click([...v.container.querySelectorAll('main .kel-tabs [role="tab"]')].find(node=>node.id.endsWith('-'+section)))
+  await entered.promise;await tick()
+  const selector=section==='scopes'?'[data-test="scope-detail"]':'[data-test="application-detail"]'
+  const detail=v.container.querySelector(selector);assert(detail,'authorized default detail missing')
+  let removed=false
+  const observer=new MutationObserver(records=>{for(const record of records)for(const node of record.removedNodes)if(node===detail||node.contains?.(detail))removed=true})
+  observer.observe(v.container,{childList:true,subtree:true})
+  const reads=v.requests.length
+  assert(reads>before)
+  gate.resolve();await wait(()=>v.state.context.path.includes('/'+section+'/')&&v.container.querySelector('main').getAttribute('aria-busy')==='false','canonical acknowledgement did not settle');await tick();await tick()
+  observer.disconnect()
+  assert.equal(removed,false,'canonical echo removed the authorized detail')
+  assert.equal(v.container.querySelector(selector),detail,'canonical echo remounted the authorized detail')
+  assert(v.requests.length>reads,'canonical destination must revalidate authorization')
+  assert.equal(v.router.currentRoute.value.path,'/'+v.state.context.path)
+ }finally{gate.resolve();v.close()}
+})
+
+test('App default application canonical URL retains normalized filters and pagination',async()=>{
+ const v=await mountScenario('application-groups/g/applications?scopeKeys=a&page=2&size=10','permissions')
+ try{
+  await wait(()=>v.state.context.path.endsWith('/~Y2xpZW50')&&v.container.querySelector('main').getAttribute('aria-busy')==='false','canonical application did not settle');await tick()
+  assert.equal(v.router.currentRoute.value.query.page,'2')
+  assert.equal(v.router.currentRoute.value.query.size,'10')
+  assert.equal(v.router.currentRoute.value.query['filters[scopeKeys][EQUALS]'],'a')
+  assert(v.state.context.fullPath.includes('size=10'))
+ }finally{v.close()}
+})
+
+test('App late default selection acknowledgement revalidates the actual accepted host destination',async()=>{
+ const gate=deferred(),entered=deferred()
+ const v=await mountScenario('application-groups/g/applications','permissions',{navigateHook:async target=>{if(target.includes('/applications/')){entered.resolve();await gate.promise}}})
+ try{
+  await entered.promise
+  await v.hostRouter.push('/users');await wait(()=>v.container.querySelector('[data-test="user-row"]')&&v.container.querySelector('main').getAttribute('aria-busy')==='false','new users destination did not load')
+  const reads=v.requests.length
+  gate.resolve();await wait(()=>v.state.context.path.endsWith('/~Y2xpZW50')&&v.container.querySelector('main').getAttribute('aria-busy')==='false'&&v.container.querySelector('[data-test="application-detail"]'),'accepted host destination not revalidated');await tick()
+  assert.equal(v.router.currentRoute.value.path,'/'+v.state.context.path)
+  assert(v.requests.length>reads)
+ }finally{gate.resolve();v.close()}
+})
+
+test('App default canonical authorization rejection clears all authorized detail',async()=>{
+ const v=await mountScenario('application-groups/g/applications','permissions',{expectDenied:true,navigateHook:()=>{throw {status:403}}})
+ try{
+  await wait(()=>v.container.querySelector('[data-test="sign-in-again"]'),'canonical rejection did not deny')
+  assert.equal(v.container.querySelector('[data-test="application-detail"]'),null)
+  assert.equal(v.container.querySelector('[data-test="permission-row"]'),null)
+  assert.equal(v.state.context.path,'application-groups/g/applications')
+ }finally{v.close()}
+})
+
+test('App explicit revisit to canonical default revalidates capabilities and data',async()=>{
+ const v=await mountScenario('application-groups/g/applications','permissions')
+ try{
+  await wait(()=>v.state.context.path.endsWith('/~Y2xpZW50')&&v.router.currentRoute.value.path.endsWith('/~Y2xpZW50'),'canonical selection not settled');await tick()
+  await v.hostRouter.push('/users');await wait(()=>v.container.querySelector('[data-test="user-row"]')&&v.container.querySelector('main').getAttribute('aria-busy')==='false','users did not load')
+  const before=v.requests.filter(item=>item.url.includes('/capabilities')).length
+  await v.hostRouter.push('/application-groups/g/applications/~Y2xpZW50')
+  await wait(()=>v.container.querySelector('[data-test="application-detail"]')&&v.container.querySelector('main').getAttribute('aria-busy')==='false','canonical revisit did not load')
+  assert.equal(v.requests.filter(item=>item.url.includes('/capabilities')).length,before+1)
+ }finally{v.close()}
+})
+
+test('App tenant change clears default detail and late acknowledgement cannot reuse its authorization',async()=>{
+ const gate=deferred(),entered=deferred()
+ const v=await mountScenario('application-groups/g/applications','permissions',{navigateHook:async target=>{if(target.includes('/applications/')){entered.resolve();await gate.promise}}})
+ try{
+  await entered.promise
+  assert(v.container.querySelector('[data-test="application-detail"]'))
+  const request=v.state.context.request
+  v.state.context={...v.state.context,tenant:'other',request:async(url,options)=>url.includes('/capabilities')?response({},403):request(url,options)}
+  await wait(()=>v.container.querySelector('[data-test="sign-in-again"]'),'tenant change did not reauthorize')
+  assert.equal(v.container.querySelector('[data-test="application-detail"]'),null)
+  const reads=v.requests.length
+  gate.resolve();await wait(()=>v.state.context.path.endsWith('/~Y2xpZW50')&&v.container.querySelector('main').getAttribute('aria-busy')==='false','late tenant acknowledgement not revalidated');await tick()
+  assert.equal(v.container.querySelector('[data-test="application-detail"]'),null)
+  assert(v.container.querySelector('[data-test="sign-in-again"]'))
+  assert.equal(v.requests.length,reads)
+ }finally{gate.resolve();v.close()}
+})
+
+for(const changed of ['identity','permission'])test('App default acknowledgement clears sensitive detail on changed '+changed,async()=>{
+ const gate=deferred(),entered=deferred()
+ const v=await mountScenario('application-groups/g/applications','permissions',{navigateHook:async target=>{if(target.includes('/applications/')){entered.resolve();await gate.promise}}})
+ const data=deferred()
+ try{
+  await entered.promise
+  const request=v.state.context.request
+  v.state.context={...v.state.context,request:async(url,options)=>{
+   if(url.includes('/capabilities'))return response({allowed:true,identityRead:changed==='identity',identityManagement:true,userDirectory:true,subject:changed==='identity'?'other-user':'manager',issuer:'issuer'})
+   if(url.endsWith('/application-groups/g'))await data.promise
+   return request(url,options)
+  }}
+  gate.resolve();await wait(()=>!v.container.querySelector('[data-test="application-detail"]'),'changed authorization retained sensitive detail')
+  if(changed==='permission')await wait(()=>v.container.querySelector('[data-test="sign-in-again"]'),'permission loss did not deny')
+  data.resolve();await tick()
+ }finally{gate.resolve();data.resolve();v.close()}
 })
 
 test.after(()=>{hooks.deregister();window.happyDOM.abort()})
