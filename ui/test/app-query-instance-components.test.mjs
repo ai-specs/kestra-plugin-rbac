@@ -214,10 +214,15 @@ for(const kind of ['group','scope','application'])test('App native box tab cance
  const page=items=>response({items,total:items.length,page:1,size:100,directoryRevision:1})
  const v=await mountApp(path=>{
   if(path.endsWith('/application-groups/kestra-a'))return response({id:'kestra-a',displayName:'First',issuer:'issuer-a',active:true,revision:1})
-  if(path.includes('/scopes?')||path.includes('/applications?')||path.includes('/scope-grants?'))return page([])
+  if(path.includes('/scopes?'))return page([{key:'scope-a',name:'Scope A',description:'',revision:1}])
+  if(path.includes('/applications?'))return page([{clientId:'app-a',description:'',revision:1}])
+  if(path.includes('/scope-grants?'))return page([])
  })
  const base='application-groups/kestra-a',source=kind==='group'?'overview':kind==='scope'?'scopes':'applications',target=source==='overview'?'scopes':'overview'
- const initial=base+(source==='overview'?'':'/'+source)
+ // 优化：切换到 scopes/applications tab 时，直接导航到第一个项的详情页
+ const firstKey=kind==='group'?'scope-a':kind==='scope'?'scope-a':'app-a'
+ const detailSuffix=kind==='overview'?'':'/'+firstKey
+ const initial=base+(source==='overview'?'':('/'+source+(source==='scopes'?'/scope-a':source==='applications'?'/app-a':'')))
  const visibleDialog=()=>[...document.querySelectorAll('[data-test="discard-confirm"]')].find(shown)
  const tab=name=>v.container.querySelector('[role="tab"][id="tab-'+name+'"]')
  try{
@@ -234,7 +239,7 @@ for(const kind of ['group','scope','application'])test('App native box tab cance
   assert.equal(tab(source).getAttribute('aria-selected'),'true','cancelled navigation must retain controlled active tab')
   assert.equal(tab(target).getAttribute('aria-selected'),'false')
   click([...visibleDialog().querySelectorAll('button')].find(n=>n.textContent.trim()==='Discard changes'))
-  const final=base+(target==='overview'?'':'/'+target)
+  const final=base+(target==='overview'?'':('/'+target+(target==='scopes'?'/scope-a':target==='applications'?'/app-a':'')))
   await wait(()=>v.state.context.fullPath===final&&v.container.querySelector('main').getAttribute('aria-busy')==='false','confirmed tab must reach authorized host destination')
   await tick();assert.equal(tab(target).getAttribute('aria-selected'),'true');assert(!v.container.querySelector('.rbac-inline-form'));assert(!visibleDialog());assert.equal(document.activeElement,tab(target),'confirmed navigation must restore tab trigger focus')
   // Normal native tab change must still synchronize the host URL after discard.
