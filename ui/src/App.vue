@@ -75,13 +75,14 @@ const columnsSubjects = computed(() => [{key: 'subject', label: 'subject'}, {key
 const statistics = computed(() => [{field: 'scopes', tab: 'scopes', label: t('scopes')}, {field: 'applications', tab: 'applications', label: t('clients')}, {field: 'subjects', tab: 'scope-grants', label: 'subject'}])
 let generation = 0, disposed = false, pendingNavigation = null, routingFromHost = false
 let activeLoad = Promise.resolve()
-let canonicalSelection = null
+let canonicalSelection = null, tabPrefetchGeneration = null
 const loginHref = computed(() => loginEntry(props.context.apiBase))
 function clearSensitive(clearCredential = true) {
   if (clearCredential) clearOneTimeValue(oneTime)
   group.value = application.value = selectedScope.value = inline.value = null
   groups.value = []; scopes.value = []; applications.value = []; subjects.value = []; users.value = []; permissions.value = []
   Object.assign(editor, createEditorState()); deletion.value = null
+  pendingNavigation = null; discardInline.value = false; cancelPendingRoute()
 }
 function failure(problem) {
   if (problem.code === 'invalid_query') {invalidQuery.value = true; error.value = t('invalidQuery'); clearSensitive(); return}
@@ -92,7 +93,7 @@ function failure(problem) {
   error.value = t([409, 412, 428].includes(problem.status) ? 'conflict' : [401, 403].includes(problem.status) ? 'denied' : problem.status === 404 ? 'notFound' : 'error')
 }
 function discardGuard(action, allowQueryRefresh = false) {
-  if (busy.value && !(allowQueryRefresh && queryRefreshing.value) || editor.saving || credentialBusy.value) return
+  if (busy.value && !(allowQueryRefresh && (queryRefreshing.value || tabPrefetchGeneration === generation)) || editor.saving || credentialBusy.value) return
   if (oneTime.value) return
   if (editor.kind) {requestEditorClose(editor, action); return}
   if (inlineDirty.value) {pendingNavigation = action; discardInline.value = true; return}
@@ -118,47 +119,56 @@ function navigate(target, query = {}, replace = false) {
   discardGuard(() => {void navigateHost(destination, {replace})})
 }
 function beforeTabLeave(target) {
-  const current = groupId.value ? tab.value : isUsers.value ? 'users' : 'application-groups'
-  if (target === current) return true
+  const activeTab = groupId.value ? tab.value : isUsers.value ? 'users' : 'application-groups'
+  if (target === activeTab) return true
 
-  // 优化：从有 groupId 的详情页切换到 scopes/applications tab 时，
-  // 先在后台加载列表数据，知道第一个项是什么，然后一次性导航到详情页，
-  // 避免中间的列表页导致两次渲染闪烁。
   if (groupId.value && ['scopes', 'applications'].includes(target)) {
     discardGuard(async () => {
-      try {
-        busy.value = true
-        const capability = await api.capabilities(groupId.value)
-        if (current !== generation || disposed) return
-        if (!capability.identityRead) throw {status: 403}
-
-        const g = await api.applicationGroup(groupId.value)
-        if (current !== generation || disposed) return
-
-        let firstKey = ''
-        if (target === 'scopes') {
-          const ss = await collectPages((page, size) => api.applicationGroupScopes(groupId.value, page, size), g.revision)
-          if (current !== generation || disposed) return
-          const firstScope = ordered(ss)[0]
-          if (firstScope) firstKey = encodeURIComponent(firstScope.key)
-        } else if (target === 'applications') {
-          const apps = await collectPages((page, size) => api.applications(groupId.value, page, size), g.revision)
-          if (current !== generation || disposed) return
-          const firstApp = ordered(apps, 'clientId')[0]
-          if (firstApp) firstKey = encodeKey(firstApp.clientId)
+      const viewGeneration = ++generation
+      tabPrefetchGeneration = viewGeneration
+      const context = props.context, id = groupId.value, base = groupBase.value
+      const origin = contextFullPath(context)
+      const client = createClient(() => context)
+      const current = () => !disposed && viewGeneration === generation && !context.signal?.aborted &&
+        context.tenant === props.context.tenant && context.apiBase === props.context.apiBase &&
+        context.request === props.context.request && context.signal === props.context.signal &&
+        origin === contextFullPath(props.context)
+      const authorized = capability => {
+        if (caps.value?.subject !== capability.subject || caps.value?.issuer !== capability.issuer) {
+          throw {status: 401, code: 'stale_identity'}
         }
-
-        // 一次性导航到详情页
-        const destination = groupBase.value + '/' + target + (firstKey ? '/' + firstKey : '')
+        if (!capability.allowed || !capability.identityRead || JSON.stringify(caps.value) !== JSON.stringify(capability)) throw {status: 403}
+      }
+      busy.value = true; error.value = ''; conflicted.value = false
+      try {
+        const capability = await client.capabilities(id)
+        if (!current()) return
+        authorized(capability)
+        const g = await client.applicationGroup(id)
+        if (!current()) return
+        const rows = await collectPages(async (page, size) => {
+          if (!current()) throw new DOMException('Cancelled', 'AbortError')
+          const result = await (target === 'scopes' ? client.applicationGroupScopes(id, page, size) : client.applications(id, page, size))
+          if (!current()) throw new DOMException('Cancelled', 'AbortError')
+          return result
+        }, context.signal, g.revision)
+        if (!current()) return
+        const latest = await client.capabilities(id)
+        if (!current()) return
+        authorized(latest)
+        const first = ordered(rows, target === 'scopes' ? 'key' : 'clientId')[0]
+        const key = first ? (target === 'scopes' ? encodeURIComponent(first.key) : encodeKey(first.clientId)) : ''
+        const destination = base + '/' + target + (key ? '/' + key : '')
+        busy.value = false
         await navigateHost(destination, {replace: true})
       } catch (problem) {
-        if (current === generation && !disposed && problem.name !== 'AbortError') failure(problem)
+        if (current() && problem.name !== 'AbortError') failure(problem)
       } finally {
-        if (current === generation && !disposed) busy.value = false
+        if (tabPrefetchGeneration === viewGeneration) tabPrefetchGeneration = null
+        if (viewGeneration === generation && !disposed) busy.value = false
       }
     })
   } else {
-    // 其他情况（overview tab、从列表页切换等），保持原有逻辑
     navigate(groupId.value ? groupBase.value + (target === 'overview' ? '' : '/' + target) : target)
   }
 
@@ -518,9 +528,9 @@ watch(() => contextFullPath(props.context), value => {
     canonicalQueryPath(canonicalSelection.target) === canonicalQueryPath(value)
   const preserveView = loaded.value && !denied.value && !reauthenticate.value &&
     (value.split('?')[0] === sourcePath.value.split('?')[0] || defaultSelection)
-  discardGuard(() => {void load(value, false, preserveView)}, preserveView || queryRefreshing.value)
+  discardGuard(() => {void load(value, false, preserveView)}, preserveView || queryRefreshing.value || tabPrefetchGeneration === generation)
 }, {immediate: true})
-watch(() => props.context.tenant, () => {queryNavigationEpoch++; pendingQueryTarget = null; generation++; clearSensitive(); void load()})
+watch([() => props.context.tenant, () => props.context.apiBase, () => props.context.request, () => props.context.signal], () => {queryNavigationEpoch++; pendingQueryTarget = null; generation++; caps.value = null; clearSensitive(); void load()})
 onBeforeUnmount(() => {disposed = true; queryNavigationEpoch++; pendingQueryTarget = null; queryAcknowledgements.clear(); canonicalSelection = null; generation++; removeRouteGuard(); removeRouteSync(); cancelPendingRoute(); window.removeEventListener('beforeunload', beforeUnload); clearSensitive()})
 </script>
 

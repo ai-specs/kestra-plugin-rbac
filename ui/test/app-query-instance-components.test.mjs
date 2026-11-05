@@ -211,28 +211,27 @@ for(const mode of ['revoked','partial','missing','disabled','invalid'])test('App
  }finally{v.close()}
 })
 for(const kind of ['group','scope','application'])test('App native box tab cancel and same-target retry preserves '+kind+' draft and controlled active',async()=>{
- const page=items=>response({items,total:items.length,page:1,size:100,directoryRevision:1})
+ const page=items=>response({items,total:items.length,page:1,size:100,directoryRevision:1,parentRevision:1})
  const v=await mountApp(path=>{
   if(path.endsWith('/application-groups/kestra-a'))return response({id:'kestra-a',displayName:'First',issuer:'issuer-a',active:true,revision:1})
   if(path.includes('/scopes?'))return page([{key:'scope-a',name:'Scope A',description:'',revision:1}])
-  if(path.includes('/scopes/detail?'))return response({key:'scope-a',name:'Scope A',description:'',revision:1})
   if(path.includes('/applications?'))return page([{clientId:'app-a',description:'',revision:1}])
-  if(path.includes('/applications/detail?'))return response({clientId:'app-a',description:'',revision:1,supportedScopeKeys:[]})
+  if(path.endsWith('/applications/~YXBwLWE'))return response({clientId:'app-a',description:'',revision:1,supportedScopeKeys:[]})
+  if(path.includes('/permissions?'))return page([])
+  if(path.endsWith('/credentials'))return response({clientId:'app-a',clientType:'PUBLIC',rotationMode:'NONE',secretSet:false,credentialRevision:1})
   if(path.includes('/scope-grants?'))return page([])
  })
  const base='application-groups/kestra-a',source=kind==='group'?'overview':kind==='scope'?'scopes':'applications',target=source==='overview'?'scopes':'overview'
  // 优化：切换到 scopes/applications tab 时，直接导航到第一个项的详情页
- const firstKey=kind==='group'?'scope-a':kind==='scope'?'scope-a':'app-a'
- const detailSuffix=kind==='overview'?'':'/'+firstKey
- const initial=base+(source==='overview'?'':('/'+source+(source==='scopes'?'/scope-a':source==='applications'?'/app-a':'')))
+ const initial=base+(source==='overview'?'':('/'+source+(source==='scopes'?'/scope-a':source==='applications'?'/~YXBwLWE':'')))
  const visibleDialog=()=>[...document.querySelectorAll('[data-test="discard-confirm"]')].find(shown)
  const tab=name=>v.container.querySelector('[role="tab"][id="tab-'+name+'"]')
  try{
   v.state.context={...v.state.context,path:initial,fullPath:initial};
   // 对于 scopes/applications tab，初始在详情页，需要等待详情内容加载
-  const inlineSelector=kind==='group'?'[data-test="group-edit"]':kind==='scope'?'[data-test="scope-edit"]':'[data-test="application-edit"]'
-  await wait(()=>v.container.querySelector(inlineSelector),'inline entry absent')
-  click(v.container.querySelector(inlineSelector));await tick()
+  const inlineEntry=()=>kind==='group'?v.container.querySelector('[data-test="group-edit"]'):[...v.container.querySelectorAll('[data-test="'+kind+'-detail"] button')].find(node=>node.textContent.trim()==='Edit')
+  await wait(()=>inlineEntry(),'inline entry absent')
+  click(inlineEntry());await tick()
   const form=v.container.querySelector('.rbac-inline-form'),input=form.querySelector('input');inputText(input,'changed-draft');await tick()
   const destination=tab(target);assert(destination);destination.focus();click(destination)
   await wait(()=>visibleDialog(),'first tab click must confirm discard')
@@ -244,7 +243,7 @@ for(const kind of ['group','scope','application'])test('App native box tab cance
   assert.equal(tab(source).getAttribute('aria-selected'),'true','cancelled navigation must retain controlled active tab')
   assert.equal(tab(target).getAttribute('aria-selected'),'false')
   click([...visibleDialog().querySelectorAll('button')].find(n=>n.textContent.trim()==='Discard changes'))
-  const final=base+(target==='overview'?'':('/'+target+(target==='scopes'?'/scope-a':target==='applications'?'/app-a':'')))
+  const final=base+(target==='overview'?'':('/'+target+(target==='scopes'?'/scope-a':target==='applications'?'/~YXBwLWE':'')))
   await wait(()=>v.state.context.fullPath===final&&v.container.querySelector('main').getAttribute('aria-busy')==='false','confirmed tab must reach authorized host destination')
   await tick();assert.equal(tab(target).getAttribute('aria-selected'),'true');assert(!v.container.querySelector('.rbac-inline-form'));assert(!visibleDialog());assert.equal(document.activeElement,tab(target),'confirmed navigation must restore tab trigger focus')
   // Normal native tab change must still synchronize the host URL after discard.
@@ -357,6 +356,125 @@ test('App dirty inline draft during query refresh still requires explicit discar
   assert.equal(v.container.querySelector('.rbac-inline-form textarea').value,'Protected dirty draft')
   assert.equal(v.router.currentRoute.value.path,'/application-groups/kestra-a')
  }finally{pending.resolve(response({id:'kestra-a',displayName:'First',description:'Original',issuer:'issuer-a',revision:1}));v.close()}
+})
+
+const tabPage=(items,revision=1,page=1,total=items.length)=>response({items,total,page,size:100,directoryRevision:revision,parentRevision:1})
+async function mountTabApp(override) {
+ const view=await mountApp(async(path,options)=>{
+  const result=await override?.(path,options)
+  if(result)return result
+  if(path.endsWith('/application-groups/kestra-a'))return response({id:'kestra-a',displayName:'Protected group',issuer:'issuer-a',revision:1})
+  if(path.includes('/scopes?'))return tabPage([{key:'scope-a',name:'Scope A',revision:1}])
+  if(path.includes('/applications?'))return tabPage([{clientId:'app-a',description:'Application A',revision:1}])
+  if(path.endsWith('/applications/~YXBwLWE'))return response({clientId:'app-a',description:'Application A',implementationKind:'external-declaration',revision:1})
+  if(path.includes('/permissions?')||path.includes('/scope-grants?'))return tabPage([])
+  if(path.endsWith('/credentials'))return response({clientId:'app-a',clientType:'PUBLIC',rotationMode:'NONE',secretSet:false,credentialRevision:1})
+ })
+ try {
+  view.state.context={...view.state.context,path:'application-groups/kestra-a',fullPath:'application-groups/kestra-a'}
+  await wait(()=>view.container.querySelector('[data-test="group-edit"]')&&view.container.querySelector('main').getAttribute('aria-busy')==='false','group detail did not load')
+  return view
+ }catch(error){view.close();throw error}
+}
+const nativeTab=(view,target)=>view.container.querySelector('[role="tab"][id="tab-'+target+'"]')
+const tabSettled=view=>view.container.querySelector('main').getAttribute('aria-busy')==='false'
+for(const target of ['scopes','applications'])for(const empty of [false,true])test('App '+target+' tab prefetch navigates exactly once to '+(empty?'empty list':'canonical detail'),async()=>{
+ const pending=deferred();let pause=true,started=false
+ const view=await mountTabApp(path=>{
+  if(path.includes('/'+target+'?')&&pause){started=true;return pending.promise}
+  if(empty&&path.includes('/'+target+'?'))return tabPage([])
+ })
+ try {
+  const detail=view.container.querySelector('[data-test="group-detail"]')
+  click(nativeTab(view,target));await wait(()=>started,'prefetch did not start')
+  assert.equal(view.navigations.length,0);assert.equal(view.container.querySelector('[data-test="group-detail"]'),detail)
+  assert.equal(nativeTab(view,'overview').getAttribute('aria-selected'),'true')
+  click(nativeTab(view,target));await tick();assert.equal(view.requests.filter(path=>path.includes('/'+target+'?')).length,1,'busy must deduplicate tab clicks')
+  pause=false;pending.resolve(tabPage(empty?[]:target==='scopes'?[{key:'scope-a',name:'Scope A',revision:1}]:[{clientId:'app-a',revision:1}]))
+  const destination='application-groups/kestra-a/'+target+(empty?'':target==='scopes'?'/scope-a':'/~YXBwLWE')
+  await wait(()=>view.state.context.fullPath===destination&&tabSettled(view),'direct tab navigation did not settle');await tick()
+  assert.deepEqual(view.navigations,[destination]);assert.equal(nativeTab(view,target).getAttribute('aria-selected'),'true')
+  if(!empty)assert(view.container.querySelector('[data-test="'+(target==='scopes'?'scope':'application')+'-detail"]'))
+ }finally{pending.resolve(tabPage([]));view.close()}
+})
+for(const mode of ['parent','second-page'])test('App tab prefetch rejects '+mode+' revision conflict without navigating and permits reload/retry',async()=>{
+ let conflict=true
+ const view=await mountTabApp(path=>{
+  if(!path.includes('/scopes?'))return
+  const page=Number(new URL(path,'http://localhost').searchParams.get('page'))
+  if(!conflict)return tabPage([{key:'scope-a',name:'Scope A',revision:1}])
+  if(mode==='parent')return tabPage([{key:'stale-scope'}],2)
+  return page===1?tabPage([{key:'stale-scope'}],1,1,2):tabPage([{key:'other-scope'}],2,2,2)
+ })
+ try {
+  click(nativeTab(view,'scopes'));await wait(()=>view.container.querySelector('[data-test="conflict-refresh"]')&&tabSettled(view),'revision conflict must remain retryable')
+  assert.deepEqual(view.navigations,[]);assert(!view.container.querySelector('[data-test="scope-detail"]'))
+  if(mode==='second-page')assert(view.requests.some(path=>path.endsWith('/scopes?page=2&size=100')))
+  conflict=false;click(view.container.querySelector('[data-test="conflict-refresh"]'))
+  await wait(()=>tabSettled(view)&&!view.container.querySelector('[data-test="request-error"]'),'conflict reload stuck')
+  click(nativeTab(view,'scopes'));await wait(()=>view.state.context.fullPath.endsWith('/scopes/scope-a')&&tabSettled(view),'retry failed')
+  assert.deepEqual(view.navigations,['application-groups/kestra-a/scopes/scope-a'])
+ }finally{view.close()}
+})
+for(const mode of ['503','network','navigation'])test('App tab '+mode+' failure releases busy and same-tab retry navigates once',async()=>{
+ let failing=true
+ const view=await mountTabApp(path=>{
+  if(failing&&path.includes('/scopes?')){
+   if(mode==='503')return response({code:'unavailable'},503)
+   if(mode==='network')throw new TypeError('Network unavailable')
+  }
+ })
+ try {
+  if(mode==='navigation')view.setNavigationWait(()=>Promise.reject(Object.assign(new Error('navigation unavailable'),{status:503})))
+  click(nativeTab(view,'scopes'));await wait(()=>view.container.querySelector('[data-test="request-error"]')&&tabSettled(view),'failed prefetch/navigation retained busy')
+  assert.equal(view.state.context.fullPath,'application-groups/kestra-a');assert.equal(view.navigations.length,mode==='navigation'?1:0)
+  failing=false;view.setNavigationWait(null);view.navigations.length=0
+  click(nativeTab(view,'scopes'));await wait(()=>view.state.context.fullPath.endsWith('/scopes/scope-a')&&tabSettled(view),'same-tab retry stuck')
+  assert.deepEqual(view.navigations,['application-groups/kestra-a/scopes/scope-a'])
+  assert(!view.container.querySelector('[data-test="request-error"]'))
+ }finally{view.close()}
+})
+for(const mode of ['identity-before-list','identity-after-list','permission','denied'])test('App tab prefetch '+mode+' clears sensitive data and never navigates',async()=>{
+ let capabilityReads=0
+ const view=await mountTabApp(path=>{
+  if(path.includes('/capabilities')&&capabilityReads){
+   capabilityReads++
+   if(mode==='identity-before-list'||mode==='identity-after-list'&&capabilityReads>=3)return response({...view.capability(),subject:'bob'})
+   if(mode==='permission')return response({...view.capability(),identityManagement:false})
+   if(mode==='denied')return response({...view.capability(),allowed:false})
+  }
+ })
+ try {
+  capabilityReads=1;click(nativeTab(view,'scopes'))
+  await wait(()=>view.container.querySelector('[data-test="sign-in-again"]')&&tabSettled(view),'identity/permission change must fail closed')
+  assert.deepEqual(view.navigations,[]);assert(!view.container.textContent.includes('Protected group'))
+  assert(!view.container.querySelector('[data-test="group-edit"]'));assert(!view.container.querySelector('[data-test="scope-detail"]'))
+ }finally{view.close()}
+})
+for(const change of ['path','tenant','request','signal','abort','dispose'])test('App late tab list after '+change+' cannot navigate or overwrite a newer view',async()=>{
+ const pending=deferred();let started=false
+ const view=await mountTabApp(path=>{if(path.includes('/scopes?')){started=true;return pending.promise}})
+ let closed=false
+ try {
+  click(nativeTab(view,'scopes'));await wait(()=>started,'slow list not started')
+  if(change==='dispose'){view.close();closed=true}
+  else if(change==='abort'){const controller=new AbortController();view.state.context={...view.state.context,signal:controller.signal};controller.abort()}
+  else if(change==='path')view.state.context={...view.state.context,path:'users',fullPath:'users'}
+  else if(change==='tenant')view.state.context={...view.state.context,tenant:'other'}
+  else if(change==='request'){
+   const request=view.state.context.request
+   view.state.context={...view.state.context,request:(...args)=>request(...args)}
+  }else view.state.context={...view.state.context,signal:new AbortController().signal}
+  await tick();pending.resolve(tabPage([{key:'stale-sensitive-scope',name:'Old identity',revision:1}]))
+  await tick();await tick()
+  assert.deepEqual(view.navigations,[],'late list must not initiate old tab navigation')
+  if(!closed){
+   await wait(()=>tabSettled(view),'obsolete tab read retained busy')
+   assert(!view.container.textContent.includes('stale-sensitive-scope'))
+   assert.equal(view.state.context.fullPath,change==='path'?'users':'application-groups/kestra-a')
+   if(change==='path')assert(view.container.querySelector('.customize-button'),'accepted new path must load users')
+  }
+ }finally{pending.resolve(tabPage([]));if(!closed)view.close()}
 })
 
 test.after(()=>{hooks.deregister();window.happyDOM.abort()})

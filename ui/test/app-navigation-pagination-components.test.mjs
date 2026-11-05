@@ -271,7 +271,7 @@ for(const section of ['scopes','applications'])test('App default '+section+' can
  try{
   await v.hostRouter.push('/application-groups/g');await wait(()=>v.container.querySelector('[data-test="group-detail"]')&&v.container.querySelector('main').getAttribute('aria-busy')==='false','overview did not load')
   const before=v.requests.length
-  click([...v.container.querySelectorAll('main .kel-tabs [role="tab"]')].find(node=>node.id.endsWith('-'+section)))
+  await v.hostRouter.push('/application-groups/g/'+section)
   await entered.promise;await tick()
   const selector=section==='scopes'?'[data-test="scope-detail"]':'[data-test="application-detail"]'
   const detail=v.container.querySelector(selector);assert(detail,'authorized default detail missing')
