@@ -54,17 +54,18 @@ are extracted from the immutable published image, independently of any overlay s
 检查。该变量只用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
 每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。
 
-当前编译输入为正式宿主 commit `77de8c5e666c91f505592303e7a399f572f82e82`（成功 CI `42990293208`，
+当前编译输入为正式宿主 commit `8900e5c28a492e37a76e6dd64a1ad84ed178986f`（成功 CI `43069306397`，
 五个 job 成功并完成正式推广），镜像 digest
-`9a2176428678a07968b77a00d0c657d40c3b623c4578f75aa28c9346483cdd09`；
+`efbf1acb6cb7e19a6e7f6b7a010a20e6e3db449a254a88373f15df24eb66ec64`；
 本机独立提取 arm64 executable SHA256
-`5c349f78f13d0815a82f1124b041c80ce1e253fe128f36a8f667fe724defa886`。
-该版本修复延迟 SSE 流源的授权评估生命周期和执行错误通知；不改变首账号授权判定。
+`5fd67036f523ee8870e4b1efc853754376b68e70dce961aaf34b5424fa22407e`。
+该版本包含延迟 SSE 流源授权生命周期、执行错误通知及锁定 Monaco 内联补全释放接口
+兼容修复；不改变首账号授权判定。
 来源为该正式 CI 发布的 registry 镜像，由本仓 `scripts/prepare-host.sh` 独立提取，
 不读取相邻源码、开发目录或未发布产物。宿主报告的 source/upstream/provenance
 completeness=false 限制仍保留，不据此声称完整来源证明。
-插件仍须对应本轮四文件修改完成独立本地门、最终提交 CI 和发布；此前插件 CI
-`41211531677` 的 713/720 结果为失败记录，不能作为正式可消费产物。
+插件正式产物须对应当前固定输入的最终提交和成功 CI；历史失败或不同输入的成功报告
+不能代替当前发布门。根仓负责正式镜像与插件 jar 的生产组合验收。
 构建以 `host-contract.properties` 和本仓独立提取的 `.integration/host-provenance.json` 为准。
 宿主发布与插件本地检查不表示最终生产 HTTP、UI 或 Compose 组合验收通过。
 
