@@ -31,8 +31,6 @@ final class ApplicationGroupTypedPolicy {
             }
             ApplicationGroupPolicy.ManagementAction management=Set.of("READ","LIST").contains(action)?ApplicationGroupPolicy.ManagementAction.READ:
                 Set.of("CREATE","UPDATE","DELETE","EXECUTE","ACCESS_OUTPUTS").contains(action)?ApplicationGroupPolicy.ManagementAction.MANAGE:null;
-            if(BUSINESS.contains(resource) && management!=null && context.authorizeManagement(ApplicationGroupPolicy.ManagementDomain.BUSINESS_INSTANCE,management,identity.applicationGroupId()))
-                return TypedAuthorization.Decision.allow(op.queryDomain());
             var requested=op.queryDomain();
             if(query){
                 // The model computes unrestricted grant terms; the public query algebra applies the request and exclusions.
