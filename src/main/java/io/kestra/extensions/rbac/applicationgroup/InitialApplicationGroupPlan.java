@@ -32,9 +32,9 @@ public final class InitialApplicationGroupPlan {
             new ManagementGrant(ManagementDomain.LOCAL_POLICY,Set.of(ManagementAction.READ,ManagementAction.MANAGE),Set.of(GROUP_ID)),
             new ManagementGrant(ManagementDomain.BUSINESS_INSTANCE,Set.of(ManagementAction.READ,ManagementAction.MANAGE)));
         var permission=new ApplicationPermission("initial-administrator","Initial administrator",
-            "Manage access control and resources in company and its descendants",Set.of(SCOPE_KEY),grants,management,"",true,1);
+            "Explicit identity, local-policy and business-instance administration; additional company resource grants",Set.of(SCOPE_KEY),grants,management,"",true,1);
         var group=new Group(GROUP_ID,"Kestra","Created during first-account setup",true,1,1);
-        var scope=new Scope(SCOPE_KEY,"Administrator","Initial account administration and company resources",1);
+        var scope=new Scope(SCOPE_KEY,"Administrator","Explicit initial administration and additional company resource grants",1);
         var application=new Application(clientId,"Kestra Web UI",Set.of(issuer.replaceAll("/+$","")+"/api/v1/main/mcp/default"),List.of(permission),1);
         var grant=new UserGrant(issuer,subject,Set.of(SCOPE_KEY),1);
         return new ApplicationGroupInstallationPlan(2,installationId,issuer,clientId,GROUP_ID,

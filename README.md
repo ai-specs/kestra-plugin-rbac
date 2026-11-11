@@ -54,12 +54,12 @@ are extracted from the immutable published image, independently of any overlay s
 检查。该变量只用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
 每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。
 
-当前编译输入为正式宿主 commit `253e5e9e0dc270ae638d9dd1d9fd04948da5477a`（CI `41224044004`，
-五个 job 成功并完成正式发布），镜像 digest
-`9f36f43a42151e4dde11ed31d630c6a0dccab50f57dbf9426f30b0af53d907e4`；
-双架构 executable SHA256 `f189928270dc700cf095164dd6c1c736c0654a98dade11526faa90e27ddd1993`。
-该版本正式公开 SDK 修复筛选 popup reference 归属；插件保留精确实例、原生动画结束、
-真实滚动、关闭解除关联及重开的 Chromium 断言，不手工修改提取的 SDK。
+当前编译输入为正式宿主 commit `77de8c5e666c91f505592303e7a399f572f82e82`（成功 CI `42990293208`，
+五个 job 成功并完成正式推广），镜像 digest
+`9a2176428678a07968b77a00d0c657d40c3b623c4578f75aa28c9346483cdd09`；
+本机独立提取 arm64 executable SHA256
+`5c349f78f13d0815a82f1124b041c80ce1e253fe128f36a8f667fe724defa886`。
+该版本修复延迟 SSE 流源的授权评估生命周期和执行错误通知；不改变首账号授权判定。
 来源为该正式 CI 发布的 registry 镜像，由本仓 `scripts/prepare-host.sh` 独立提取，
 不读取相邻源码、开发目录或未发布产物。宿主报告的 source/upstream/provenance
 completeness=false 限制仍保留，不据此声称完整来源证明。
@@ -224,11 +224,17 @@ scope 名称和说明不授予资源权限。旧项目路径、完整恢复和�
 
 - `IDENTITY`、`LOCAL_POLICY`、`BUSINESS_INSTANCE` 各 `READ/MANAGE`；LOCAL_POLICY 明确仅组 `main`。
 - `METADATA` 为 `main` tenant 的 `READ/LIST`；`MCP_SERVER` 为该 tenant 的 `READ/LIST/CREATE/UPDATE/DELETE`。
-- FLOW、EXECUTION、TRIGGER、NAMESPACE、KVSTORE、SECRET、NAMESPACE_FILE、LOG、METRIC、DASHBOARD、BLUEPRINT、AI
-  仅命名空间 `company` 及子空间，动作明确为 `READ/LIST/CREATE/UPDATE/DELETE/EXECUTE/ACCESS_OUTPUTS`。
+- 普通资源 grants 为 FLOW、EXECUTION、TRIGGER、NAMESPACE、KVSTORE、SECRET、NAMESPACE_FILE、LOG、METRIC、DASHBOARD、BLUEPRINT、AI
+  声明 `company` 及子空间，动作明确为 `READ/LIST/CREATE/UPDATE/DELETE/EXECUTE/ACCESS_OUTPUTS`。
+- 上述 namespace grants 不构成首账号总权限上限。显式 `BUSINESS_INSTANCE` 授权通过固定映射，
+  在当前应用组、`main` tenant 内覆盖 FLOW、EXECUTION、NAMESPACE、LOG、METRIC、TRIGGER、KVSTORE、
+  NAMESPACE_FILE、METADATA、SYSTEM、MCP_SERVER、DASHBOARD、BLUEPRINT；READ 对应 READ/LIST，
+  MANAGE 对应 CREATE/UPDATE/DELETE/EXECUTE/ACCESS_OUTPUTS，两者不互含。
+  未列出的 SECRET、AI 不因管理域自动扩大。未知操作继续失败关闭。
 - 资源 audience 精确为当前 issuer 下 `/api/v1/main/mcp/default`；不登记外部应用，不采用通配 audience。
 
-这不是永久超级权限。范围外业务仍拒绝，其他账号不继承首账号权限；管理员可通过现有
+`company` 是默认示例及模式 A/B 对照测试范围，不是显式业务实例授权的命名空间上限。
+这不是永久超级权限，不根据首账号身份直接放行。其他账号不继承首账号权限；管理员可通过现有
 管理页面复核并修改初始权限。已存在任意 `rbac_` 表时不允许网页首装隐式覆盖或升级。
 回调不提交、不回滚、不关闭连接；宿主后续失败必须使插件写入一起回滚。
 
