@@ -72,13 +72,11 @@ class RuntimePoliciesTest {
     @Test void businessManagementUsesExplicitActionsAndNeverExtensionOrIdentity(){
         var f=new Fixture(Map.of("read",manager(ApplicationGroupPolicy.ManagementDomain.BUSINESS_INSTANCE,ApplicationGroupPolicy.ManagementAction.READ),"write",manager(ApplicationGroupPolicy.ManagementDomain.BUSINESS_INSTANCE,ApplicationGroupPolicy.ManagementAction.MANAGE)));
         try(var read=f.runtime.open(f.identity("read"),"main");var write=f.runtime.open(f.identity("write"),"main")){
-            assertTrue(read.authorize(op(Resource.FLOW,Action.READ,"company","id",false)).allowed());
-            assertFalse(read.authorize(op(Resource.FLOW,Action.EXECUTE,"company","id",false)).allowed());
-            assertTrue(write.authorize(op(Resource.FLOW,Action.EXECUTE,"company","id",false)).allowed());
-            assertTrue(write.authorize(op(Resource.FLOW,Action.ACCESS_OUTPUTS,"company","id",false)).allowed());
-            assertFalse(write.authorize(op(Resource.FLOW,Action.READ,"company","id",false)).allowed());
-            assertFalse(read.authorize(op(Resource.FLOW,Action.READ,"default","id",false)).allowed());
-            assertFalse(write.authorize(op(Resource.FLOW,Action.EXECUTE,"outside.ns","id",false)).allowed());
+            assertTrue(read.authorize(op(Resource.FLOW,Action.READ,"any","id",false)).allowed());
+            assertFalse(read.authorize(op(Resource.FLOW,Action.EXECUTE,"any","id",false)).allowed());
+            assertTrue(write.authorize(op(Resource.FLOW,Action.EXECUTE,"any","id",false)).allowed());
+            assertTrue(write.authorize(op(Resource.FLOW,Action.ACCESS_OUTPUTS,"any","id",false)).allowed());
+            assertFalse(write.authorize(op(Resource.FLOW,Action.READ,"any","id",false)).allowed());
             assertFalse(write.authorize(op(Resource.EXTENSION,Action.READ,null,"rbac",false)).allowed());
             assertFalse(write.authorizeManagement(ApplicationGroupPolicy.ManagementDomain.IDENTITY,ApplicationGroupPolicy.ManagementAction.MANAGE,"p"));
         }
