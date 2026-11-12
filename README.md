@@ -54,13 +54,13 @@ are extracted from the immutable published image, independently of any overlay s
 检查。该变量只用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
 每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。
 
-当前编译输入为正式宿主 commit `8900e5c28a492e37a76e6dd64a1ad84ed178986f`（成功 CI `43069306397`，
+当前编译输入为正式宿主 commit `c3fe84866280095d1bd218f110a682b5cd502089`（成功 CI `43202366854`，
 五个 job 成功并完成正式推广），镜像 digest
-`efbf1acb6cb7e19a6e7f6b7a010a20e6e3db449a254a88373f15df24eb66ec64`；
+`5e7f2736b228fc993b911a10afa6670b584e978cb7c38553edf232ca519db721`；
 本机独立提取 arm64 executable SHA256
-`5fd67036f523ee8870e4b1efc853754376b68e70dce961aaf34b5424fa22407e`。
+`7185552b17cbcc567d7f6d2425bb3604621f92af2cd6a32a98a9c0f01a28d72d`。
 该版本包含延迟 SSE 流源授权生命周期、执行错误通知及锁定 Monaco 内联补全释放接口
-兼容修复；不改变首账号授权判定。
+兼容修复，以及可选资讯请求失败的应用入口错误边界；不改变首账号授权判定。
 来源为该正式 CI 发布的 registry 镜像，由本仓 `scripts/prepare-host.sh` 独立提取，
 不读取相邻源码、开发目录或未发布产物。宿主报告的 source/upstream/provenance
 completeness=false 限制仍保留，不据此声称完整来源证明。
