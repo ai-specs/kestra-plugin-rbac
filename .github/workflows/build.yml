@@ -22,7 +22,8 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Playwright 1.56 has no browser dependency target for ubuntu-26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     services:
       policy-postgres:
