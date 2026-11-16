@@ -23,7 +23,7 @@ for name, expected in [('store.PolicyDocumentValidatorTest', 6), ('store.JdbcPol
         if 'Application group directory store backend: PostgreSQL' not in output or 'Application group directory store backend: H2' in output:
             raise SystemExit(name + ' must execute against PostgreSQL, not H2')
     print('PASS: ' + name + ' ' + str(expected) + ' cases executed')
-for name, expected in [('applicationgroup.ApplicationPermissionUpgradeTest', 8), ('applicationgroup.ApplicationPermissionControllerTest', 7)]:
+for name, expected in [('applicationgroup.ApplicationPermissionUpgradeTest', 9), ('applicationgroup.ApplicationPermissionControllerTest', 10)]:
     suite = ET.parse(directory / ('TEST-io.kestra.extensions.rbac.' + name + '.xml')).getroot()
     assert int(suite.get('tests', '0')) == expected and all(int(suite.get(key, '0')) == 0 for key in ('failures', 'errors', 'skipped')), name + ' must execute without failure or skip'
     output = '\n'.join(suite.itertext())

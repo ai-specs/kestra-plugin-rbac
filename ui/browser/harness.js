@@ -18,6 +18,11 @@ const group = {id:'team',displayName:'Team display',description:'Browser fixture
 const user = {subject:'alice',username:'alice',name:'Alice fixture',email:'alice@example.invalid',active:true,revision:1}
 const application = {clientId:'client',implementationKind:'external-declaration',audiences:[],supportedScopeKeys:['read'],description:'Fixture application',revision:1}
 const permission = {implementationKind:'external-declaration',parentRevision:1,key:'read',name:'Read fixture',scopeKeys:['read'],details:'Visible permission summary\nSecond permission line',revision:1}
+if(['true','legacy'].includes(qs.get('aiGrant'))) {
+  application.implementationKind='kestra-policy'
+  Object.assign(permission,{implementationKind:'kestra-policy',description:'',enabled:true,grants:[],managementGrants:[]})
+  if(qs.get('aiGrant')==='legacy')permission.grants=[{scope:'NAMESPACE',tenant:'main',namespace:'company',descendants:true,resource:'AI',actions:['READ','LIST','UPDATE','EXECUTE'],ids:['old'],allIds:false}]
+}
 let scenario = qs.get('state') || 'normal', release, saveRelease
 let holdWrites = false
 const requests = []

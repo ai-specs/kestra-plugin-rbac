@@ -25,6 +25,8 @@ public final class InitialApplicationGroupPlan {
                 grants.add(new Grant("TENANT","main",null,false,resource.name(),Set.of("READ","LIST"),Set.of(),true));
             else if(resource==Resource.MCP_SERVER)
                 grants.add(new Grant("TENANT","main",null,false,resource.name(),Set.of("READ","LIST","CREATE","UPDATE","DELETE"),Set.of(),true));
+            else if(resource==Resource.AI)
+                grants.add(new Grant("TENANT","main",null,false,resource.name(),Set.of("READ","EXECUTE"),Set.of(),true));
             else grants.add(new Grant("NAMESPACE","main",NAMESPACE,true,resource.name(),actions,Set.of(),true));
         }
         var management=List.of(

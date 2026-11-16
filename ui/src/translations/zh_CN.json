@@ -118,6 +118,8 @@
     "selectScope": "选择 scope…",
     "rotationConfirmTitle": "确认轮换 client secret",
     "rotationConfirmMessage": "轮换会立即生成新 secret 并立刻废止旧值：旧 secret 马上失效，该应用在更新配置前将无法登录或换取 token。已签发的用户 token 不受影响，仍按标准撤权检查。确认后将显示新 secret，且仅此一次。",
-    "rotationConfirmAction": "确认轮换"
+    "rotationConfirmAction": "确认轮换",
+    "aiTenantRange": "AI 租户入口仅支持 READ 和 EXECUTE。流程、执行和日志权限分别检查。",
+    "aiLegacyRange": "旧命名空间 AI 授权：保留兼容数据，不授予租户 AI 入口权限。请新增 AI 授权。"
   }
 }

@@ -118,6 +118,8 @@
     "selectScope": "Seleccionar scopes…",
     "rotationConfirmTitle": "Rotar el client secret",
     "rotationConfirmMessage": "La rotación emite un nuevo secret y retira el anterior de inmediato: el valor anterior deja de funcionar al instante, por lo que la aplicación no podrá iniciar sesión ni cambiar tokens hasta que actualices su configuración. Los tokens de usuario emitidos no se ven afectados y mantienen las comprobaciones de revocación estándar. Tras confirmar, el nuevo secret se muestra una sola vez.",
-    "rotationConfirmAction": "Rotar"
+    "rotationConfirmAction": "Rotar",
+    "aiTenantRange": "El acceso de IA del inquilino solo admite READ y EXECUTE. Los permisos de flujos, ejecuciones y registros se comprueban por separado.",
+    "aiLegacyRange": "Permiso de IA de namespace antiguo: se conserva por compatibilidad, pero no concede acceso de IA del inquilino. Añada un nuevo permiso de IA."
   }
 }

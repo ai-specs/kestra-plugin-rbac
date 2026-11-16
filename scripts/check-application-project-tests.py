@@ -21,9 +21,9 @@ REQUIRED['io.kestra.extensions.rbac.declaration.ApplicationScopeDeclarationContr
 REQUIRED['io.kestra.extensions.rbac.store.ApplicationScopeDeclarationCommandTest'] = 2
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectoryServiceTest'] = 13
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionTest'] = 5
-REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionControllerTest'] = 7
+REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionControllerTest'] = 10
 REQUIRED['io.kestra.extensions.rbac.management.ApplicationPermissionRouteTest'] = 1
-REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionUpgradeTest'] = 8
+REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionUpgradeTest'] = 9
 REQUIRED['io.kestra.extensions.rbac.management.AccountGrantCleanupTest'] = 6
 REQUIRED['io.kestra.extensions.rbac.management.ClientCredentialManagementTest'] = 7
 REQUIRED['io.kestra.extensions.rbac.management.TemporaryAccountCommandsTest'] = 4
@@ -34,6 +34,8 @@ REQUIRED['io.kestra.extensions.rbac.management.PublishedUserDirectoryAccessTest'
 REQUIRED['io.kestra.extensions.rbac.AuthorizationDependencyTest'] = 5
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.InitialApplicationGroupPlanTest'] = 6
 REQUIRED['io.kestra.extensions.rbac.InitialApplicationGroupParticipantTest'] = 6
+REQUIRED['io.kestra.extensions.rbac.AiTypedPolicyTest'] = 7
+REQUIRED['io.kestra.extensions.rbac.applicationgroup.AiTenantGrantTest'] = 5
 results=Path(sys.argv[1])
 for name,count in REQUIRED.items():
     report=ET.parse(results/('TEST-'+name+'.xml')).getroot()

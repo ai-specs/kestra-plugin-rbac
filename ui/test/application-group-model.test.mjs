@@ -2,7 +2,7 @@ import {memberInput, managementAccess, requiresReauthentication, loginEntry, man
 import {permissionDraft, availableScopeOptions, collectPermissions, permissionInput} from '../src/access-control-model.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {canonicalPath, collectPages, groupScopeInput, typedGrantsInput, selectGrantResource, splitLines} from '../src/application-group-model.js'
+import {canonicalPath, collectPages, groupScopeInput, typedGrantsInput, selectGrantResource, splitLines, grantActions} from '../src/application-group-model.js'
 
 test('empty paths enter application groups and legacy paths are not redirected into new authority', () => {
   for (const path of ['', '/']) assert.equal(canonicalPath(path), 'application-groups')
@@ -221,4 +221,21 @@ test('project directory pagination rejects same-total revision changes and missi
   await assert.rejects(collectPages(async (page,size) => pageResult(page,size,page === 1 ? 7 : 8), undefined,7), error => error.code === 'directory_changed')
   await assert.rejects(collectPages(async (page,size) => pageResult(page,size,undefined), undefined,7), error => error.code === 'directory_changed')
   assert.equal((await collectPages(async (page,size) => pageResult(page,size,7),undefined,7)).length,101)
+})
+
+test('new AI selection uses explicit tenant READ EXECUTE and no namespace or IDs', () => {
+  const grant = {scope:'NAMESPACE',tenant:'main',namespace:'company',descendants:true,resource:'AI',actions:['READ','LIST','UPDATE','EXECUTE'],ids:['old'],allIds:false}
+  selectGrantResource(grant)
+  assert.deepEqual(grant,{scope:'TENANT',tenant:'main',namespace:null,descendants:false,resource:'AI',actions:['READ','EXECUTE'],ids:[],allIds:true})
+  assert.deepEqual(typedGrantsInput({grants:[grant]}).grants,[grant])
+  for(const patch of [{actions:['LIST']},{namespace:'company'},{tenant:'other'},{descendants:true},{ids:['id']},{allIds:false,ids:['id']}])
+    assert.throws(()=>typedGrantsInput({grants:[{...grant,...patch}]}),error=>error.code==='invalid_grant')
+})
+
+test('editing another permission field preserves legacy namespace AI without conversion', () => {
+  const legacy={scope:'NAMESPACE',tenant:'main',namespace:'company',descendants:true,resource:'AI',actions:['READ','LIST','UPDATE','EXECUTE'],ids:['old'],allIds:false}
+  assert.deepEqual(typedGrantsInput({description:'changed',grants:[legacy]}).grants,[legacy])
+  assert.equal(legacy.scope,'NAMESPACE')
+  assert.deepEqual(grantActions(legacy),['READ','LIST','CREATE','UPDATE','DELETE','EXECUTE','ACCESS_OUTPUTS'])
+  assert.deepEqual(grantActions({...legacy,scope:'TENANT'}),['READ','EXECUTE'])
 })

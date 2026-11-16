@@ -27,6 +27,138 @@ class ApplicationPermissionControllerTest {
             ",\"grants\":"+grants+",\"managementGrants\":[]"+extra+"}").getBytes(StandardCharsets.UTF_8);
     }
 
+    private static final String AI_TENANT="[{\"scope\":\"TENANT\",\"tenant\":\"main\",\"namespace\":null,\"descendants\":false,\"resource\":\"AI\",\"actions\":[\"READ\",\"EXECUTE\"],\"ids\":[],\"allIds\":true}]";
+    private static final String AI_LEGACY="[{\"scope\":\"NAMESPACE\",\"tenant\":\"main\",\"namespace\":\"company\",\"descendants\":true,\"resource\":\"AI\",\"actions\":[\"READ\",\"LIST\",\"UPDATE\",\"EXECUTE\"],\"ids\":[\"legacy-ai\"],\"allIds\":false}]";
+
+    private ApplicationPermission persistedPermission(Setup setup,String key)throws Exception {
+        try(var connection=setup.fixture().source.getConnection();var statement=connection.prepareStatement(
+            "SELECT document_json FROM rbac_application_group_state WHERE group_id=?")) {
+            statement.setString(1,"group");
+            try(var rows=statement.executeQuery()) {
+                assertTrue(rows.next());
+                var snapshot=new com.fasterxml.jackson.databind.ObjectMapper().readValue(rows.getString(1),ApplicationGroupDirectory.Snapshot.class);
+                return snapshot.applications().stream().filter(application->application.clientId().equals("ui"))
+                    .flatMap(application->application.permissions().stream()).filter(permission->permission.key().equals(key)).findFirst().orElseThrow();
+            }
+        }
+    }
+
+    private java.util.Map<String,List<String>> storedRows(Setup setup)throws Exception {
+        var result=new java.util.TreeMap<String,List<String>>();
+        try(var connection=setup.fixture().source.getConnection();var tables=connection.getMetaData().getTables(
+            connection.getCatalog(),connection.getSchema(),"%",new String[]{"TABLE"})) {
+            while(tables.next()) {
+                String table=tables.getString("TABLE_NAME");
+                if(!table.toLowerCase(java.util.Locale.ROOT).startsWith("rbac_"))continue;
+                assertTrue(table.matches("[A-Za-z0-9_]+"));
+                var values=new java.util.ArrayList<String>();
+                try(var statement=connection.createStatement();var rows=statement.executeQuery("SELECT * FROM "+table)) {
+                    int columns=rows.getMetaData().getColumnCount();
+                    while(rows.next()) {
+                        var row=new java.util.ArrayList<String>();
+                        for(int column=1;column<=columns;column++)row.add(rows.getString(column));
+                        values.add(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(row));
+                    }
+                }
+                values.sort(String::compareTo);result.put(table,List.copyOf(values));
+            }
+        }
+        assertFalse(result.isEmpty());return result;
+    }
+
+    private io.kestra.webserver.rbac.AuthorizationEvaluationV1 evaluation(Setup setup) {
+        var runtime=new ApplicationGroupRuntimePolicies(setup.fixture().service,setup.identities());
+        return new io.kestra.extensions.rbac.ConfiguredEvaluationProvider(runtime,Runnable::run)
+            .begin(setup.fixture().identity(Set.of("reader")),"main").toCompletableFuture().join();
+    }
+
+    private boolean aiAllowed(io.kestra.webserver.rbac.AuthorizationEvaluationV1 evaluation,
+        io.kestra.webserver.rbac.TypedAuthorization.Action action) {
+        var operation=new io.kestra.webserver.rbac.TypedAuthorization.Operation(
+            io.kestra.webserver.rbac.TypedAuthorization.CONTRACT_VERSION,
+            io.kestra.webserver.rbac.TypedAuthorization.Source.REST,
+            io.kestra.webserver.rbac.TypedAuthorization.Resource.AI,action,"main",null,null,
+            io.kestra.webserver.rbac.TypedAuthorization.QueryDomain.unrestricted(),
+            action==io.kestra.webserver.rbac.TypedAuthorization.Action.EXECUTE
+                ?io.kestra.webserver.rbac.TypedAuthorization.Coverage.COMPLETE_BATCH:io.kestra.webserver.rbac.TypedAuthorization.Coverage.SINGLE,
+            io.kestra.webserver.rbac.TypedAuthorization.Aggregate.NONE,
+            action==io.kestra.webserver.rbac.TypedAuthorization.Action.EXECUTE
+                ?io.kestra.webserver.rbac.TypedAuthorization.SideEffect.EXTERNAL:io.kestra.webserver.rbac.TypedAuthorization.SideEffect.READ_ONLY);
+        return evaluation.authorize(operation).toCompletableFuture().join().allowed();
+    }
+
+    @Test void aiTenantCreateFindUpdateDeletePersistAndNewEvaluationsObserveRevocation()throws Exception {
+        var setup=setup(ALL);var controller=setup.controller();
+        assertEquals(200,controller.create("main","group",CLIENT,ACTOR,"\"1\"",json("ai-entry","[\"reader\"]",AI_TENANT,"")).code());
+        var original=persistedPermission(setup,"ai-entry");
+        var expected=new ApplicationGroupPolicy.Grant("TENANT","main",null,false,"AI",Set.of("READ","EXECUTE"),Set.of(),true);
+        assertEquals(List.of(expected),original.grants());
+        var found=controller.find("main","group",CLIENT,"ai-entry",ACTOR);
+        assertEquals(200,found.code());
+        var body=new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(found.body());
+        assertEquals("AI",body.path("grants").get(0).path("resource").asText());
+        assertEquals("TENANT",body.path("grants").get(0).path("scope").asText());
+        var allowed=evaluation(setup);
+        try {
+            assertTrue(aiAllowed(allowed,io.kestra.webserver.rbac.TypedAuthorization.Action.READ));
+            assertTrue(aiAllowed(allowed,io.kestra.webserver.rbac.TypedAuthorization.Action.EXECUTE));
+        } finally {allowed.close().toCompletableFuture().join();}
+        String readOnly=AI_TENANT.replace("[\"READ\",\"EXECUTE\"]","[\"READ\"]");
+        assertEquals(200,controller.update("main","group",CLIENT,"ai-entry",ACTOR,"\"1\"",json("ai-entry","[\"reader\"]",readOnly,",\"enabled\":true")).code());
+        assertEquals(Set.of("READ"),persistedPermission(setup,"ai-entry").grants().getFirst().actions());
+        var revoked=evaluation(setup);
+        try {
+            assertTrue(aiAllowed(revoked,io.kestra.webserver.rbac.TypedAuthorization.Action.READ));
+            assertFalse(aiAllowed(revoked,io.kestra.webserver.rbac.TypedAuthorization.Action.EXECUTE));
+        } finally {revoked.close().toCompletableFuture().join();}
+        assertEquals(200,controller.delete("main","group",CLIENT,"ai-entry",ACTOR,"\"2\"").code());
+        assertEquals(404,controller.find("main","group",CLIENT,"ai-entry",ACTOR).code());
+        var deleted=evaluation(setup);
+        try {
+            assertFalse(aiAllowed(deleted,io.kestra.webserver.rbac.TypedAuthorization.Action.READ));
+            assertFalse(aiAllowed(deleted,io.kestra.webserver.rbac.TypedAuthorization.Action.EXECUTE));
+        } finally {deleted.close().toCompletableFuture().join();}
+    }
+
+    @Test void legacyAiGrantSurvivesPublicControllerMetadataEditWithoutTenantPromotion()throws Exception {
+        var setup=setup(ALL);var controller=setup.controller();
+        assertEquals(200,controller.create("main","group",CLIENT,ACTOR,"\"1\"",json("legacy-ai","[\"reader\"]",AI_LEGACY,"")).code());
+        var before=persistedPermission(setup,"legacy-ai").grants();
+        var edited=new String(json("legacy-ai","[\"reader\"]",AI_LEGACY,",\"enabled\":true"),StandardCharsets.UTF_8)
+            .replace("\"name\":\"Permission\"","\"name\":\"Renamed legacy permission\"").getBytes(StandardCharsets.UTF_8);
+        assertEquals(200,controller.update("main","group",CLIENT,"legacy-ai",ACTOR,"\"1\"",
+            edited).code());
+        assertEquals("Renamed legacy permission",persistedPermission(setup,"legacy-ai").name());
+        assertEquals(before,persistedPermission(setup,"legacy-ai").grants());
+        var found=controller.find("main","group",CLIENT,"legacy-ai",ACTOR);
+        assertEquals(200,found.code());
+        assertEquals("NAMESPACE",new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(found.body()).path("grants").get(0).path("scope").asText());
+        var evaluation=evaluation(setup);
+        try {
+            assertFalse(aiAllowed(evaluation,io.kestra.webserver.rbac.TypedAuthorization.Action.READ));
+            assertFalse(aiAllowed(evaluation,io.kestra.webserver.rbac.TypedAuthorization.Action.EXECUTE));
+        } finally {evaluation.close().toCompletableFuture().join();}
+    }
+
+    @Test void deniedAndInvalidAiMutationsLeaveAllPersistedRbacRowsUnchanged()throws Exception {
+        var setup=setup(ALL);var controller=setup.controller();
+        assertEquals(200,controller.create("main","group",CLIENT,ACTOR,"\"1\"",json("ai-entry","[\"reader\"]",AI_TENANT,"")).code());
+        var before=storedRows(setup);
+        when(setup.identities().current()).thenAnswer(call->setup.fixture().identity(Set.of("manager")));
+        assertEquals(403,controller.create("main","group",CLIENT,ACTOR,"\"2\"",json("denied","[\"reader\"]",AI_TENANT,"")).code());
+        assertEquals(before,storedRows(setup));
+        assertEquals(403,controller.update("main","group",CLIENT,"ai-entry",ACTOR,"\"1\"",json("ai-entry","[\"reader\"]","[]",",\"enabled\":true")).code());
+        assertEquals(before,storedRows(setup));
+        assertEquals(403,controller.delete("main","group",CLIENT,"ai-entry",ACTOR,"\"1\"").code());
+        assertEquals(before,storedRows(setup));
+        when(setup.identities().current()).thenAnswer(call->setup.fixture().identity(ALL));
+        assertEquals(400,controller.update("main","group",CLIENT,"ai-entry",ACTOR,"\"1\"",
+            json("ai-entry","[\"reader\"]",AI_TENANT.replace("[\"READ\",\"EXECUTE\"]","[\"LIST\"]"),",\"enabled\":true")).code());
+        assertEquals(before,storedRows(setup));
+        assertEquals(412,controller.update("main","group",CLIENT,"ai-entry",ACTOR,"\"99\"",json("ai-entry","[\"reader\"]",AI_TENANT,",\"enabled\":true")).code());
+        assertEquals(before,storedRows(setup));
+    }
+
     @Test void createUpdateDeleteUseObjectRevisionAndReceiptWithoutPolicyDisclosure()throws Exception {
         var setup=setup(ALL);var controller=setup.controller();var before=setup.fixture().current();
         var created=controller.create("main","group",CLIENT,ACTOR,"\"1\"",json("new","[\"reader\"]","[]",""));

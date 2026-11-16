@@ -118,6 +118,8 @@
     "selectScope": "Select scopes…",
     "rotationConfirmTitle": "Rotate client secret",
     "rotationConfirmMessage": "Rotation immediately issues a new secret and retires the old one: the previous value stops working right away, so the application can no longer sign in or exchange tokens until you update its configuration. Issued user tokens are unaffected and keep the standard revocation checks. The new secret is shown only once after confirmation.",
-    "rotationConfirmAction": "Rotate"
+    "rotationConfirmAction": "Rotate",
+    "aiTenantRange": "AI tenant access allows READ and EXECUTE only. Flow, execution and log permissions are checked separately.",
+    "aiLegacyRange": "Legacy namespace AI grant: preserved for compatibility; it does not grant tenant AI access. Add a new AI grant to authorize access."
   }
 }

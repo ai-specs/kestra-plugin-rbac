@@ -57,6 +57,10 @@ public record ApplicationGroupPolicy(int schemaVersion, Map<String, ApplicationG
                 if (!scope.equals("TENANT") || !tenant.equals("main") || namespace != null || descendants
                     || !Set.of("READ", "LIST", "CREATE", "UPDATE", "DELETE").containsAll(actions))
                     throw new IllegalArgumentException("MCP_SERVER requires an explicit main tenant configuration grant");
+            } else if (resource.equals("AI") && scope.equals("TENANT")) {
+                if (!tenant.equals("main") || namespace != null || descendants || !ids.isEmpty() || !allIds
+                    || !Set.of("READ", "EXECUTE").containsAll(actions))
+                    throw new IllegalArgumentException("AI requires an explicit main tenant READ/EXECUTE grant");
             } else if (!scope.equals("NAMESPACE") || !tenant.equals("main") || namespace == null
                 || !namespace.matches("[A-Za-z0-9_-]+(?:[.][A-Za-z0-9_-]+)*")) {
                 throw new IllegalArgumentException("Business grants require a concrete main namespace");

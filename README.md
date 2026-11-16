@@ -54,14 +54,15 @@ are extracted from the immutable published image, independently of any overlay s
 检查。该变量只用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
 每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。
 
-当前编译输入为正式宿主 commit `109d940e7cdba6bfc70366a4e89f1988e383f180`（成功 CI `43667555962`，
+当前编译输入为正式宿主 commit `4891c3ddba7b06c737cb6081864bb2c157a10519`（成功 CI `43822188520`，
 五个 job 成功并完成正式推广），镜像 digest
-`31079b17c9619a5565ce904a8343984ff15c8ee8c1882125514b6fb771aefbf3`；
+`571b54829898a5e5043bcf85f8416c540732dcee16a4dd6520cfd21a00659372`；
 本机独立提取 arm64 executable SHA256
-`3c7923077b95db2ad46c3bce6d75ea03d448ce42de848f129882cc706434c415`。
-该版本包含延迟 SSE 流源授权生命周期、执行错误通知及锁定 Monaco 内联补全释放接口
-兼容修复、可选资讯请求失败的应用入口错误边界、MCP活跃监听保活与会话关闭生命周期修复、SSE策略快照到期失败关闭，以及CSV延迟正文查询域、逐记录与空闲快照守卫；
-不改变首账号授权判定或插件业务策略。
+`e60e3fdb17f3343e02f1c43f354a5b1bdd63ff54d0f8f624c2be1f0c2a557bb3`。
+该版本保留既有 SSE/CSV/MCP 授权生命周期，并增加 AI 可信主体、线程隔离、异步工具实际资源
+授权和显式租户 AI.READ/EXECUTE 契约。插件显式授予入口，工具业务资源权限仍单独判定。
+旧 namespace AI 声明不自动升级为租户授权；已有安装通过权限管理明确新增授权。
+关闭 RBAC 的模式 A 不要求装载本插件；两种模式共同使用 overlay，不能把模式 A 当作无宿主补丁。
 来源为该正式 CI 发布的 registry 镜像，由本仓 `scripts/prepare-host.sh` 独立提取，
 不读取相邻源码、开发目录或未发布产物。宿主报告的 source/upstream/provenance
 completeness=false 限制仍保留，不据此声称完整来源证明。

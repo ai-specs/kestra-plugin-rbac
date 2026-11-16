@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 
 CLASS = "io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionUpgradeTest"
 REQUIRED = [
+    "upgradePreservesLegacyAiWithoutCreatingTenantAccess",
     "upgradePreservesPolicySupportAndSubjectGrants",
     "conflictingMappingIsRejectedWithoutSideEffects",
     "failureAfterWritesRollsBackDirectoryDeclarationsEpochAndReceipt",

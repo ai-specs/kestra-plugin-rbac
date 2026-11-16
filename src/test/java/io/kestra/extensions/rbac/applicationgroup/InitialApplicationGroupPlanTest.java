@@ -48,6 +48,9 @@ class InitialApplicationGroupPlanTest {
             } else if(grant.resource().equals("MCP_SERVER")) {
                 assertEquals("TENANT",grant.scope());assertNull(grant.namespace());assertFalse(grant.descendants());
                 assertEquals(Set.of("READ","LIST","CREATE","UPDATE","DELETE"),grant.actions());
+            } else if(grant.resource().equals("AI")) {
+                assertEquals("TENANT",grant.scope());assertNull(grant.namespace());assertFalse(grant.descendants());
+                assertEquals(Set.of("READ","EXECUTE"),grant.actions());
             } else {assertEquals("NAMESPACE",grant.scope());assertEquals("company",grant.namespace());assertTrue(grant.descendants());}
             assertEquals("main",grant.tenant());assertTrue(grant.allIds());assertTrue(grant.ids().isEmpty());
         }
@@ -60,6 +63,9 @@ class InitialApplicationGroupPlanTest {
         var directory=new ApplicationGroupAuthorization.Directory(upper,"main",Set.of("openid"));
         var identity=new ApplicationGroupAuthorization.Identity("first-user","https://issuer.example","configured-ui","main",1,
             Set.of("admin"),Set.of("openid"),"main",true);
+        for(var action:java.util.List.of("READ","EXECUTE"))
+            assertTrue(authorizer.authorize(identity,new ApplicationGroupAuthorization.Request("main",null,"AI",action,null,false),directory).allowed());
+        assertFalse(authorizer.authorize(identity,new ApplicationGroupAuthorization.Request("main",null,"AI","LIST",null,true),directory).allowed());
         for(var namespace:java.util.List.of("company","company.team"))
             assertTrue(authorizer.authorize(identity,new ApplicationGroupAuthorization.Request("main",namespace,"FLOW","CREATE","flow",false),directory).allowed());
         for(var namespace:java.util.List.of("other","company-other","other.company"))

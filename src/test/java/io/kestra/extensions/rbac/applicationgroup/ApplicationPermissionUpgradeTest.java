@@ -21,14 +21,32 @@ class ApplicationPermissionUpgradeTest {
         final ApplicationScopeDeclarationStore declarations=new ApplicationScopeDeclarationStore(fixture.source,MAPPER);
         final ApplicationPermissionUpgrade upgrade=new ApplicationPermissionUpgrade(fixture.store,fixture.policies,declarations,fixture.service);
         Snapshot target;
-        Fixture()throws Exception {
+        Fixture()throws Exception { this(List.of()); }
+        Fixture(List<Grant> additionalGrants)throws Exception {
             try(var connection=fixture.source.getConnection()) {
                 System.out.println("Declaration upgrade backend: "+connection.getMetaData().getDatabaseProductName());
                 String configured=System.getenv("RBAC_STORE_TEST_JDBC");
                 assertEquals(configured!=null&&!configured.isBlank()?"PostgreSQL":"H2",connection.getMetaData().getDatabaseProductName());
             }
+            if(!additionalGrants.isEmpty()) {
+                var stored=fixture.policies.readCurrent();
+                var policy=stored.policy().applicationGroups().get("group");
+                var scopes=new java.util.TreeMap<>(policy.scopes());
+                var previous=scopes.get("policy-manager");
+                var grants=new ArrayList<>(previous.grants());grants.addAll(additionalGrants);
+                scopes.put("policy-manager",new ScopeDefinition(previous.description(),previous.enabled(),grants,previous.managementGrants()));
+                var document=new ApplicationGroupPolicy(2,Map.of("group",new ApplicationGroup(policy.issuer(),policy.audiences(),policy.enabled(),scopes)));
+                fixture.policies.replace(stored.revision(),new ApplicationGroupPolicyParser().canonicalJson(document).getBytes(java.nio.charset.StandardCharsets.UTF_8),"test");
+            }
             var original=fixture.current();var group=original.group();
             var applications=original.applications().stream().map(value->new Application(value.clientId(),value.description(),value.audiences(),value.permissions(),value.revision()+1)).toList();
+            if(!additionalGrants.isEmpty()) applications=applications.stream().map(application->new Application(application.clientId(),application.description(),application.audiences(),
+                application.permissions().stream().map(permission->{
+                    if(!permission.scopeKeys().contains("policy-manager"))return permission;
+                    var grants=new ArrayList<>(permission.grants());grants.addAll(additionalGrants);
+                    return new ApplicationPermission(permission.key(),permission.name(),permission.description(),permission.scopeKeys(),grants,
+                        permission.managementGrants(),permission.details(),permission.enabled(),permission.revision());
+                }).toList(),application.revision())).toList();
             target=new Snapshot(new Group(group.id(),group.displayName(),"",group.active(),group.revision()+1,group.authorizationVersion()+1),original.scopes(),applications,original.userGrants());
             var legacy=(ObjectNode)MAPPER.valueToTree(original);((ObjectNode)legacy.get("group")).remove("description");
             for(var application:legacy.get("applications")) {
@@ -51,6 +69,18 @@ class ApplicationPermissionUpgradeTest {
                 new ApplicationPermissionUpgrade.RuntimeMapping("group","manager","allow-manager"),
                 new ApplicationPermissionUpgrade.RuntimeMapping("group","policy-manager","allow-policy-manager")));
         }
+    }
+
+    @Test void upgradePreservesLegacyAiWithoutCreatingTenantAccess()throws Exception {
+        var legacy=new Grant("NAMESPACE","main","company",true,"AI",Set.of("READ","LIST","EXECUTE","UPDATE"),Set.of("old-ai"),false);
+        var fixture=new Fixture(List.of(legacy));
+        var plan=fixture.plan();var review=fixture.upgrade.preview(plan);
+        assertEquals(List.of(),review.conflicts());
+        assertTrue(fixture.upgrade.apply(plan,review.approvalHash()));
+        var grants=fixture.fixture.current().applications().stream().flatMap(application->application.permissions().stream())
+            .flatMap(permission->permission.grants().stream()).filter(grant->grant.resource().equals("AI")).toList();
+        assertEquals(List.of(legacy),grants);
+        assertTrue(grants.stream().noneMatch(grant->grant.scope().equals("TENANT")));
     }
 
     @Test void upgradePreservesPolicySupportAndSubjectGrants()throws Exception {

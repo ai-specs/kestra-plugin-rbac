@@ -97,6 +97,15 @@ public final class ApplicationGroupAuthorization {
         var scopes = validatedScopes(identity, request, directory);
         if (scopes == null) return Decision.deny();
         if (request.resource() == null || request.action() == null || !"main".equals(request.tenant())) return Decision.deny();
+        if (request.resource().equals("AI")) {
+            if (request.namespace() != null || request.id() != null || request.list()
+                || !Set.of("READ", "EXECUTE").contains(request.action())) return Decision.deny();
+            for (var scope : scopes) for (var grant : scope.grants())
+                if (grant.scope().equals("TENANT") && grant.tenant().equals(request.tenant())
+                    && grant.resource().equals("AI") && grant.actions().contains(request.action()))
+                    return new Decision(true, Domain.empty());
+            return Decision.deny();
+        }
         if (request.resource().equals("METADATA")) {
             if (request.namespace() != null || request.id() != null || !Set.of("READ", "LIST").contains(request.action())) return Decision.deny();
             for (var scope : scopes) {
@@ -209,6 +218,7 @@ public final class ApplicationGroupAuthorization {
      * Only adapters with an actual correlated query consumer may use this result.
      */
     public ListDecision authorizeList(Identity identity, Request request, Directory directory) {
+        if (request != null && "AI".equals(request.resource())) return new ListDecision(false, List.of());
         var scopes = validatedScopes(identity, request, directory);
         if (scopes == null || !request.list() || !"main".equals(request.tenant())
             || request.resource() == null || !Set.of("READ", "LIST").contains(request.action()))

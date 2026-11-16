@@ -305,3 +305,16 @@ subject 慢读的同时交错，也不代替生产组合及浏览器验收。
 第二层普通读取锁拒绝；保存、凭据、一次性值和脏草稿保护保持有效。
 本地组件回归检查详情 DOM 连续性、授权重读、query 保留、迟到回传、tenant 变化与拒绝，
 不以 Vue render 次数作为标准；实际浏览器呈现、独立 CI 和生产组合验收仍须分别执行。
+
+## AI permission grant（候选，待正式发布）
+
+现有 permission CRUD 接受以下新增形状，不增加接口或存储模型：
+
+```json
+{"scope":"TENANT","tenant":"main","namespace":null,"descendants":false,"resource":"AI","actions":["READ","EXECUTE"],"ids":[],"allIds":true}
+```
+
+动作可以仅 READ 或仅 EXECUTE，不支持 LIST 或其他动作。非 main 租户、命名空间、
+子空间及 ID 选择均拒绝。原生权限编辑器选择新 AI grant 时显示租户范围和这两个动作。
+载入旧 NAMESPACE AI grant 不自动转换；保存其他字段仍保留旧授权。新增租户权限必须
+由策略管理员明确操作并保存读回。升级流程不得自动扩权，已有安装不得通过重新首装补授。

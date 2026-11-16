@@ -118,6 +118,8 @@
     "selectScope": "scope を選択…",
     "rotationConfirmTitle": "client secret をローテーション",
     "rotationConfirmMessage": "ローテーションは直ちに新しい secret を発行し旧値を無効化します。旧値は即時に使用できなくなり、設定を更新するまでこのアプリはサインインやトークン交換ができません。発行済みのユーザー token は影響を受けず、通常の失効チェックが適用されます。確認後、新しい secret は一度だけ表示されます。",
-    "rotationConfirmAction": "ローテーション実行"
+    "rotationConfirmAction": "ローテーション実行",
+    "aiTenantRange": "AI テナントへのアクセスは READ と EXECUTE のみを許可します。フロー、実行、ログの権限は個別に確認されます。",
+    "aiLegacyRange": "旧 namespace AI 権限は互換性のため保持されますが、テナント AI へのアクセスは許可しません。新しい AI 権限を追加してください。"
   }
 }

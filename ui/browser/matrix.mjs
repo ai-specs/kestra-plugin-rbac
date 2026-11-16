@@ -2,6 +2,8 @@ export const themes = ['light', 'dark', 'dark-2', 'system']
 export const locales = ['en', 'zh_CN']
 export const widths = [1280, 768, 390]
 export const behaviors = [
+  'ai-tenant-native-edit',
+  'ai-legacy-native-preserve',
   ...['group', 'user', 'permission', 'subject'].flatMap(kind => [
     `drawer-${kind}-native-style`, `drawer-${kind}-focus-close-reopen`,
     `drawer-${kind}-draft-backdrop-history`, `drawer-${kind}-maximize-save-loading`

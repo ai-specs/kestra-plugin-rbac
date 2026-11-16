@@ -4,10 +4,10 @@ const paths={group:'application-groups',user:'users',permission:'application-gro
 const root=page=>page.locator('#plugin')
 const by=(page,id)=>root(page).locator(`[data-test="${id}"]`)
 const drawer=(page,kind)=>by(page,`drawer-${kind}`)
-async function boot(page,row,{path='application-groups',state='normal',holdCanonical=''}={}){
+async function boot(page,row,{path='application-groups',state='normal',holdCanonical='',aiGrant=''}={}){
   await page.setViewportSize({width:row.width,height:900})
   await page.emulateMedia({colorScheme:'light',reducedMotion:'reduce'})
-  await page.goto('/?'+new URLSearchParams({theme:row.theme,locale:row.locale,path,state,holdCanonical}))
+  await page.goto('/?'+new URLSearchParams({theme:row.theme,locale:row.locale,path,state,holdCanonical,aiGrant}))
   await page.waitForFunction(()=>window.fixture?.ready)
   if(state==='normal'||state==='empty')await expect(by(page,'access-control-root')).toHaveAttribute('aria-busy','false')
 }
@@ -119,7 +119,34 @@ for(const row of cases)test(row.id,async({page,context},info)=>{
   page.on('response',response=>{if(response.status()>=400)unexpected.push('response: '+response.status()+' '+response.url())})
   try {
     const behavior=row.behavior,match=/^drawer-(group|user|permission|subject)-(.+)$/.exec(behavior)
-    if(match){
+    if(behavior==='ai-legacy-native-preserve'){
+      await boot(page,row,{path:paths.permission,aiGrant:'legacy'})
+      await by(page,'permission-edit').first().click()
+      const d=drawer(page,'permission');await expect(d).toBeVisible()
+      await expect(d.locator('[name=grant-namespace]')).toHaveValue('company')
+      await expect(d).toContainText(await text(page,'aiLegacyRange'))
+      await d.locator('[name=permission-name]').fill('Legacy AI preserved')
+      await d.locator('[data-test=drawer-save]').click()
+      await expect.poll(()=>page.evaluate(()=>window.fixture.requests.filter(item=>item.method==='PUT'&&item.route.endsWith('/permissions/read')).length)).toBe(1)
+      const body=await page.evaluate(()=>window.fixture.requests.find(item=>item.method==='PUT'&&item.route.endsWith('/permissions/read')).body)
+      expect(JSON.parse(body).grants).toEqual([{scope:'NAMESPACE',tenant:'main',namespace:'company',descendants:true,resource:'AI',actions:['READ','LIST','UPDATE','EXECUTE'],ids:['old'],allIds:false}])
+    }else if(behavior==='ai-tenant-native-edit'){
+      await boot(page,row,{path:paths.permission,aiGrant:'true'})
+      await openDrawer(page,'permission');const d=drawer(page,'permission')
+      await d.locator('[name=permission-key]').fill('ai-entry');await d.locator('[name=permission-name]').fill('AI entry')
+      await d.locator('[data-test=add-grant]').click()
+      await d.locator('.grant .kel-select__wrapper').click()
+      await root(page).locator('[role=option]').filter({hasText:/^AI$/}).click()
+      await expect(d.locator('[name=grant-namespace]')).toHaveCount(0)
+      const grant=d.locator('.grant').first()
+      await expect(grant.locator('.kel-checkbox')).toHaveCount(2)
+      await grant.locator('.kel-checkbox').filter({hasText:'READ'}).click()
+      await grant.locator('.kel-checkbox').filter({hasText:'EXECUTE'}).click()
+      await d.locator('[data-test=drawer-save]').click()
+      await expect.poll(()=>page.evaluate(()=>window.fixture.requests.filter(item=>item.method==='POST'&&item.route.endsWith('/permissions')).length)).toBe(1)
+      const body=await page.evaluate(()=>window.fixture.requests.find(item=>item.method==='POST'&&item.route.endsWith('/permissions')).body)
+      expect(JSON.parse(body).grants).toEqual([{scope:'TENANT',tenant:'main',namespace:null,descendants:false,resource:'AI',actions:['READ','EXECUTE'],ids:[],allIds:true}])
+    }else if(match){
       const [,kind,action]=match;await boot(page,row,{path:paths[kind]});
       if(action==='draft-backdrop-history'){await page.evaluate(()=>window.fixture.navigate('application-groups/team'));await expect(by(page,'group-detail')).toBeVisible();await page.evaluate(path=>window.fixture.navigate(path),paths[kind]);await expect(by(page,'group-detail')).toBeHidden();await expect(by(page,'access-control-root')).toHaveAttribute('aria-busy','false')}
       const trigger=await openDrawer(page,kind),d=drawer(page,kind)

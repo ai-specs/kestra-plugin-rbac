@@ -15,6 +15,10 @@ export function typedGrantsInput(value) {
   return {description: value.description, enabled: value.enabled, managementGrants: (value.managementGrants ?? []).map(managementGrantInput), grants: value.grants.map(item => {
     const invalid = () => {throw Object.assign(new Error('invalid_grant'), {code:'invalid_grant',status:400})}
     if (!resources.includes(item.resource) || !Array.isArray(item.actions) || !item.actions.length || item.actions.some(action => !actions.includes(action)) || new Set(item.actions).size !== item.actions.length || typeof item.allIds !== 'boolean' || typeof item.descendants !== 'boolean' || !item.allIds && !splitLines(item.ids).length) invalid()
+    if (item.resource === 'AI' && item.scope === 'TENANT') {
+      if (item.tenant !== 'main' || item.namespace !== null || item.descendants || !item.allIds || splitLines(item.ids).length || item.actions.some(action => !['READ','EXECUTE'].includes(action))) invalid()
+      return {scope:'TENANT',tenant:'main',namespace:null,descendants:false,resource:'AI',actions:[...item.actions],ids:[],allIds:true}
+    }
     if (item.resource === 'MCP_SERVER') {
       if (item.scope !== 'TENANT' || item.tenant !== 'main' || item.namespace !== null || item.descendants || item.actions.some(action => !['READ', 'LIST', 'CREATE', 'UPDATE', 'DELETE'].includes(action))) throw Object.assign(new Error('invalid_grant'), {code:'invalid_grant',status:400})
       return {scope:'TENANT',tenant:'main',namespace:null,descendants:false,resource:'MCP_SERVER',actions:[...item.actions],allIds:item.allIds,ids:item.allIds?[]:splitLines(item.ids)}
@@ -26,10 +30,13 @@ export function typedGrantsInput(value) {
   })}
 }
 export function selectGrantResource(grant) {
-  if (grant.resource === 'METADATA') Object.assign(grant, {scope: 'TENANT', tenant: 'main', namespace: null, descendants: false, actions: grant.actions.filter(action => ['READ', 'LIST'].includes(action)), ids: [], allIds: true})
+  if (grant.resource === 'AI') Object.assign(grant, {scope:'TENANT',tenant:'main',namespace:null,descendants:false,actions:grant.actions.filter(action => ['READ','EXECUTE'].includes(action)),ids:[],allIds:true})
+  else if (grant.resource === 'METADATA') Object.assign(grant, {scope: 'TENANT', tenant: 'main', namespace: null, descendants: false, actions: grant.actions.filter(action => ['READ', 'LIST'].includes(action)), ids: [], allIds: true})
   else if (grant.resource === 'MCP_SERVER') Object.assign(grant, {scope:'TENANT',tenant:'main',namespace:null,descendants:false,actions:grant.actions.filter(action => ['READ','LIST','CREATE','UPDATE','DELETE'].includes(action))})
   else if (grant.scope !== 'NAMESPACE') Object.assign(grant, {scope: 'NAMESPACE', tenant: 'main', namespace: '', descendants: false})
 }
+export const grantActions = grant => grant.resource === 'AI' && grant.scope === 'TENANT' ? ['READ','EXECUTE']
+  : grant.resource === 'METADATA' ? ['READ','LIST'] : grant.resource === 'MCP_SERVER' ? ['READ','LIST','CREATE','UPDATE','DELETE'] : actions
 // Filtering is local because the frozen HTTP API specifies page/size only. Read all
 // pages before filtering, and reject a moving or incomplete directory.
 export async function collectPages(fetchPage, signal, expectedDirectoryRevision) {

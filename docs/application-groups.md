@@ -587,3 +587,12 @@ scope 的公开创建、修改输入只有 `key/name/description`。详情路径
 必须先取得宿主正式镜像与公开 SPI，随后独立编译插件 jar、通过插件 CI 并发布。根仓使用正式镜像与 jar 运行 `new-install` REST、MCP、安全、撤权、refresh、无副作用、UI、缺插件与关闭功能矩阵；最终根仓 CI 报告必须对应最终提交。schema1 与物理回滚只进入显式 `legacy-migration` profile，未运行不计通过。
 
 事务业务唯一冲突：scope同组精确name重复（创建或改名）返回409 `scope_name_exists`；同一clientId跨组重复归属返回409 `client_already_assigned`。自身scope name不变允许。独立异常不复用CAS分类，不改变Snapshot损坏输入校验、非法引用400和CAS412；组显示名与permission name无新增唯一约束。
+
+### AI 租户入口授权（候选，待正式宿主输入与插件发布）
+
+AI 入口采用显式租户授权：`scope=TENANT`、`tenant=main`、`namespace=null`、
+`descendants=false`、`ids=[]`、`allIds=true`。动作仅接受 `READ` 和 `EXECUTE` 的非空子集。
+新安装的初始权限显式包含这两个动作；已有安装不得自动补授。
+旧 `NAMESPACE` AI 声明保持原字段和动作，可读取、保存及升级，但不授予租户 AI 入口。
+管理员必须通过权限 CRUD 明确新增租户 AI 授权。schema2 declaration-upgrade 继续保持
+原 grants 和有效策略，不允许在升级映射中把旧命名空间授权转换为租户授权。
