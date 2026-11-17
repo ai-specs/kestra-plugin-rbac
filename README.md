@@ -121,7 +121,7 @@ root 验证生产装载、登录、持久化、授权与跨仓流程。
 
 本仓独立承接管理页面视觉和交互矩阵：真实 Chromium 装载本仓生产 UI bundle，
 消费固定发布镜像的公开 SDK 与 lock 固定原生组件。四主题 × en/zh_CN ×
-1280/768/390 × 30 具名行为共 720 项；其他 11 语言继续执行公开翻译完整性检查。
+1280/768/390 × 37 具名行为共 888 项；其他 11 语言继续执行公开翻译完整性检查。
 运行 `cd ui && npm run test:browser`，随后执行 `node browser/check-report.mjs`。
 先执行上方独立构建并安装固定 Chromium；完整命令及报告 schema 见
 [浏览器门契约](ui/browser/README.md)。
