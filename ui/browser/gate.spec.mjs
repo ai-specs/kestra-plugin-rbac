@@ -135,9 +135,46 @@ for(const row of cases)test(row.id,async({page,context},info)=>{
       await openDrawer(page,'permission');const d=drawer(page,'permission')
       await d.locator('[name=permission-key]').fill('ai-entry');await d.locator('[name=permission-name]').fill('AI entry')
       await d.locator('[data-test=add-grant]').click()
-      await d.locator('.grant .kel-select__wrapper').click()
-      await root(page).locator('[role=option]').filter({hasText:/^AI$/}).click()
+      const resourceSelect=d.locator('.grant .kel-select__wrapper')
+      await resourceSelect.click()
+      const resourceInput=resourceSelect.locator('[role=combobox]')
+      await expect(resourceInput).toHaveAttribute('aria-controls',/^\S+$/)
+      const listboxId=await resourceInput.getAttribute('aria-controls')
+      const listbox=root(page).locator(`[id=${JSON.stringify(listboxId)}]`)
+      const popup=listbox.locator('xpath=ancestor::*[contains(concat(" ",normalize-space(@class)," ")," kel-select__popper ")]')
+      const aiOption=popup.locator('[role=option]').filter({hasText:/^AI$/})
+      await expect.poll(()=>popup.evaluate(node=>
+        ![...node.classList].some(name=>/-(?:enter|leave)-(?:from|active|to)$/.test(name))&&
+        !node.getAnimations({subtree:true}).some(animation=>animation.pending||animation.playState==='running')
+      )).toBe(true)
+      // Native scrollIntoView can scroll the document as well as the option list.
+      // Let this exact popup compensate its absolute position before clicking;
+      // click's own stability check runs before its implicit scroll, not after it.
+      await aiOption.scrollIntoViewIfNeeded()
+      let previousLayout,stableLayouts=0
+      const layouts=[]
+      await expect.poll(async()=>{
+        const layout=await aiOption.evaluate(async node=>{
+          await new Promise(resolve=>requestAnimationFrame(resolve))
+          const popup=node.closest('.kel-select__popper')
+          return {popupId:popup.id,scrollY:window.scrollY,
+            popup:popup.getBoundingClientRect().toJSON(),option:node.getBoundingClientRect().toJSON(),
+            transitions:[...popup.classList].filter(name=>/-(?:enter|leave)-(?:from|active|to)$/.test(name)),
+            runningAnimations:popup.getAnimations({subtree:true}).filter(animation=>animation.pending||animation.playState==='running').length}
+        })
+        layouts.push(layout)
+        const current=JSON.stringify(layout)
+        stableLayouts=current===previousLayout&&layout.runningAnimations===0&&layout.transitions.length===0?stableLayouts+1:0
+        previousLayout=current
+        return stableLayouts>=2
+      },{message:'Resource popup and AI option must settle after native scrolling'}).toBe(true)
+      await info.attach('ai-resource-popup-layouts',{body:JSON.stringify(layouts,null,2),contentType:'application/json'})
+      await aiOption.click()
       await expect(d.locator('[name=grant-namespace]')).toHaveCount(0)
+      await info.attach('ai-resource-selected-state',{body:JSON.stringify({listboxId,
+        resource:await resourceSelect.innerText(),expanded:await resourceInput.getAttribute('aria-expanded'),
+        namespaceFields:await d.locator('[name=grant-namespace]').count(),grant:await d.locator('.grant').first().innerText()
+      },null,2),contentType:'application/json'})
       const grant=d.locator('.grant').first()
       await expect(grant.locator('.kel-checkbox')).toHaveCount(2)
       await grant.locator('.kel-checkbox').filter({hasText:'READ'}).click()
