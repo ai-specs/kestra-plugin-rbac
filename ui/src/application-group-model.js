@@ -16,14 +16,14 @@ export function typedGrantsInput(value) {
     const invalid = () => {throw Object.assign(new Error('invalid_grant'), {code:'invalid_grant',status:400})}
     if (!resources.includes(item.resource) || !Array.isArray(item.actions) || !item.actions.length || item.actions.some(action => !actions.includes(action)) || new Set(item.actions).size !== item.actions.length || typeof item.allIds !== 'boolean' || typeof item.descendants !== 'boolean' || !item.allIds && !splitLines(item.ids).length) invalid()
     if (item.resource === 'AI' && item.scope === 'TENANT') {
-      if (item.tenant !== 'main' || item.namespace !== null || item.descendants || !item.allIds || splitLines(item.ids).length || item.actions.some(action => !['READ','EXECUTE'].includes(action))) invalid()
+      if (item.tenant !== 'main' || (item.namespace !== undefined && item.namespace !== null) || item.descendants || !item.allIds || splitLines(item.ids).length || item.actions.some(action => !['READ','EXECUTE'].includes(action))) invalid()
       return {scope:'TENANT',tenant:'main',namespace:null,descendants:false,resource:'AI',actions:[...item.actions],ids:[],allIds:true}
     }
     if (item.resource === 'MCP_SERVER') {
-      if (item.scope !== 'TENANT' || item.tenant !== 'main' || item.namespace !== null || item.descendants || item.actions.some(action => !['READ', 'LIST', 'CREATE', 'UPDATE', 'DELETE'].includes(action))) throw Object.assign(new Error('invalid_grant'), {code:'invalid_grant',status:400})
+      if (item.scope !== 'TENANT' || item.tenant !== 'main' || (item.namespace !== undefined && item.namespace !== null) || item.descendants || item.actions.some(action => !['READ', 'LIST', 'CREATE', 'UPDATE', 'DELETE'].includes(action))) throw Object.assign(new Error('invalid_grant'), {code:'invalid_grant',status:400})
       return {scope:'TENANT',tenant:'main',namespace:null,descendants:false,resource:'MCP_SERVER',actions:[...item.actions],allIds:item.allIds,ids:item.allIds?[]:splitLines(item.ids)}
     }
-    if (item.resource === 'METADATA' && (item.scope !== 'TENANT' || item.tenant !== 'main' || item.namespace !== null || item.descendants || !item.allIds || splitLines(item.ids).length || item.actions.some(action => !['READ','LIST'].includes(action)))) invalid()
+    if (item.resource === 'METADATA' && (item.scope !== 'TENANT' || item.tenant !== 'main' || (item.namespace !== undefined && item.namespace !== null) || item.descendants || !item.allIds || splitLines(item.ids).length || item.actions.some(action => !['READ','LIST'].includes(action)))) invalid()
     if (item.resource === 'METADATA') return {scope: 'TENANT', tenant: 'main', namespace: null, descendants: false, resource: 'METADATA', actions: item.actions.filter(action => ['READ', 'LIST'].includes(action)), ids: [], allIds: true}
     if (item.scope !== 'NAMESPACE' || item.tenant !== 'main' || typeof item.namespace !== 'string' || !item.namespace.trim()) throw Object.assign(new Error('invalid_grant'), {code: 'invalid_grant', status: 400})
     return {scope: 'NAMESPACE', tenant: 'main', namespace: item.namespace, descendants: item.descendants, resource: item.resource, actions: [...item.actions], allIds: item.allIds, ids: item.allIds ? [] : splitLines(item.ids)}

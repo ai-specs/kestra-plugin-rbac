@@ -223,6 +223,33 @@ test('project directory pagination rejects same-total revision changes and missi
   assert.equal((await collectPages(async (page,size) => pageResult(page,size,7),undefined,7)).length,101)
 })
 
+for (const [resource, actions] of [
+  ['MCP_SERVER', ['READ','LIST','CREATE','UPDATE','DELETE']],
+  ['AI', ['READ','EXECUTE']],
+  ['METADATA', ['READ','LIST']]
+]) {
+  test(`${resource} initial permission round-trips an omitted tenant namespace after removing business management`, () => {
+    const grant = {scope:'TENANT',tenant:'main',descendants:false,resource,actions,ids:[],allIds:true}
+    const permission = {implementationKind:'kestra-policy',key:'initial-administrator',name:'Initial administrator',scopeKeys:['admin'],description:'Initial permission',enabled:true,revision:1,grants:[grant],managementGrants:[
+      {domain:'IDENTITY',actions:['READ','MANAGE'],applicationGroupIds:[]},
+      {domain:'LOCAL_POLICY',actions:['READ','MANAGE'],applicationGroupIds:['main']},
+      {domain:'BUSINESS_INSTANCE',actions:['READ','MANAGE'],applicationGroupIds:[]}
+    ]}
+    const draft = permissionDraft(JSON.parse(JSON.stringify(permission)), 'kestra-policy')
+    draft.managementGrants = draft.managementGrants.filter(grant => grant.domain !== 'BUSINESS_INSTANCE')
+    const input = permissionInput(draft, 'kestra-policy', ['admin'])
+    const encoded = typedGrantsInput(input)
+    assert.deepEqual(encoded.grants, [{...grant,namespace:null}])
+    assert.deepEqual(encoded.managementGrants, permission.managementGrants.slice(0,2))
+    assert.deepEqual(typedGrantsInput({...input,grants:[{...grant,namespace:null}]}), encoded)
+    assert.equal(Object.hasOwn(draft.grants[0], 'namespace'), false)
+    for (const namespace of ['company', '', false, 0]) {
+      assert.throws(() => typedGrantsInput({...input,grants:[{...grant,namespace}]}), error => error.code === 'invalid_grant')
+    }
+    assert.throws(() => typedGrantsInput({...input,grants:[{...grant,scope:'NAMESPACE'}]}), error => error.code === 'invalid_grant')
+  })
+}
+
 test('new AI selection uses explicit tenant READ EXECUTE and no namespace or IDs', () => {
   const grant = {scope:'NAMESPACE',tenant:'main',namespace:'company',descendants:true,resource:'AI',actions:['READ','LIST','UPDATE','EXECUTE'],ids:['old'],allIds:false}
   selectGrantResource(grant)
