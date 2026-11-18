@@ -61,7 +61,7 @@ class AuthorizationDependencyPostgresTest {
             AccountLifecyclePostgresTest.provider(()->provider),AccountLifecyclePostgresTest.provider(()->identities),true);
         var gate=new TypedAuthorizationGate(AccountLifecyclePostgresTest.provider(()->null),evaluations);
         var adapter=mock(OssRestOperationAdapter.class);
-        when(adapter.resolve(any())).thenReturn(List.of(new TypedAuthorization.Operation(1,TypedAuthorization.Source.REST,TypedAuthorization.Resource.EXTENSION,
+        when(adapter.resolve(any())).thenReturn(List.of(new TypedAuthorization.Operation(TypedAuthorization.CONTRACT_VERSION,TypedAuthorization.Source.REST,TypedAuthorization.Resource.EXTENSION,
             TypedAuthorization.Action.READ,"main",null,"rbac",TypedAuthorization.QueryDomain.unrestricted(),TypedAuthorization.Coverage.SINGLE,
             TypedAuthorization.Aggregate.NONE,TypedAuthorization.SideEffect.READ_ONLY)));
         var problems=new ProblemFactory(new ProblemMapperRegistry(List.of()),new io.kestra.core.utils.EditionProvider());

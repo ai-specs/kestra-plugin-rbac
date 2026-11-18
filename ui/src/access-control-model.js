@@ -1,3 +1,4 @@
+import {namespaceRange} from './application-group-model.js'
 export const pageSizes = Object.freeze([10, 25, 50, 100])
 export const detailTabs = Object.freeze(['overview', 'scopes', 'applications', 'scope-grants'])
 export const compareKeys = (a, b) => {
@@ -11,12 +12,12 @@ export function involvedApplications(subject, applications) {
   if (subject.active === false) return []
   return ordered(applications.filter(application => application.active !== false && application.permissions?.some(permission => permission.scopeKeys.some(key => subject.scopeKeys.includes(key)))), 'clientId')
 }
-export function permissionSummary(permission) {
+export function permissionSummary(permission, t) {
   if (permission.implementationKind === 'external-declaration') return String(permission.details ?? '').split(/\r?\n/).filter(Boolean)
   if (permission.implementationKind !== 'kestra-policy') return []
   return [
-    ...(permission.grants ?? []).map(grant => [grant.namespace ?? grant.tenant, grant.resource, grant.actions.join(' / '), grant.allIds ? '*' : grant.ids.join(', ')].join(' · ')),
-    ...(permission.managementGrants ?? []).map(grant => [grant.domain, grant.actions.join(' / '), ...(grant.applicationGroupIds ?? [])].join(' · '))
+    ...(permission.grants ?? []).map(grant => [t ? namespaceRange(grant, t) : grant.namespace ?? grant.tenant, grant.resource, grant.actions.join(' / '), grant.allIds ? '*' : grant.ids.join(', ')].join(' · ')),
+    ...(permission.managementGrants ?? []).map(grant => [grant.domain === 'BUSINESS_INSTANCE' && t ? t('legacyBusinessWarning') : grant.domain, grant.domain === 'BUSINESS_INSTANCE' && t ? t('legacyBusinessActions', {actions:grant.actions.join(' / ')}) : grant.actions.join(' / '), ...(grant.applicationGroupIds ?? [])].join(' · '))
   ]
 }
 export function matchesChips(item, chips) {

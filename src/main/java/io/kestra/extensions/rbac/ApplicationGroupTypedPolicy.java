@@ -6,7 +6,6 @@ import java.util.*;
 
 /** Typed resource adapter. No legacy principal or role participates in a decision. */
 final class ApplicationGroupTypedPolicy {
-    private static final Set<String> BUSINESS=Set.of("FLOW","EXECUTION","NAMESPACE","LOG","METRIC","TRIGGER","KVSTORE","NAMESPACE_FILE","METADATA","SYSTEM","MCP_SERVER","DASHBOARD","BLUEPRINT");
     static TypedAuthorization.Decision authorize(ApplicationGroupRuntimePolicies.Context context,TypedAuthorization.Operation op){
         try{
             if(op==null || op.contractVersion()!=TypedAuthorization.CONTRACT_VERSION || !"main".equals(op.tenant())
@@ -29,28 +28,14 @@ final class ApplicationGroupTypedPolicy {
                 }
                 return allowed?TypedAuthorization.Decision.allow(op.queryDomain()):deny();
             }
-            ApplicationGroupPolicy.ManagementAction management=Set.of("READ","LIST").contains(action)?ApplicationGroupPolicy.ManagementAction.READ:
-                Set.of("CREATE","UPDATE","DELETE","EXECUTE","ACCESS_OUTPUTS").contains(action)?ApplicationGroupPolicy.ManagementAction.MANAGE:null;
-            if(BUSINESS.contains(resource) && management!=null && context.authorizeManagement(ApplicationGroupPolicy.ManagementDomain.BUSINESS_INSTANCE,management,identity.applicationGroupId()))
-                return TypedAuthorization.Decision.allow(op.queryDomain());
+            if(resource.equals("SYSTEM"))return deny();
             var requested=op.queryDomain();
             if(query){
-                // The model computes unrestricted grant terms; the public query algebra applies the request and exclusions.
-                var roots=new HashSet<String>();var exact=new HashSet<String>();
-                for(var scope:local.scopes().values())for(var grant:scope.grants())if(grant.namespace()!=null){if(grant.descendants())roots.add(grant.namespace());else exact.add(grant.namespace());}
-                var request=new ApplicationGroupAuthorization.Request(op.tenant(),op.namespace(),resource,action,op.resourceId(),true,new ApplicationGroupAuthorization.Domain(exact,roots));
+                var request=new ApplicationGroupAuthorization.Request(op.tenant(),op.namespace(),resource,action,op.resourceId(),true,ApplicationGroupAuthorization.Domain.all());
                 var decision=auth.authorizeList(id,request,directory);if(!decision.allowed())return deny();
-                // METADATA has no resource identifier. Its explicit tenant grant is an
-                // authorization of shared metadata, not an ID-filtered repository list.
-                if(resource.equals("METADATA"))return TypedAuthorization.Decision.allow(requested);
-                var terms=new ArrayList<TypedAuthorization.QueryDomain.ResourceDomain>();
-                for(var term:decision.terms())terms.add(new TypedAuthorization.QueryDomain.ResourceDomain(List.copyOf(term.namespaces().exact()),List.copyOf(term.namespaces().subtrees()),List.of(),List.copyOf(term.ids()),
-                    term.tenantResource()?TypedAuthorization.QueryDomain.ResourceScope.TENANT:TypedAuthorization.QueryDomain.ResourceScope.NAMESPACE,
-                    term.allIds()?TypedAuthorization.QueryDomain.IdScope.ALL_IDS:TypedAuthorization.QueryDomain.IdScope.RESTRICTED_IDS));
-                var ceiling=new TypedAuthorization.QueryDomain(List.of(),List.of(),List.of(),true,false,TypedAuthorization.DomainKind.GLOBAL,terms);
+                var ceiling=TypedAuthorization.QueryDomain.structured(decision.domain(),true,false);
                 var bounded=requested.intersect(ceiling);
-                if(bounded.kind()!=TypedAuthorization.DomainKind.GLOBAL && bounded.resourceDomains().isEmpty()
-                    && bounded.exactNamespaces().isEmpty() && bounded.namespaceSubtrees().isEmpty())return deny();
+                if(bounded.effectiveDomain().terms().isEmpty())return deny();
                 return TypedAuthorization.Decision.allow(bounded);
             }
             var decision=auth.authorize(id,new ApplicationGroupAuthorization.Request(op.tenant(),op.namespace(),resource,action,op.resourceId(),false),directory);

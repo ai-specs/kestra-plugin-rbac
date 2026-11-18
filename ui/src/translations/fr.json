@@ -120,6 +120,16 @@
     "rotationConfirmMessage": "La rotation émet immédiatement un nouveau secret et retire l'ancien : la valeur précédente cesse de fonctionner aussitôt ; l'application ne peut plus se connecter ni échanger de tokens tant que sa configuration n'est pas mise à jour. Les tokens utilisateurs émis ne sont pas affectés et conservent les contrôles de révocation standard. Après confirmation, le nouveau secret n'est affiché qu'une seule fois.",
     "rotationConfirmAction": "Rotation",
     "aiTenantRange": "L’accès IA du locataire accepte uniquement READ et EXECUTE. Les droits sur les flux, exécutions et journaux sont vérifiés séparément.",
-    "aiLegacyRange": "Ancien droit IA par espace de noms : conservé pour compatibilité, sans accès IA du locataire. Ajoutez un nouveau droit IA."
+    "aiLegacyRange": "Ancien droit IA par espace de noms : conservé pour compatibilité, sans accès IA du locataire. Ajoutez un nouveau droit IA.",
+    "namespaceIncludeTree": "Allow {namespace} and its child namespaces",
+    "namespaceIncludeExact": "Allow only {namespace}",
+    "namespaceComplementTree": "Allow namespaces in tenant main except {namespace} and its child namespaces",
+    "namespaceComplementExact": "Allow namespaces in tenant main except {namespace} itself; its child namespaces are included",
+    "namespaceComplementHelp": "This grant defines an allowed range, not a global deny. Other grants can independently allow the excluded range. Only the selected actions and resource IDs are granted.",
+    "namespaceSyntax": "Enter a namespace or !namespace. Use the child namespaces option; do not end the name with a dot.",
+    "legacyBusinessDomain": "Legacy BUSINESS_INSTANCE",
+    "legacyBusinessWarning": "Legacy management domain: grants no ordinary business resource access.",
+    "legacyBusinessActions": "Recorded actions {actions} (no data authorization)",
+    "namespaceLimits": "Query evaluation limits: 256 terms, 128 include and 128 exclude selectors per term, 256 IDs, and 4096 intersection pairs. Exceeding a limit denies evaluation without truncation or rewriting stored grants."
   }
 }

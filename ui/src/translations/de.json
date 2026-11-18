@@ -120,6 +120,16 @@
     "rotationConfirmMessage": "Die Rotation erzeugt sofort ein neues Secret und macht das alte unbrauchbar: Der bisherige Wert gilt sofort nicht mehr; die Anwendung kann sich bis zur Aktualisierung ihrer Konfiguration nicht mehr anmelden oder Token tauschen. Bereits ausgestellte Benutzer-Token sind unberührt und unterliegen den üblichen Widerrufsprüfungen. Nach der Bestätigung wird das neue Secret nur einmal angezeigt.",
     "rotationConfirmAction": "Rotieren",
     "aiTenantRange": "Der KI-Mandantenzugriff unterstützt nur READ und EXECUTE. Rechte für Flows, Ausführungen und Protokolle werden getrennt geprüft.",
-    "aiLegacyRange": "Alte KI-Namespace-Berechtigung: bleibt kompatibel erhalten, gewährt aber keinen KI-Mandantenzugriff. Fügen Sie eine neue KI-Berechtigung hinzu."
+    "aiLegacyRange": "Alte KI-Namespace-Berechtigung: bleibt kompatibel erhalten, gewährt aber keinen KI-Mandantenzugriff. Fügen Sie eine neue KI-Berechtigung hinzu.",
+    "namespaceIncludeTree": "Allow {namespace} and its child namespaces",
+    "namespaceIncludeExact": "Allow only {namespace}",
+    "namespaceComplementTree": "Allow namespaces in tenant main except {namespace} and its child namespaces",
+    "namespaceComplementExact": "Allow namespaces in tenant main except {namespace} itself; its child namespaces are included",
+    "namespaceComplementHelp": "This grant defines an allowed range, not a global deny. Other grants can independently allow the excluded range. Only the selected actions and resource IDs are granted.",
+    "namespaceSyntax": "Enter a namespace or !namespace. Use the child namespaces option; do not end the name with a dot.",
+    "legacyBusinessDomain": "Legacy BUSINESS_INSTANCE",
+    "legacyBusinessWarning": "Legacy management domain: grants no ordinary business resource access.",
+    "legacyBusinessActions": "Recorded actions {actions} (no data authorization)",
+    "namespaceLimits": "Query evaluation limits: 256 terms, 128 include and 128 exclude selectors per term, 256 IDs, and 4096 intersection pairs. Exceeding a limit denies evaluation without truncation or rewriting stored grants."
   }
 }

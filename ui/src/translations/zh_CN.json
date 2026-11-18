@@ -120,6 +120,16 @@
     "rotationConfirmMessage": "轮换会立即生成新 secret 并立刻废止旧值：旧 secret 马上失效，该应用在更新配置前将无法登录或换取 token。已签发的用户 token 不受影响，仍按标准撤权检查。确认后将显示新 secret，且仅此一次。",
     "rotationConfirmAction": "确认轮换",
     "aiTenantRange": "AI 租户入口仅支持 READ 和 EXECUTE。流程、执行和日志权限分别检查。",
-    "aiLegacyRange": "旧命名空间 AI 授权：保留兼容数据，不授予租户 AI 入口权限。请新增 AI 授权。"
+    "aiLegacyRange": "旧命名空间 AI 授权：保留兼容数据，不授予租户 AI 入口权限。请新增 AI 授权。",
+    "namespaceIncludeTree": "允许 {namespace} 及子命名空间",
+    "namespaceIncludeExact": "仅允许 {namespace}",
+    "namespaceComplementTree": "允许 main 租户内除 {namespace} 及其子命名空间以外的命名空间",
+    "namespaceComplementExact": "允许 main 租户内除 {namespace} 本身以外的命名空间；包含其子命名空间",
+    "namespaceComplementHelp": "此项定义允许范围，不是全局拒绝规则。其他授权项可独立授予被排除范围。仅授予所选动作和资源 ID。",
+    "namespaceSyntax": "请输入命名空间或 !命名空间；是否包含子命名空间由选项决定，不得以点结尾。",
+    "legacyBusinessDomain": "旧 BUSINESS_INSTANCE 管理域",
+    "legacyBusinessWarning": "旧管理域：不再授予普通业务资源权限。",
+    "legacyBusinessActions": "旧记录动作 {actions}（无数据授权作用）",
+    "namespaceLimits": "查询评估上限：256 项、每项包含及排除各 128 个选择器、256 个 ID、4096 次交集配对。超限拒绝，不截断；已有目录不自动改写。"
   }
 }

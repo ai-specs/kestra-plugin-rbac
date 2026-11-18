@@ -54,14 +54,14 @@ are extracted from the immutable published image, independently of any overlay s
 检查。该变量只用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
 每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。
 
-当前编译输入为正式宿主 commit `4891c3ddba7b06c737cb6081864bb2c157a10519`（成功 CI `43822188520`，
+当前编译输入为正式宿主 commit `d6c26ec9aa5947e422d83d41b37cc880b1205935`（成功 CI `44278423018`，
 五个 job 成功并完成正式推广），镜像 digest
-`571b54829898a5e5043bcf85f8416c540732dcee16a4dd6520cfd21a00659372`；
-本机独立提取 arm64 executable SHA256
-`e60e3fdb17f3343e02f1c43f354a5b1bdd63ff54d0f8f624c2be1f0c2a557bb3`。
-该版本保留既有 SSE/CSV/MCP 授权生命周期，并增加 AI 可信主体、线程隔离、异步工具实际资源
-授权和显式租户 AI.READ/EXECUTE 契约。插件显式授予入口，工具业务资源权限仍单独判定。
-旧 namespace AI 声明不自动升级为租户授权；已有安装通过权限管理明确新增授权。
+`571926cbc65f00646a03724ebb6045dbff1fd00214da2ed7197eb26c314fa889`；
+本机独立提取 executable SHA256
+`6b4027e89d35ee902dda34d786cd502bffb9e0ed90f479afb110fbbb35e09c2a`。
+正式类型为 TypedAuthorization V2 与 NamespaceDomain V2。插件将 `!namespace` 翻译为
+结构化项内排除；宿主不解析插件表达式。普通数据不再由 BUSINESS_INSTANCE 授权，未知
+SYSTEM 拒绝。AI 仍使用独立 TENANT READ/EXECUTE，工具资源继续逐项授权。
 关闭 RBAC 的模式 A 不要求装载本插件；两种模式共同使用 overlay，不能把模式 A 当作无宿主补丁。
 来源为该正式 CI 发布的 registry 镜像，由本仓 `scripts/prepare-host.sh` 独立提取，
 不读取相邻源码、开发目录或未发布产物。宿主报告的 source/upstream/provenance
@@ -121,7 +121,7 @@ root 验证生产装载、登录、持久化、授权与跨仓流程。
 
 本仓独立承接管理页面视觉和交互矩阵：真实 Chromium 装载本仓生产 UI bundle，
 消费固定发布镜像的公开 SDK 与 lock 固定原生组件。四主题 × en/zh_CN ×
-1280/768/390 × 37 具名行为共 888 项；其他 11 语言继续执行公开翻译完整性检查。
+1280/768/390 × 40 具名行为共 960 项；其他 11 语言继续执行公开翻译完整性检查。
 运行 `cd ui && npm run test:browser`，随后执行 `node browser/check-report.mjs`。
 先执行上方独立构建并安装固定 Chromium；完整命令及报告 schema 见
 [浏览器门契约](ui/browser/README.md)。
@@ -192,7 +192,7 @@ subjects、role-mapping、instance-admin-roles 和 management-admin-subjects；�
 策略版本。新评估读取同连接当前快照，固定评估快照最长60秒后失败关闭，不无限复用旧允许。
 
 IDENTITY、LOCAL_POLICY 和 BUSINESS_INSTANCE 是机器契约的三个独立管理域，READ 与
-MANAGE 不互含。用户界面分别称用户及应用组管理、Kestra 实际权限和实例资源管理。
+MANAGE 不互含。用户界面分别称用户及应用组管理、Kestra 实际权限；BUSINESS_INSTANCE 仅保留旧记录读取与编辑，不授予任何普通数据权限。
 LOCAL_POLICY 的空 `applicationGroupIds` 只指所属应用组，非空集合精确列出目标组。
 BUSINESS_INSTANCE 不授予另外两个管理域。新增账号不自动授予任何 scope。
 
@@ -212,31 +212,29 @@ scope 名称和说明不授予资源权限。旧项目路径、完整恢复和�
 
 ## 新安装应用组
 
-### 网页自动首装（实施中，尚未发布）
+### 网页自动首装（本轮范围修订尚未发布）
 
 目标流程是部署方准备正式兼容 jar 并开启 RBAC 后，在宿主 `/oidc/setup` 页面创建首个账号。
 插件通过宿主 `OidcInitialAccountParticipantV1` 在借用的同一 PostgreSQL 事务内创建目录、
 统一 typed 权限和首账号授予；不执行 CLI，不提供额外匿名初始化 API，不依据账号名字
 授予管理员。宿主契约已随 overlay `c4a1eb22` 的成功 CI `41628600618` 正式发布，
-`host-contract.properties` 固定其正式镜像。不得使用相邻源码、候选 executable 或临时
+当前 `host-contract.properties` 固定包含该 SPI 的正式 d6c26ec 镜像。不得使用相邻源码、候选 executable 或临时
 接口编译本插件；本插件自身 CI、jar 发布与根仓组合验收通过前，不代表能力已交付。
 
 初始业务设计：唯一内置组 `main`，人类名称 `Kestra`；scope `admin`，人类名称
 `Administrator`；仅本次可信首账号获得该 scope，UI client 是普通应用成员。初始所有
 修订与授权版本为 1。单条可编辑的 `initial-administrator` 权限包含：
 
-- `IDENTITY`、`LOCAL_POLICY`、`BUSINESS_INSTANCE` 各 `READ/MANAGE`；LOCAL_POLICY 明确仅组 `main`。
+- `IDENTITY`、`LOCAL_POLICY` 各 `READ/MANAGE`；LOCAL_POLICY 明确仅组 `main`，不生成 BUSINESS_INSTANCE。
 - `METADATA` 为 `main` tenant 的 `READ/LIST`；`MCP_SERVER` 为该 tenant 的 `READ/LIST/CREATE/UPDATE/DELETE`。
-- 普通资源 grants 为 FLOW、EXECUTION、TRIGGER、NAMESPACE、KVSTORE、SECRET、NAMESPACE_FILE、LOG、METRIC、DASHBOARD、BLUEPRINT、AI
-  声明 `company` 及子空间，动作明确为 `READ/LIST/CREATE/UPDATE/DELETE/EXECUTE/ACCESS_OUTPUTS`。
-- 上述 namespace grants 不构成首账号总权限上限。显式 `BUSINESS_INSTANCE` 授权通过固定映射，
-  在当前应用组、`main` tenant 内覆盖 FLOW、EXECUTION、NAMESPACE、LOG、METRIC、TRIGGER、KVSTORE、
-  NAMESPACE_FILE、METADATA、SYSTEM、MCP_SERVER、DASHBOARD、BLUEPRINT；READ 对应 READ/LIST，
-  MANAGE 对应 CREATE/UPDATE/DELETE/EXECUTE/ACCESS_OUTPUTS，两者不互含。
-  未列出的 SECRET、AI 不因管理域自动扩大。未知操作继续失败关闭。
+- NAMESPACE 资源 FLOW、EXECUTION、TRIGGER、NAMESPACE、KVSTORE、SECRET、NAMESPACE_FILE、LOG、METRIC、DASHBOARD、BLUEPRINT
+  各声明 `company` 及子空间，动作明确为 `READ/LIST/CREATE/UPDATE/DELETE/EXECUTE/ACCESS_OUTPUTS`。
+- 同一资源各另声明 `namespace:"!company",descendants:true`，仅 `READ/LIST`、`ids:[],allIds:true`。
+  它是 main 内排除 company 子树的允许域，不是全局 deny，company 正向项仍独立生效。
+- AI 使用独立 `TENANT/main` 的 `READ/EXECUTE`，不通过 namespace 补集授予。
 - 资源 audience 精确为当前 issuer 下 `/api/v1/main/mcp/default`；不登记外部应用，不采用通配 audience。
 
-`company` 是默认示例及模式 A/B 对照测试范围，不是显式业务实例授权的命名空间上限。
+`company` 是首装普通数据写范围。补集仅只读，不隐含执行、输出访问或任何写动作。
 这不是永久超级权限，不根据首账号身份直接放行。其他账号不继承首账号权限；管理员可通过现有
 管理页面复核并修改初始权限。已存在任意 `rbac_` 表时不允许网页首装隐式覆盖或升级。
 回调不提交、不回滚、不关闭连接；宿主后续失败必须使插件写入一起回滚。
@@ -272,6 +270,29 @@ preview 不创建表或更改数据库，输出规范计划与完整计划的 SH
 同一 hash，并在协议安全锁内再次核对安装状态，只允许空目录初始化。它原子保存内置组、
 scope、应用内全部权限、用户授予与撤权版本；不能覆盖已安装目录。启用上述配置并启动
 JVM，完成部署仓的真实 new-install 验收。
+
+## 命名空间表达式与已有目录升级
+
+NAMESPACE grant 接受 `company` 或 `!company`，保留全部八个 DTO 字段。
+`descendants:false` 表示精确名称；true 表示自身及点分隔后代。`!company,false`
+仍允许 company.sub；`!company,true` 排除整棵 company 子树，但不排除 company2。
+拒绝裸 !、多重 !、通配符、空白和非法点分隔；不接受末尾点。TENANT grants 不接受表达式。
+补集没有默认动作。明确配置写动作的补集也仅授权其允许范围。
+
+列表先在每个有效 scope 内将 READ/LIST 相关域求交，再合并各 scope 的完整结果，
+最后与请求域求交。namespace 包含、排除与 IDs 始终绑定在同一项。查询上限为256项、
+每项包含/排除各128选择器、256 IDs、4096交集配对。超限整体拒绝，不截断或回退全域。
+已有合法1000 grants目录仍可读取；是否可评估取决于相应动作的实际域复杂度。
+
+已有目录不自动改写，不补授补集，不重跑首装。BUSINESS_INSTANCE 旧记录仍可读取、
+编辑或删除，但无普通数据授权作用。管理员使用现有权限 CRUD、强 If-Match 显式维护
+普通 grants，保存后读回并验证允许/拒绝。真实 grants 变更保持原策略修订与评估失效边界。
+旧版本不能读取含 ! 的新目录，V1 provider 也不能消费 V2；回退必须恢复匹配备份与产物。
+尚未适配的 bulk/import/backfill 等路径拒绝，不能计为支持；本轮不新增特殊功能许可。
+非 FLOW/EXECUTION 的受限 ID 查询未普遍受宿主支持，必须失败关闭。
+
+新增 UI 文案提供中文和英文；其余11语言使用英文回退，仅检查key、非空及插值参数，
+不声称翻译质量通过。生产登录、数据范围及无副作用仍由部署仓验证。
 
 ## 离线 schema2 维护与显式迁移
 

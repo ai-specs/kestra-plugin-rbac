@@ -2,6 +2,7 @@ export const themes = ['light', 'dark', 'dark-2', 'system']
 export const locales = ['en', 'zh_CN']
 export const widths = [1280, 768, 390]
 export const behaviors = [
+  'namespace-positive-complement-roundtrip', 'namespace-invalid-no-write', 'namespace-legacy-domain',
   'ai-tenant-native-edit',
   'ai-legacy-native-preserve',
   ...['group', 'user', 'permission', 'subject'].flatMap(kind => [

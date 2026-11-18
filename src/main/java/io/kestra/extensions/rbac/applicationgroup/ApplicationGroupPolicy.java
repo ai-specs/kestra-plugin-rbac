@@ -62,8 +62,8 @@ public record ApplicationGroupPolicy(int schemaVersion, Map<String, ApplicationG
                     || !Set.of("READ", "EXECUTE").containsAll(actions))
                     throw new IllegalArgumentException("AI requires an explicit main tenant READ/EXECUTE grant");
             } else if (!scope.equals("NAMESPACE") || !tenant.equals("main") || namespace == null
-                || !namespace.matches("[A-Za-z0-9_-]+(?:[.][A-Za-z0-9_-]+)*")) {
-                throw new IllegalArgumentException("Business grants require a concrete main namespace");
+                || !namespace.matches("!?[A-Za-z0-9_-]+(?:[.][A-Za-z0-9_-]+)*")) {
+                throw new IllegalArgumentException("Business grants require a main namespace expression");
             }
             actions.forEach(action -> io.kestra.webserver.rbac.RbacAuthorizer.Action.valueOf(action));
             if (!allIds && ids.isEmpty()) throw new IllegalArgumentException("ID selection required");

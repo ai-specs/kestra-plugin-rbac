@@ -14,9 +14,21 @@ cleanup() { while read -r container; do docker rm "$container" >/dev/null; done 
 trap cleanup EXIT
 docker cp "$CONTAINER:/app/kestra" "$TEMP_DIR/host.jar"
 python3 - "$TEMP_DIR/host.jar" "$IMAGE" "$TEMP_DIR/provenance.json" "$TEMP_DIR/ui-sdk" <<'PY'
-import hashlib,json,pathlib,sys,zipfile
+import hashlib,json,pathlib,sys,zipfile,subprocess,re
 path,image,output,sdk_output=sys.argv[1:]
 sdk_hashes={}
+# Check immutable public V2 signatures before replacing any local compilation input.
+for contract,version in [('io.kestra.webserver.rbac.TypedAuthorization','CONTRACT_VERSION'),('io.kestra.core.models.NamespaceDomain','VERSION')]:
+    signature=subprocess.check_output(['javap','-constants','-classpath',path,contract],text=True)
+    assert re.search(r'public static final int '+version+r' = 2;',signature), 'Published V2 required: '+contract
+    if contract.endswith('NamespaceDomain'):
+        for field,value in [('MAX_TERMS',256),('MAX_SELECTORS',128),('MAX_IDS',256),('MAX_PAIRS',4096)]:
+            assert f'public static final int {field} = {value};' in signature, 'Unexpected published domain limit: '+field
+term_signature=subprocess.check_output(['javap','-classpath',path,'io.kestra.core.models.NamespaceDomain$Term'],text=True)
+assert 'excludedSubtrees()' in term_signature and 'resourceIds()' in term_signature, 'Correlated exclusions and IDs required'
+query_signature=subprocess.check_output(['javap','-classpath',path,'io.kestra.webserver.rbac.TypedAuthorization$QueryDomain'],text=True)
+assert 'structured(io.kestra.core.models.NamespaceDomain, boolean, boolean)' in query_signature and 'effectiveDomain()' in query_signature, 'Structured query domain required'
+
 with zipfile.ZipFile(path) as jar:
     names=set(jar.namelist())
     for name in ['RbacAuthorizer','RestAuthorizationResolver','McpAuthorizationResolver','TypedAuthorization','TypedAuthorizationResolver','AuthorizationEvaluationV1','AuthorizationEvaluationProviderV1','AuthorizationEvaluationProviderV2','AuthorizationUnavailableException']:

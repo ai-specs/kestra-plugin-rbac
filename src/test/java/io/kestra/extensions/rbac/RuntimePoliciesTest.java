@@ -33,7 +33,7 @@ class RuntimePoliciesTest {
     static ApplicationGroupPolicyStore.Snapshot snapshot(long revision,ApplicationGroupPolicy policy){return new ApplicationGroupPolicyStore.Snapshot(revision,revision-1,"operator",java.time.Instant.EPOCH,policy,"{}");}
     static ApplicationGroupPolicy.ScopeDefinition scope(String ns,String id,String... actions){return new ApplicationGroupPolicy.ScopeDefinition("scope",true,List.of(new ApplicationGroupPolicy.Grant("NAMESPACE","main",ns,false,"FLOW",Set.of(actions),Set.of(id),false)));}
     static ApplicationGroupPolicy.ScopeDefinition manager(ApplicationGroupPolicy.ManagementDomain domain,ApplicationGroupPolicy.ManagementAction... actions){return new ApplicationGroupPolicy.ScopeDefinition("management",true,List.of(),List.of(new ApplicationGroupPolicy.ManagementGrant(domain,Set.of(actions))));}
-    static Operation op(Resource resource,Action action,String ns,String id,boolean query){return new Operation(1,Source.REST,resource,action,"main",ns,id,QueryDomain.unrestricted(),query?Coverage.COMPLETE_QUERY:Coverage.SINGLE,Aggregate.NONE,SideEffect.READ_ONLY);}
+    static Operation op(Resource resource,Action action,String ns,String id,boolean query){return new Operation(CONTRACT_VERSION,Source.REST,resource,action,"main",ns,id,QueryDomain.unrestricted(),query?Coverage.COMPLETE_QUERY:Coverage.SINGLE,Aggregate.NONE,SideEffect.READ_ONLY);}
     @Test void correlatedListDoesNotProduceCartesianProductOrCrossScopeReadList(){
         var f=new Fixture(Map.of("a",scope("a","x","READ","LIST"),"b",scope("b","y","READ","LIST"),"read",scope("c","z","READ"),"list",scope("c","z","LIST")));
         try(var c=f.runtime.open(f.identity("a","b","read","list"),"main")){
@@ -72,13 +72,47 @@ class RuntimePoliciesTest {
     @Test void businessManagementUsesExplicitActionsAndNeverExtensionOrIdentity(){
         var f=new Fixture(Map.of("read",manager(ApplicationGroupPolicy.ManagementDomain.BUSINESS_INSTANCE,ApplicationGroupPolicy.ManagementAction.READ),"write",manager(ApplicationGroupPolicy.ManagementDomain.BUSINESS_INSTANCE,ApplicationGroupPolicy.ManagementAction.MANAGE)));
         try(var read=f.runtime.open(f.identity("read"),"main");var write=f.runtime.open(f.identity("write"),"main")){
-            assertTrue(read.authorize(op(Resource.FLOW,Action.READ,"any","id",false)).allowed());
+            assertFalse(read.authorize(op(Resource.FLOW,Action.READ,"any","id",false)).allowed());
             assertFalse(read.authorize(op(Resource.FLOW,Action.EXECUTE,"any","id",false)).allowed());
-            assertTrue(write.authorize(op(Resource.FLOW,Action.EXECUTE,"any","id",false)).allowed());
-            assertTrue(write.authorize(op(Resource.FLOW,Action.ACCESS_OUTPUTS,"any","id",false)).allowed());
+            assertFalse(write.authorize(op(Resource.FLOW,Action.EXECUTE,"any","id",false)).allowed());
+            assertFalse(write.authorize(op(Resource.FLOW,Action.ACCESS_OUTPUTS,"any","id",false)).allowed());
             assertFalse(write.authorize(op(Resource.FLOW,Action.READ,"any","id",false)).allowed());
             assertFalse(write.authorize(op(Resource.EXTENSION,Action.READ,null,"rbac",false)).allowed());
             assertFalse(write.authorizeManagement(ApplicationGroupPolicy.ManagementDomain.IDENTITY,ApplicationGroupPolicy.ManagementAction.MANAGE,"p"));
+        }
+    }
+    @Test void initialAdministratorAndSecondAccountUseOnlyExplicitRuntimeDataGrants() {
+        var plan=InitialApplicationGroupPlan.create("https://issuer.example","28e9352d-ea66-4a24-888f-e76fda93fef0","ui","first");
+        var permission=plan.applicationGroups().getFirst().applications().getFirst().permissions().getFirst();
+        var admin=new ApplicationGroupPolicy.ScopeDefinition("",true,permission.grants(),permission.managementGrants());
+        var second=new ApplicationGroupPolicy.ScopeDefinition("",true,List.of(
+            new ApplicationGroupPolicy.Grant("NAMESPACE","main","company.sub",true,"FLOW",Set.of("READ","LIST","CREATE","UPDATE","DELETE"),Set.of(),true),
+            new ApplicationGroupPolicy.Grant("NAMESPACE","main","company.sub",true,"KVSTORE",Set.of("READ","LIST","CREATE","UPDATE","DELETE"),Set.of(),true)));
+        var f=new Fixture(Map.of("admin",admin,"second",second));
+        try(var a=f.runtime.open(f.identity("admin"),"main");var b=f.runtime.open(f.identity("second"),"main")) {
+            for(var resource:List.of(Resource.FLOW,Resource.KVSTORE))for(String ns:List.of("company","company.sub","company.sub.deep","company.other","company2","outside")) {
+                boolean inside=ns.equals("company")||ns.startsWith("company.");boolean sub=ns.startsWith("company.sub.")||ns.equals("company.sub");
+                for(var action:List.of(Action.READ,Action.LIST,Action.CREATE,Action.UPDATE,Action.DELETE,Action.EXECUTE,Action.ACCESS_OUTPUTS)) {
+                    assertEquals(inside||action==Action.READ||action==Action.LIST,a.authorize(op(resource,action,ns,"id",false)).allowed(),"admin "+resource+" "+action+" "+ns);
+                    assertEquals(sub&&action!=Action.EXECUTE&&action!=Action.ACCESS_OUTPUTS,b.authorize(op(resource,action,ns,"id",false)).allowed(),"second "+resource+" "+action+" "+ns);
+                }
+                var aq=a.authorize(op(resource,Action.LIST,null,null,true));var bq=b.authorize(op(resource,Action.LIST,null,null,true));
+                assertTrue(aq.allowed());assertTrue(aq.scope().resourceAllowed(ns,"id"));
+                assertTrue(bq.allowed());assertEquals(sub,bq.scope().resourceAllowed(ns,"id"));
+            }
+            for(var resource:List.of(Resource.EXECUTION,Resource.NAMESPACE,Resource.AI,Resource.METADATA,Resource.MCP_SERVER,Resource.SYSTEM,Resource.EXTENSION))
+                assertFalse(b.authorize(op(resource,Action.READ,"company.sub","id",false)).allowed());
+            assertFalse(a.authorize(op(Resource.SYSTEM,Action.EXECUTE,null,null,false)).allowed());
+            for(var resource:List.of(Resource.AI,Resource.METADATA,Resource.MCP_SERVER))assertTrue(a.authorize(op(resource,Action.READ,null,null,false)).allowed());
+            assertTrue(a.authorizeManagement(ApplicationGroupPolicy.ManagementDomain.IDENTITY,ApplicationGroupPolicy.ManagementAction.MANAGE,"p"));
+        }
+    }
+    @Test void legacyBusinessDomainNeverGrantsAnyOrdinaryResourceOrSystem() {
+        var f=new Fixture(Map.of("legacy",new ApplicationGroupPolicy.ScopeDefinition("",true,List.of(),List.of(new ApplicationGroupPolicy.ManagementGrant(ApplicationGroupPolicy.ManagementDomain.BUSINESS_INSTANCE,Set.of(ApplicationGroupPolicy.ManagementAction.READ,ApplicationGroupPolicy.ManagementAction.MANAGE))))));
+        try(var c=f.runtime.open(f.identity("legacy"),"main")) {
+            for(var resource:Resource.values())if(resource!=Resource.EXTENSION)for(var action:Action.values())
+                assertFalse(c.authorize(op(resource,action,"outside","id",false)).allowed(),resource+" "+action);
+            assertFalse(c.authorize(op(Resource.SYSTEM,Action.EXECUTE,null,null,false)).allowed());
         }
     }
     @Test void allAudiencesMustBeLocallyAccepted(){

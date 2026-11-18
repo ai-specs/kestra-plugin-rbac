@@ -26,7 +26,7 @@ CI 安装 Chromium 时使用 `--with-deps`。Playwright 及浏览器 revision �
 Playwright webServer 管理并在执行结束关闭；不复用外部 server。
 
 矩阵定义唯一入口为 `matrix.mjs`：4 主题（light/dark/dark-2/system）×
-2 语言（en/zh_CN）× 3 宽度（1280/768/390）× 37 行为 = **888**。
+2 语言（en/zh_CN）× 3 宽度（1280/768/390）× 40 行为 = **960**。
 每个 ID 为 `plugin-ui/{theme}/{locale}/{width}/{behavior}`，顺序为 theme、locale、
 width、behavior 的嵌套展开。其他 11 语言沿用公开 SDK 的 key、非空与占位完整性门。
 `system` 由 transport 按原生 matchMedia 解析为 SDK 接受的主题，不新增偏好存储。
@@ -42,7 +42,7 @@ width、behavior 的嵌套展开。其他 11 语言沿用公开 SDK 的 key、�
 正式 artifact 名称仍为 `kestra-rbac-authorizer`，入口：
 
 - `.evidence/ui-browser/report.json`：逐项状态、计数、输入、最终输入与 runner errors。
-- `.evidence/ui-browser/manifest.json`：精确 888 行对象及 ID 顺序。
+- `.evidence/ui-browser/manifest.json`：精确 960 行对象及 ID 顺序。
 - `.evidence/ui-browser/inputs.json`：运行开始 provenance 及逐文件 hash。
 - `.evidence/ui-browser/jar-bundle.json`：真实 jar 和受测生产 bundle 的逐文件一致检查。
 - `.evidence/ui-browser/html/index.html`：人工审阅报告。
@@ -60,13 +60,13 @@ bundle 相对 jar 中 `ui-extensions/rbac/`（排除 `manifest.json`）。
 每行含 `id/theme/locale/width/behavior/status/durationMs/errors/attachments`。
 status 仅 `passed/failed/notRun/skipped`，summary 含
 `planned/executed/passed/failed/notRun/skipped`；executed=passed+failed。
-仅全部 888 通过、无 runner errors、开始和结束输入相同才可 gatePassed=true。
+仅全部 960 通过、无 runner errors、开始和结束输入相同才可 gatePassed=true。
 筛选单项执行仅供排查，其余明确 notRun，不能通过正式门。
 未知 console warning/error、page error、request failure、HTTP >=400 均使对应项失败；
 内存 transport 的拒绝状态不会生成真实 HTTP 失败或被网络 allowlist 忽略。
 
 root 应消费匹配正式源码提交的成功发布 artifact，核对 manifest 完整顺序、全部
-840 行 passed、summary 精确计数、errors=[]、七个输入与 finalInputs 全等，
+960 行 passed、summary 精确计数、errors=[]、七个输入与 finalInputs 全等，
 并自行从正式 jar 重新计算 bundleSha256。HTML、SDK 自测或 Happy DOM 不替代此报告。
 本地报告不证明发布、宿主装载或生产授权通过。
 
@@ -101,3 +101,8 @@ transport 可以暂停一次规范导航和指定读取；测试仍点击原生 
 当前消费已完成发布的宿主 CI `41224044004` 对应固定镜像（见本仓
 `host-contract.properties`），通过 `prepare-host.sh` 提取正式 SDK 后执行完整 720 项。
 本轮本地证据使用 `.work/plugin-final-ui-20261101/`；本地通过仍不表示插件 CI 或发布通过。
+
+命名空间新增三类具名行为：namespace-positive-complement-roundtrip、
+namespace-invalid-no-write、namespace-legacy-domain。覆盖正负精确/子树范围说明、
+非法输入无写请求、补集动作/IDs保存读回及旧管理域无数据授权说明，共72项。
+中英真实矩阵；其余11语言新增文案为英文回退，只做key/非空/插值完整性检查。

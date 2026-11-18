@@ -23,6 +23,12 @@ if(['true','legacy'].includes(qs.get('aiGrant'))) {
   Object.assign(permission,{implementationKind:'kestra-policy',description:'',enabled:true,grants:[],managementGrants:[]})
   if(qs.get('aiGrant')==='legacy')permission.grants=[{scope:'NAMESPACE',tenant:'main',namespace:'company',descendants:true,resource:'AI',actions:['READ','LIST','UPDATE','EXECUTE'],ids:['old'],allIds:false}]
 }
+if(qs.get('namespaceGrant')) {
+  application.implementationKind='kestra-policy'
+  Object.assign(permission,{implementationKind:'kestra-policy',description:'',enabled:true,
+    grants:[{scope:'NAMESPACE',tenant:'main',namespace:'!company',descendants:true,resource:'FLOW',actions:['READ','LIST'],ids:['a'],allIds:false}],
+    managementGrants:qs.get('namespaceGrant')==='legacy'?[{domain:'BUSINESS_INSTANCE',actions:['READ','MANAGE'],applicationGroupIds:[]}]:[]})
+}
 let scenario = qs.get('state') || 'normal', release, saveRelease
 let holdWrites = false
 const requests = []
@@ -57,6 +63,7 @@ async function request(path, options={}) {
   if (method !== 'GET') {
     if (holdWrites) await new Promise(resolve=>{saveRelease=resolve})
     const input = options.body ? JSON.parse(options.body) : {}
+    if (route.endsWith('/permissions/read')) Object.assign(permission,input,{revision:2})
     if (route === '/users/profile') Object.assign(user,input)
     if (route === '/users') return response({subject:input.username,revision:1,temporaryPassword:'fixture-password-only'})
     if (route.endsWith('/rotate')) return response({clientId:'client',credentialRevision:2,clientSecret:'fixture-secret-only'})

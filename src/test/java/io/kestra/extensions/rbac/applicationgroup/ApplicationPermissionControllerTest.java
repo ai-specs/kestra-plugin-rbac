@@ -87,6 +87,27 @@ class ApplicationPermissionControllerTest {
         return evaluation.authorize(operation).toCompletableFuture().join().allowed();
     }
 
+    @Test void signedNamespaceGrantsRoundTripRejectInvalidAndObserveExplicitRevocation()throws Exception {
+        var setup=setup(ALL);var controller=setup.controller();
+        String grants="[{\"scope\":\"NAMESPACE\",\"tenant\":\"main\",\"namespace\":\"!company\",\"descendants\":true,\"resource\":\"FLOW\",\"actions\":[\"READ\",\"LIST\"],\"ids\":[\"a\"],\"allIds\":false},{\"scope\":\"NAMESPACE\",\"tenant\":\"main\",\"namespace\":\"company\",\"descendants\":true,\"resource\":\"FLOW\",\"actions\":[\"READ\",\"LIST\"],\"ids\":[\"b\"],\"allIds\":false}]";
+        assertEquals(200,controller.create("main","group",CLIENT,ACTOR,"\"1\"",json("signed","[\"reader\"]",grants,"")).code());
+        assertEquals("!company",persistedPermission(setup,"signed").grants().getFirst().namespace());
+        assertEquals(200,controller.find("main","group",CLIENT,"signed",ACTOR).code());
+        var before=storedRows(setup);
+        assertEquals(400,controller.update("main","group",CLIENT,"signed",ACTOR,"\"1\"",json("signed","[\"reader\"]",grants.replace("!company","!company."),",\"enabled\":true")).code());
+        assertEquals(before,storedRows(setup));
+        var e=evaluation(setup);try {
+            var operation=new io.kestra.webserver.rbac.TypedAuthorization.Operation(io.kestra.webserver.rbac.TypedAuthorization.CONTRACT_VERSION,io.kestra.webserver.rbac.TypedAuthorization.Source.REST,io.kestra.webserver.rbac.TypedAuthorization.Resource.FLOW,io.kestra.webserver.rbac.TypedAuthorization.Action.LIST,"main",null,null,io.kestra.webserver.rbac.TypedAuthorization.QueryDomain.unrestricted(),io.kestra.webserver.rbac.TypedAuthorization.Coverage.COMPLETE_QUERY,io.kestra.webserver.rbac.TypedAuthorization.Aggregate.NONE,io.kestra.webserver.rbac.TypedAuthorization.SideEffect.READ_ONLY);
+            var decision=e.authorize(operation).toCompletableFuture().join();assertTrue(decision.allowed());
+            assertTrue(decision.scope().resourceAllowed("outside","a"));assertTrue(decision.scope().resourceAllowed("company.sub","b"));
+            assertFalse(decision.scope().resourceAllowed("outside","b"));assertFalse(decision.scope().resourceAllowed("company","a"));
+        }
+        finally {e.close().toCompletableFuture().join();}
+        assertEquals(200,controller.update("main","group",CLIENT,"signed",ACTOR,"\"1\"",json("signed","[\"reader\"]","[]",",\"enabled\":true")).code());
+        assertTrue(persistedPermission(setup,"signed").grants().isEmpty());
+        assertEquals(200,controller.delete("main","group",CLIENT,"signed",ACTOR,"\"2\"").code());
+    }
+
     @Test void aiTenantCreateFindUpdateDeletePersistAndNewEvaluationsObserveRevocation()throws Exception {
         var setup=setup(ALL);var controller=setup.controller();
         assertEquals(200,controller.create("main","group",CLIENT,ACTOR,"\"1\"",json("ai-entry","[\"reader\"]",AI_TENANT,"")).code());

@@ -23,7 +23,7 @@ for name, expected in [('store.PolicyDocumentValidatorTest', 6), ('store.JdbcPol
         if 'Application group directory store backend: PostgreSQL' not in output or 'Application group directory store backend: H2' in output:
             raise SystemExit(name + ' must execute against PostgreSQL, not H2')
     print('PASS: ' + name + ' ' + str(expected) + ' cases executed')
-for name, expected in [('applicationgroup.ApplicationPermissionUpgradeTest', 9), ('applicationgroup.ApplicationPermissionControllerTest', 10)]:
+for name, expected in [('applicationgroup.ApplicationPermissionUpgradeTest', 9), ('applicationgroup.ApplicationPermissionControllerTest', 11)]:
     suite = ET.parse(directory / ('TEST-io.kestra.extensions.rbac.' + name + '.xml')).getroot()
     assert int(suite.get('tests', '0')) == expected and all(int(suite.get(key, '0')) == 0 for key in ('failures', 'errors', 'skipped')), name + ' must execute without failure or skip'
     output = '\n'.join(suite.itertext())
@@ -48,3 +48,19 @@ assert {case.get('name','').removesuffix('()') for case in new_install.findall('
 new_install_output='\n'.join(new_install.itertext())
 assert 'New-install migration backend: PostgreSQL' in new_install_output and 'New-install migration backend: H2' not in new_install_output, 'New-install migration suite requires PostgreSQL'
 print('PASS: store.NewInstallMigrationTest 3 PostgreSQL production-bean migration cases executed')
+
+complement=ET.parse(Path(sys.argv[1]) / 'TEST-io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionControllerTest.xml').getroot()
+expected_complement_cases={
+    'aiTenantCreateFindUpdateDeletePersistAndNewEvaluationsObserveRevocation',
+    'createUpdateDeleteUseObjectRevisionAndReceiptWithoutPolicyDisclosure',
+    'deniedAndInvalidAiMutationsLeaveAllPersistedRbacRowsUnchanged',
+    'identityOnlyCannotAccessKestraPolicyAndLastAdminMutationRollsBack',
+    'legacyAiGrantSurvivesPublicControllerMetadataEditWithoutTenantPromotion',
+    'legalMutationMetadataKeyKeepsReadManageSeparationThroughCreateUpdateAndDelete',
+    'metadataChangesKeepTrustedIdentityUsableAndConsentUsesUnifiedEntities',
+    'permissionPagesSortByStableKeyBeforeSlicingUnorderedStorage',
+    'policyOnlyWriterCannotChangeSupportButCanChangeGrantsAndCannotRead',
+    'signedNamespaceGrantsRoundTripRejectInvalidAndObserveExplicitRevocation',
+    'strictInputsMissingRevisionAndUndefinedScopeHaveNoSideEffects',
+}
+assert expected_complement_cases == {case.get('name','').removesuffix('()') for case in complement.findall('testcase')}, 'Signed namespace PostgreSQL controller named cases differ'

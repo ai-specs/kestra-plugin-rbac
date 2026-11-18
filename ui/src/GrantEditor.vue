@@ -4,14 +4,18 @@ import KsButton from '@kestra-io/design-system/components/Basic/KsButton/KsButto
 import KsInput from '@kestra-io/design-system/components/Form/KsInput'
 import KsCheckbox from '@kestra-io/design-system/components/Form/KsCheckbox/KsCheckbox'
 import KsCheckboxGroup from '@kestra-io/design-system/components/Form/KsCheckbox/KsCheckboxGroup'
-import {grantActions, resources, newGrant, selectGrantResource} from './application-group-model.js'
+import {grantActions, resources, newGrant, selectGrantResource, namespaceRange} from './application-group-model.js'
 defineProps({grants: {type: Array, required: true}, managementGrants: {type: Array, required: true}})
 const {t} = useI18n()
 </script>
 <template>
+  <p class="message" data-test="namespace-limits">{{ t('namespaceLimits') }}</p>
   <section v-for="(grant, index) in grants" :key="index" class="grant">
     <p>{{ t('rangeType') }}: {{ grant.scope }} · main</p>
     <label v-if="grant.scope === 'NAMESPACE'">{{ t('namespace') }}<KsInput v-model="grant.namespace" name="grant-namespace" required /></label>
+    <p v-if="grant.scope === 'NAMESPACE'" data-test="namespace-range">{{ namespaceRange(grant, t) }}</p>
+    <small v-if="grant.scope === 'NAMESPACE'">{{ t('namespaceSyntax') }}</small>
+    <p v-if="grant.namespace?.startsWith('!')" data-test="namespace-complement-help">{{ t('namespaceComplementHelp') }}</p>
     <KsCheckbox v-if="grant.scope === 'NAMESPACE'" v-model="grant.descendants">{{ t('children') }}</KsCheckbox>
     <label>{{ t('resource') }}<KsSelect v-model="grant.resource" name="grant-resource" @update:model-value="selectGrantResource(grant)"><KsOption v-for="resource in resources" :key="resource" :value="resource" :label="resource" /></KsSelect></label>
     <fieldset><legend>{{ t('actions') }}</legend><KsCheckboxGroup v-model="grant.actions"><KsCheckbox v-for="action in grantActions(grant)" :key="action" :value="action">{{ action }}</KsCheckbox></KsCheckboxGroup></fieldset>
@@ -24,7 +28,8 @@ const {t} = useI18n()
   </section>
   <KsButton native-type="button" data-test="add-grant" @click="grants.push(newGrant())">{{ t('addGrant') }}</KsButton>
   <section v-for="(grant, index) in managementGrants" :key="'management-' + index" class="grant">
-    <label>{{ t('managementDomain') }}<KsSelect v-model="grant.domain" @update:model-value="grant.domain !== 'LOCAL_POLICY' && (grant.applicationGroupIds = [])"><KsOption value="IDENTITY" :label="t('applicationGroups')" /><KsOption value="LOCAL_POLICY" :label="t('kestraActualPermissions')" /><KsOption value="BUSINESS_INSTANCE" :label="t('resource')" /></KsSelect></label>
+    <label>{{ t('managementDomain') }}<KsSelect v-model="grant.domain" @update:model-value="grant.domain !== 'LOCAL_POLICY' && (grant.applicationGroupIds = [])"><KsOption value="IDENTITY" :label="t('applicationGroups')" /><KsOption value="LOCAL_POLICY" :label="t('kestraActualPermissions')" /><KsOption v-if="grant.domain === 'BUSINESS_INSTANCE'" value="BUSINESS_INSTANCE" :label="t('legacyBusinessDomain')" /></KsSelect></label>
+    <p v-if="grant.domain === 'BUSINESS_INSTANCE'" data-test="legacy-business-warning">{{ t('legacyBusinessWarning') }}</p>
     <label v-if="grant.domain === 'LOCAL_POLICY'">{{ t('applicationGroupIds') }}<KsInput type="textarea" :rows="3" :model-value="Array.isArray(grant.applicationGroupIds) ? grant.applicationGroupIds.join('\n') : grant.applicationGroupIds ?? ''" name="management-project-ids" @update:model-value="grant.applicationGroupIds = $event" /><small>{{ t('onePerLine') }}</small></label>
     <fieldset><legend>{{ t('actions') }}</legend><KsCheckboxGroup v-model="grant.actions"><KsCheckbox v-for="action in ['READ', 'MANAGE']" :key="action" :value="action">{{ action }}</KsCheckbox></KsCheckboxGroup></fieldset>
     <KsButton native-type="button" @click="managementGrants.splice(index, 1)">{{ t('removeGrant') }}</KsButton>

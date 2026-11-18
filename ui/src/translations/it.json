@@ -120,6 +120,16 @@
     "rotationConfirmMessage": "La rotazione emette immediatamente un nuovo secret e ritira il precedente: il valore attuale cessa di funzionare subito, quindi l'applicazione non potrà effettuare l'accesso né scambiare token finché non ne aggiorni la configurazione. I token utente emessi non sono influenzati e mantengono i controlli di revoca standard. Dopo la conferma il nuovo secret viene mostrato una sola volta.",
     "rotationConfirmAction": "Ruota",
     "aiTenantRange": "L’accesso IA del tenant supporta solo READ ed EXECUTE. I permessi su flussi, esecuzioni e log vengono verificati separatamente.",
-    "aiLegacyRange": "Autorizzazione IA namespace precedente: conservata per compatibilità, senza accesso IA del tenant. Aggiungere una nuova autorizzazione IA."
+    "aiLegacyRange": "Autorizzazione IA namespace precedente: conservata per compatibilità, senza accesso IA del tenant. Aggiungere una nuova autorizzazione IA.",
+    "namespaceIncludeTree": "Allow {namespace} and its child namespaces",
+    "namespaceIncludeExact": "Allow only {namespace}",
+    "namespaceComplementTree": "Allow namespaces in tenant main except {namespace} and its child namespaces",
+    "namespaceComplementExact": "Allow namespaces in tenant main except {namespace} itself; its child namespaces are included",
+    "namespaceComplementHelp": "This grant defines an allowed range, not a global deny. Other grants can independently allow the excluded range. Only the selected actions and resource IDs are granted.",
+    "namespaceSyntax": "Enter a namespace or !namespace. Use the child namespaces option; do not end the name with a dot.",
+    "legacyBusinessDomain": "Legacy BUSINESS_INSTANCE",
+    "legacyBusinessWarning": "Legacy management domain: grants no ordinary business resource access.",
+    "legacyBusinessActions": "Recorded actions {actions} (no data authorization)",
+    "namespaceLimits": "Query evaluation limits: 256 terms, 128 include and 128 exclude selectors per term, 256 IDs, and 4096 intersection pairs. Exceeding a limit denies evaluation without truncation or rewriting stored grants."
   }
 }

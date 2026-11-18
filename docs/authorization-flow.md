@@ -120,7 +120,7 @@ flowchart TD
 
 本地角色同名不代表自动映射。例如 principal 携带 `deployment-admin`，若没有相应
 `role-mapping` 或 subject 绑定，不能因此成为实例管理员。多角色授权也不是把所有资源域
-和所有动作做任意组合：每个动作先合并其匹配 grant，完整查询再计算 READ 与 LIST 域交集。
+和所有动作做任意组合：每个有效应用 scope 内计算 READ 与 LIST 相关域交集，再对完整 scope 结果求并。
 
 ## 一次 REST 请求的内部步骤
 
@@ -146,17 +146,18 @@ Flow 的 owner namespace。前端传入 namespace 不构成可信归属证明。
 角色 grant 的作用域是精确的。namespace 子树只在明确声明 `descendants: true` 时匹配，
 相似前缀不匹配。具体资源 ID 必须显式列出或声明 `all-ids: true`；空 ID 集合授予零个 ID。
 
-多个角色分别贡献权限。READ 和 LIST 可以来自不同角色，但完整查询的有效 namespace 必须
-同时属于 READ 与 LIST 的交集。请求查询域再与该授权 scope 求交，用户提供的过滤条件不能
+多个角色分别贡献权限。READ 和 LIST 可以来自同一应用 scope 激活的不同权限项；不得跨应用 scope 拼接。每个
+scope 的完整查询域先对 READ 与 LIST 求交，再合并各 scope 的完整结果。请求查询域再与该授权 scope 求交，用户提供的过滤条件不能
 扩大授权范围。INSTANCE、TENANT、NAMESPACE 作用域不会自动向上提升。
 
 ```mermaid
 flowchart TD
-    R[全部有效角色的 READ grants] --> RU[READ namespace 域取并集]
-    L[全部有效角色的 LIST grants] --> LU[LIST namespace 域取并集]
-    RU --> Q[完整查询域：READ 与 LIST 求交]
-    LU --> Q
-    Q --> F[再与请求查询域求交]
+    S[逐个有效应用 scope 计算] --> R[本 scope 的 READ grants 相关域并集]
+    S --> L[本 scope 的 LIST grants 相关域并集]
+    R --> Q[本 scope 内 READ 与 LIST 求交：保留 namespace 与 IDs 关联]
+    L --> Q
+    Q --> U[全部 scope 的完整交集结果取并集]
+    U --> F[再与请求查询域求交]
     F --> SQL[宿主应用查询条件]
     SQL --> T[计算授权行、分页、total 与聚合]
 ```
@@ -260,3 +261,13 @@ operation 转换为可审计的 RBAC 决策。
 旧命名空间 AI 声明不匹配租户入口。撤权后新评估拒绝，不通过旧声明或管理权限回退。
 关闭 RBAC 的宿主行为不依赖插件或 AI grant。本段源码候选须完成正式输入、独立编译、
 测试和发布后，再由部署仓验证生产登录、允许、拒绝与撤权。
+
+## 2026-11-18 命名空间补集修订（本轮源码，未发布）
+
+本节优先于历史角色示例。当前应用组运行时不从旧角色或首账号身份补授权。
+`!company` 配合descendants=true为main命名空间全集减company子树，false仅减精确名称。
+使用正式NamespaceDomain V2，每项独立保留包含、排除和IDs；READ/LIST同scope求交后
+跨scope并集，再与请求域求交。不将补集展平为tenant或全局deny。
+BUSINESS_INSTANCE不再放行任何普通数据，未知SYSTEM拒绝。已有目录不自动补grant。
+首装company子树明确动作加补集READ/LIST，TENANT资源各自明确声明。特殊功能后续另行
+分类；尚未适配路径拒绝不能作为正常支持。正式发布与Compose仍须独立验收。

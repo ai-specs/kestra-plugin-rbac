@@ -4,10 +4,10 @@ const paths={group:'application-groups',user:'users',permission:'application-gro
 const root=page=>page.locator('#plugin')
 const by=(page,id)=>root(page).locator(`[data-test="${id}"]`)
 const drawer=(page,kind)=>by(page,`drawer-${kind}`)
-async function boot(page,row,{path='application-groups',state='normal',holdCanonical='',aiGrant=''}={}){
+async function boot(page,row,{path='application-groups',state='normal',holdCanonical='',aiGrant='',namespaceGrant=''}={}){
   await page.setViewportSize({width:row.width,height:900})
   await page.emulateMedia({colorScheme:'light',reducedMotion:'reduce'})
-  await page.goto('/?'+new URLSearchParams({theme:row.theme,locale:row.locale,path,state,holdCanonical,aiGrant}))
+  await page.goto('/?'+new URLSearchParams({theme:row.theme,locale:row.locale,path,state,holdCanonical,aiGrant,namespaceGrant}))
   await page.waitForFunction(()=>window.fixture?.ready)
   if(state==='normal'||state==='empty')await expect(by(page,'access-control-root')).toHaveAttribute('aria-busy','false')
 }
@@ -119,7 +119,35 @@ for(const row of cases)test(row.id,async({page,context},info)=>{
   page.on('response',response=>{if(response.status()>=400)unexpected.push('response: '+response.status()+' '+response.url())})
   try {
     const behavior=row.behavior,match=/^drawer-(group|user|permission|subject)-(.+)$/.exec(behavior)
-    if(behavior==='ai-legacy-native-preserve'){
+    if(behavior.startsWith('namespace-')) {
+      await boot(page,row,{path:paths.permission,namespaceGrant:behavior==='namespace-legacy-domain'?'legacy':'signed'})
+      await by(page,'permission-edit').first().click();const d=drawer(page,'permission');await expect(d).toBeVisible()
+      const input=d.locator('[name=grant-namespace]'),range=d.locator('[data-test=namespace-range]')
+      await expect(input).toHaveValue('!company');await expect(range).toHaveText((await text(page,'namespaceComplementTree')).replace('{namespace}','company'))
+      await expect(d.locator('[data-test=namespace-complement-help]')).toHaveText(await text(page,'namespaceComplementHelp'))
+      if(behavior==='namespace-legacy-domain') {
+        await expect(d.locator('[data-test=legacy-business-warning]')).toHaveText(await text(page,'legacyBusinessWarning'))
+        await d.locator('[name=permission-name]').fill('Legacy record preserved')
+      } else if(behavior==='namespace-invalid-no-write') {
+        await input.fill('!company.');await d.locator('[data-test=drawer-save]').click()
+        await expect(d).toBeVisible();await expect(d.locator('[data-test=request-error]')).toBeVisible()
+        expect(await page.evaluate(()=>window.fixture.requests.filter(r=>r.method!=='GET').length)).toBe(0)
+        await input.fill('!company')
+      } else {
+        const children=d.locator('.kel-checkbox').filter({hasText:await text(page,'children')});await children.click()
+        await expect(range).toHaveText((await text(page,'namespaceComplementExact')).replace('{namespace}','company'))
+        await input.fill('company');await expect(range).toHaveText((await text(page,'namespaceIncludeExact')).replace('{namespace}','company'))
+        await children.click();await expect(range).toHaveText((await text(page,'namespaceIncludeTree')).replace('{namespace}','company'))
+        await input.fill('!company')
+      }
+      await d.locator('[data-test=drawer-save]').click();await expect(d).toBeHidden()
+      const body=await page.evaluate(()=>JSON.parse(window.fixture.requests.find(r=>r.method==='PUT'&&r.route.endsWith('/permissions/read')).body))
+      expect(body.grants[0].namespace).toBe('!company');expect(body.grants[0].actions).toEqual(['READ','LIST']);expect(body.grants[0].ids).toEqual(['a'])
+      if(behavior==='namespace-legacy-domain')expect(body.managementGrants[0].domain).toBe('BUSINESS_INSTANCE')
+      await by(page,'permission-edit').first().click();await expect(drawer(page,'permission').locator('[name=grant-namespace]')).toHaveValue('!company')
+      await expect.poll(async()=>{const box=await drawer(page,'permission').boundingBox();return box?box.x+box.width:Infinity}).toBeLessThanOrEqual(row.width+1)
+      await geometry(drawer(page,'permission'),row.width)
+    }else if(behavior==='ai-legacy-native-preserve'){
       await boot(page,row,{path:paths.permission,aiGrant:'legacy'})
       await by(page,'permission-edit').first().click()
       const d=drawer(page,'permission');await expect(d).toBeVisible()

@@ -120,6 +120,16 @@
     "rotationConfirmMessage": "순환 시 즉시 새 secret이 발급되고 이전 값은 폐기됩니다. 기존 값은 즉시 사용할 수 없으며 구성을 업데이트하기 전까지 이 애플리케이션은 로그인이나 토큰 교환을 할 수 없습니다. 이미 발급된 사용자 토큰은 영향을 받지 않으며 표준 철회 검사를 유지합니다. 확인 후 새 secret은 한 번만 표시됩니다.",
     "rotationConfirmAction": "순환 실행",
     "aiTenantRange": "AI 테넌트 접근은 READ와 EXECUTE만 지원합니다. 플로, 실행 및 로그 권한은 별도로 확인합니다.",
-    "aiLegacyRange": "이전 namespace AI 권한은 호환성을 위해 유지되지만 테넌트 AI 접근을 허용하지 않습니다. 새 AI 권한을 추가하세요."
+    "aiLegacyRange": "이전 namespace AI 권한은 호환성을 위해 유지되지만 테넌트 AI 접근을 허용하지 않습니다. 새 AI 권한을 추가하세요.",
+    "namespaceIncludeTree": "Allow {namespace} and its child namespaces",
+    "namespaceIncludeExact": "Allow only {namespace}",
+    "namespaceComplementTree": "Allow namespaces in tenant main except {namespace} and its child namespaces",
+    "namespaceComplementExact": "Allow namespaces in tenant main except {namespace} itself; its child namespaces are included",
+    "namespaceComplementHelp": "This grant defines an allowed range, not a global deny. Other grants can independently allow the excluded range. Only the selected actions and resource IDs are granted.",
+    "namespaceSyntax": "Enter a namespace or !namespace. Use the child namespaces option; do not end the name with a dot.",
+    "legacyBusinessDomain": "Legacy BUSINESS_INSTANCE",
+    "legacyBusinessWarning": "Legacy management domain: grants no ordinary business resource access.",
+    "legacyBusinessActions": "Recorded actions {actions} (no data authorization)",
+    "namespaceLimits": "Query evaluation limits: 256 terms, 128 include and 128 exclude selectors per term, 256 IDs, and 4096 intersection pairs. Exceeding a limit denies evaluation without truncation or rewriting stored grants."
   }
 }

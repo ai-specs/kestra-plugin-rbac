@@ -29,7 +29,7 @@ class InitialApplicationGroupPlanTest {
         var permission=application.permissions().getFirst();assertEquals("initial-administrator",permission.key());
         assertTrue(permission.enabled());assertEquals(1,permission.revision());assertEquals("",permission.details());
         permission.validate(ApplicationPermission.Kind.KESTRA_POLICY,Set.of("admin"));
-        assertEquals(Set.of(ManagementDomain.values()),permission.managementGrants().stream().map(ManagementGrant::domain).collect(java.util.stream.Collectors.toSet()));
+        assertEquals(Set.of(ManagementDomain.IDENTITY,ManagementDomain.LOCAL_POLICY),permission.managementGrants().stream().map(ManagementGrant::domain).collect(java.util.stream.Collectors.toSet()));
         for(var grant:permission.managementGrants()) {
             assertEquals(Set.of(ManagementAction.READ,ManagementAction.MANAGE),grant.actions());
             assertEquals(grant.domain()==ManagementDomain.LOCAL_POLICY?Set.of("main"):Set.of(),grant.applicationGroupIds());
@@ -51,7 +51,7 @@ class InitialApplicationGroupPlanTest {
             } else if(grant.resource().equals("AI")) {
                 assertEquals("TENANT",grant.scope());assertNull(grant.namespace());assertFalse(grant.descendants());
                 assertEquals(Set.of("READ","EXECUTE"),grant.actions());
-            } else {assertEquals("NAMESPACE",grant.scope());assertEquals("company",grant.namespace());assertTrue(grant.descendants());}
+            } else {assertEquals("NAMESPACE",grant.scope());assertTrue(Set.of("company","!company").contains(grant.namespace()));assertTrue(grant.descendants());if(grant.namespace().startsWith("!"))assertEquals(Set.of("READ","LIST"),grant.actions());}
             assertEquals("main",grant.tenant());assertTrue(grant.allIds());assertTrue(grant.ids().isEmpty());
         }
         var scopes=ApplicationPermission.project(java.util.List.of(permission),ApplicationPermission.Kind.KESTRA_POLICY);
@@ -70,7 +70,7 @@ class InitialApplicationGroupPlanTest {
             assertTrue(authorizer.authorize(identity,new ApplicationGroupAuthorization.Request("main",namespace,"FLOW","CREATE","flow",false),directory).allowed());
         for(var namespace:java.util.List.of("other","company-other","other.company"))
             assertFalse(authorizer.authorize(identity,new ApplicationGroupAuthorization.Request("main",namespace,"FLOW","CREATE","flow",false),directory).allowed());
-        for(var domain:ManagementDomain.values())for(var action:ManagementAction.values())
+        for(var domain:java.util.List.of(ManagementDomain.IDENTITY,ManagementDomain.LOCAL_POLICY))for(var action:ManagementAction.values())
             assertTrue(authorizer.authorizeManagement(identity,directory,domain,action));
         assertFalse(authorizer.authorizeManagement(identity,directory,ManagementDomain.LOCAL_POLICY,ManagementAction.MANAGE,"another-group"));
     }

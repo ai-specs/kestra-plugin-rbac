@@ -129,11 +129,12 @@ Kestra读取/写入分别要求精确目标LOCAL_POLICY.READ/MANAGE；改变派�
 
 资源 grant 使用 `scope/tenant/namespace/descendants/resource/actions/ids/allIds`，每项必须
 显式提供全部八个字段（包括空 ids 数组和 false 布尔值），不得省略 JSON creator 字段。
-TENANT grant 仅用于 METADATA/MCP_SERVER，tenant 必须为 main，namespace 必须显式
+TENANT grant 用于 METADATA/MCP_SERVER/AI，tenant 必须为 main，namespace 必须显式
 写为 null，descendants 必须为 false；省略 namespace 或改为空字符串均返回 400。
 METADATA 仅允许 READ/LIST，必须 allIds=true、ids=[]；MCP_SERVER 允许
-READ/LIST/CREATE/UPDATE/DELETE，allIds=false 时 ids 必须非空。其他业务资源要求
-NAMESPACE 和具体合法 namespace。以下是可放入 Kestra 权限请求 grants 数组的两项完整示例，
+READ/LIST/CREATE/UPDATE/DELETE，allIds=false 时 ids 必须非空。AI 仅允许 READ/EXECUTE
+的非空子集，要求 allIds=true、ids=[]，详见本文“AI permission grant”节。其他业务资源要求
+NAMESPACE 和合法正向或补集 namespace 表达式，见下文。以下是可放入 Kestra 权限请求 grants 数组的两项完整示例，
 不是省略 key/name/scopeKeys/managementGrants 等外层必需字段的完整 POST 请求：
 
 ```json
@@ -142,6 +143,14 @@ NAMESPACE 和具体合法 namespace。以下是可放入 Kestra 权限请求 gra
   {"scope":"TENANT","tenant":"main","namespace":null,"descendants":false,"resource":"MCP_SERVER","actions":["READ"],"ids":["server-a"],"allIds":false}
 ]
 ```
+
+NAMESPACE 的规范补集输入为 `namespace:"!company",descendants:true`，表示 main 内
+除 company 及其子空间之外的允许域；false 仅排除 company 自身。末尾点、裸 !、多重 !、
+通配符及非法点分隔拒绝。补集与正向 grant 使用同一动作与 ID 规则，不是全局 deny。
+TENANT METADATA/MCP_SERVER/AI 不接受 namespace 表达式。列表同scope READ/LIST求交后
+跨scope求并，相关namespace与IDs不展平。固定V2查询上限256项、每项包含/排除各128、
+IDs256、交集配对4096；已有1000 grants目录仍可读，超限评估整体拒绝，不截断。
+BUSINESS_INSTANCE旧记录继续接受读取与编辑，但不授予普通数据或SYSTEM许可。
 
 管理 grant 使用 `domain/actions/applicationGroupIds`。同一个操作所需权限必须由同 scope
 完整提供，不跨 scope 拼接 READ/LIST、namespace 或资源 ID。名称和声明元数据不授予权限。

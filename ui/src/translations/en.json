@@ -120,6 +120,16 @@
     "rotationConfirmMessage": "Rotation immediately issues a new secret and retires the old one: the previous value stops working right away, so the application can no longer sign in or exchange tokens until you update its configuration. Issued user tokens are unaffected and keep the standard revocation checks. The new secret is shown only once after confirmation.",
     "rotationConfirmAction": "Rotate",
     "aiTenantRange": "AI tenant access allows READ and EXECUTE only. Flow, execution and log permissions are checked separately.",
-    "aiLegacyRange": "Legacy namespace AI grant: preserved for compatibility; it does not grant tenant AI access. Add a new AI grant to authorize access."
+    "aiLegacyRange": "Legacy namespace AI grant: preserved for compatibility; it does not grant tenant AI access. Add a new AI grant to authorize access.",
+    "namespaceIncludeTree": "Allow {namespace} and its child namespaces",
+    "namespaceIncludeExact": "Allow only {namespace}",
+    "namespaceComplementTree": "Allow namespaces in tenant main except {namespace} and its child namespaces",
+    "namespaceComplementExact": "Allow namespaces in tenant main except {namespace} itself; its child namespaces are included",
+    "namespaceComplementHelp": "This grant defines an allowed range, not a global deny. Other grants can independently allow the excluded range. Only the selected actions and resource IDs are granted.",
+    "namespaceSyntax": "Enter a namespace or !namespace. Use the child namespaces option; do not end the name with a dot.",
+    "legacyBusinessDomain": "Legacy BUSINESS_INSTANCE",
+    "legacyBusinessWarning": "Legacy management domain: grants no ordinary business resource access.",
+    "legacyBusinessActions": "Recorded actions {actions} (no data authorization)",
+    "namespaceLimits": "Query evaluation limits: 256 terms, 128 include and 128 exclude selectors per term, 256 IDs, and 4096 intersection pairs. Exceeding a limit denies evaluation without truncation or rewriting stored grants."
   }
 }

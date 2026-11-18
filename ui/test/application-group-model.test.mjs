@@ -266,3 +266,12 @@ test('editing another permission field preserves legacy namespace AI without con
   assert.deepEqual(grantActions(legacy),['READ','LIST','CREATE','UPDATE','DELETE','EXECUTE','ACCESS_OUTPUTS'])
   assert.deepEqual(grantActions({...legacy,scope:'TENANT'}),['READ','EXECUTE'])
 })
+
+test('namespace signed exact and subtree grants preserve actions and IDs and reject malformed expressions', () => {
+  for(const namespace of ['company','!company','company.sub','!company.sub'])for(const descendants of [false,true]) {
+    const grant={scope:'NAMESPACE',tenant:'main',namespace,descendants,resource:'FLOW',actions:['READ','LIST'],ids:['a'],allIds:false}
+    assert.deepEqual(typedGrantsInput({grants:[grant]}).grants,[grant])
+  }
+  for(const namespace of ['!','!!company','!company.','!company..sub','!company*',' company','! company'])
+    assert.throws(()=>typedGrantsInput({grants:[{scope:'NAMESPACE',tenant:'main',namespace,descendants:true,resource:'FLOW',actions:['READ'],ids:[],allIds:true}]}))
+})

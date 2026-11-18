@@ -1,6 +1,10 @@
 package io.kestra.extensions.rbac.applicationgroup;
 
 import java.util.HashSet;
+import io.kestra.core.models.NamespaceDomain;
+import io.kestra.core.models.NamespaceDomain.Term;
+import io.kestra.core.models.NamespaceDomain.Universe;
+import io.kestra.core.models.NamespaceDomain.IdScope;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -47,32 +51,19 @@ public final class ApplicationGroupAuthorization {
         }
     }
 
-    public record Domain(Set<String> exact, Set<String> subtrees) {
-        public Domain {
-            exact = Set.copyOf(exact);
-            subtrees = Set.copyOf(subtrees);
+    /** Namespace-only view for legacy internal callers; all algebra is the published V2 implementation. */
+    public record Domain(NamespaceDomain value) {
+        public Domain(Set<String> exact, Set<String> subtrees) {
+            this(new NamespaceDomain(List.of(new Term(Universe.NAMESPACE, false, List.copyOf(exact),
+                List.copyOf(subtrees), List.of(), List.of(), IdScope.ALL_IDS, List.of()))));
         }
-        static Domain empty() { return new Domain(Set.of(), Set.of()); }
-        boolean contains(String namespace) {
-            return namespace != null && (exact.contains(namespace)
-                || subtrees.stream().anyMatch(root -> namespace.equals(root) || namespace.startsWith(root + ".")));
-        }
-        Domain union(Domain other) {
-            Set<String> exactValues = new HashSet<>(exact); exactValues.addAll(other.exact);
-            Set<String> subtreeValues = new HashSet<>(subtrees); subtreeValues.addAll(other.subtrees);
-            return new Domain(exactValues, subtreeValues);
-        }
-        Domain intersect(Domain other) {
-            Set<String> exactValues = new HashSet<>(); Set<String> subtreeValues = new HashSet<>();
-            for (String value : exact) if (other.contains(value)) exactValues.add(value);
-            for (String value : other.exact) if (contains(value)) exactValues.add(value);
-            for (String left : subtrees) for (String right : other.subtrees) {
-                if (left.equals(right)) subtreeValues.add(left);
-                else if (left.startsWith(right + ".")) subtreeValues.add(left);
-                else if (right.startsWith(left + ".")) subtreeValues.add(right);
-            }
-            return new Domain(exactValues, subtreeValues);
-        }
+        static Domain empty() { return new Domain(new NamespaceDomain(List.of())); }
+        public static Domain all() { return new Domain(new NamespaceDomain(List.of(new Term(Universe.NAMESPACE,
+            true, List.of(), List.of(), List.of(), List.of(), IdScope.ALL_IDS, List.of())))); }
+        boolean contains(String namespace) { return value.contains(namespace); }
+        boolean isEmpty() { return value.terms().isEmpty(); }
+        Domain union(Domain other) { return new Domain(value.union(other.value)); }
+        Domain intersect(Domain other) { return new Domain(value.intersect(other.value)); }
     }
 
     public record Request(String tenant, String namespace, String resource, String action,
@@ -134,7 +125,7 @@ public final class ApplicationGroupAuthorization {
             for (var scope : scopes) result = result.union(domains(scope.grants(), "READ", request).intersect(domains(scope.grants(), "LIST", request)));
             Domain bounded = result.intersect(request.queryDomain());
             if (request.namespace() != null) bounded = bounded.intersect(new Domain(Set.of(request.namespace()), Set.of()));
-            return bounded.exact().isEmpty() && bounded.subtrees().isEmpty() ? Decision.deny() : new Decision(true, bounded);
+            return bounded.isEmpty() ? Decision.deny() : new Decision(true, bounded);
         }
         for (var scope : scopes) for (var grant : scope.grants()) if (complete(grant, request)) return new Decision(true, Domain.empty());
         return Decision.deny();
@@ -189,79 +180,63 @@ public final class ApplicationGroupAuthorization {
         return List.copyOf(scopes);
     }
 
-    /** A list domain keeps namespace and ID constraints together. It must never be flattened to independent sets. */
-    public record ListTerm(String tenant, String resource, Domain namespaces, boolean tenantResource,
-                           Set<String> ids, boolean allIds) {
-        public ListTerm {
-            Objects.requireNonNull(tenant); Objects.requireNonNull(resource); Objects.requireNonNull(namespaces);
-            ids = Set.copyOf(ids);
-            if (allIds && !ids.isEmpty() || !allIds && ids.isEmpty()) throw new IllegalArgumentException("Invalid ID domain");
-            if (tenantResource && (!namespaces.exact().isEmpty() || !namespaces.subtrees().isEmpty()))
-                throw new IllegalArgumentException("Tenant resource has no namespace");
-        }
-        public boolean contains(String namespace, String id) {
-            return (tenantResource ? namespace == null : namespaces.contains(namespace))
-                && (allIds || id != null && ids.contains(id));
-        }
-    }
-    public record ListDecision(boolean allowed, List<ListTerm> terms) {
+    /** Complete correlated namespace × ID domain; no independent namespace/ID projections. */
+    public record ListDecision(boolean allowed, NamespaceDomain domain) {
         public ListDecision {
-            terms = List.copyOf(terms);
-            if (allowed != !terms.isEmpty()) throw new IllegalArgumentException("Invalid list decision");
+            Objects.requireNonNull(domain);
+            if (allowed != !domain.terms().isEmpty()) throw new IllegalArgumentException("Invalid list decision");
         }
-        public boolean contains(String namespace, String id) {
-            return terms.stream().anyMatch(term -> term.contains(namespace, id));
-        }
+        public boolean contains(String namespace, String id) { return domain.allows(namespace, id); }
+        static ListDecision deny() { return new ListDecision(false, new NamespaceDomain(List.of())); }
     }
 
-    /** Complete READ/LIST intersection inside each scope, then union without losing ID correlation.
-     * Only adapters with an actual correlated query consumer may use this result.
-     */
+    /** READ/LIST intersection within each scope, followed by union of complete scope domains. */
     public ListDecision authorizeList(Identity identity, Request request, Directory directory) {
-        if (request != null && "AI".equals(request.resource())) return new ListDecision(false, List.of());
+        if (request != null && "AI".equals(request.resource())) return ListDecision.deny();
         var scopes = validatedScopes(identity, request, directory);
         if (scopes == null || !request.list() || !"main".equals(request.tenant())
             || request.resource() == null || !Set.of("READ", "LIST").contains(request.action()))
-            return new ListDecision(false, List.of());
+            return ListDecision.deny();
         boolean tenantResource = Set.of("METADATA", "MCP_SERVER").contains(request.resource());
-        if (tenantResource && request.namespace() != null) return new ListDecision(false, List.of());
-        var terms = new java.util.LinkedHashSet<ListTerm>();
-        long comparisons = 0;
-        for (var scope : scopes) {
-            var reads = scope.grants().stream().filter(g -> g.tenant().equals(request.tenant())
-                && g.resource().equals(request.resource()) && g.actions().contains("READ")).toList();
-            var lists = scope.grants().stream().filter(g -> g.tenant().equals(request.tenant())
-                && g.resource().equals(request.resource()) && g.actions().contains("LIST")).toList();
-            for (var read : reads) for (var list : lists) {
-                // Bound work and fail the whole evaluation rather than return a partial allow.
-                if (++comparisons > 100_000) return new ListDecision(false, List.of());
-                boolean allIds = read.allIds() && list.allIds();
-                Set<String> ids = new HashSet<>();
-                if (!allIds) {
-                    if (read.allIds()) ids.addAll(list.ids());
-                    else if (list.allIds()) ids.addAll(read.ids());
-                    else { ids.addAll(read.ids()); ids.retainAll(list.ids()); }
-                    if (ids.isEmpty()) continue;
-                }
-                Domain domain = Domain.empty();
-                if (!tenantResource) {
-                    domain = grantDomain(read).intersect(grantDomain(list)).intersect(request.queryDomain());
-                    if (request.namespace() != null) domain = domain.intersect(new Domain(Set.of(request.namespace()), Set.of()));
-                    if (domain.exact().isEmpty() && domain.subtrees().isEmpty()) continue;
-                }
-                if (request.id() != null) {
-                    if (!allIds && !ids.contains(request.id())) continue;
-                    ids = Set.of(request.id()); allIds = false;
-                }
-                terms.add(new ListTerm(request.tenant(), request.resource(), domain, tenantResource, ids, allIds));
+        if (tenantResource && request.namespace() != null) return ListDecision.deny();
+        try {
+            var result = new NamespaceDomain(List.of());
+            for (var scope : scopes) {
+                var reads = actionDomain(scope.grants(), "READ", request);
+                var lists = actionDomain(scope.grants(), "LIST", request);
+                result = result.union(reads.intersect(lists));
             }
+            if (!tenantResource) {
+                result = result.intersect(request.queryDomain().value());
+                if (request.namespace() != null)
+                    result = result.intersect(new Domain(Set.of(request.namespace()), Set.of()).value());
+            }
+            if (request.id() != null) {
+                var id = new Term(tenantResource ? Universe.TENANT : Universe.NAMESPACE, !tenantResource,
+                    List.of(), List.of(), List.of(), List.of(), IdScope.RESTRICTED_IDS, List.of(request.id()));
+                result = result.intersect(new NamespaceDomain(List.of(id)));
+            }
+            return new ListDecision(!result.terms().isEmpty(), result);
+        } catch (IllegalArgumentException invalidOrOverLimit) {
+            return ListDecision.deny();
         }
-        return new ListDecision(!terms.isEmpty(), List.copyOf(terms));
     }
-    private Domain grantDomain(ApplicationGroupPolicy.Grant grant) {
-        if (grant.namespace() == null) return Domain.empty();
-        return grant.descendants() ? new Domain(Set.of(), Set.of(grant.namespace()))
-            : new Domain(Set.of(grant.namespace()), Set.of());
+
+    private NamespaceDomain actionDomain(List<ApplicationGroupPolicy.Grant> grants, String action, Request request) {
+        return new NamespaceDomain(grants.stream().filter(g -> g.tenant().equals(request.tenant())
+            && g.resource().equals(request.resource()) && g.actions().contains(action)).map(ApplicationGroupAuthorization::grantTerm).toList());
+    }
+
+    private static Term grantTerm(ApplicationGroupPolicy.Grant grant) {
+        boolean tenant = grant.scope().equals("TENANT");
+        boolean complement = !tenant && grant.namespace().startsWith("!");
+        String name = tenant ? null : complement ? grant.namespace().substring(1) : grant.namespace();
+        return new Term(tenant ? Universe.TENANT : Universe.NAMESPACE, complement,
+            !tenant && !complement && !grant.descendants() ? List.of(name) : List.of(),
+            !tenant && !complement && grant.descendants() ? List.of(name) : List.of(),
+            complement && !grant.descendants() ? List.of(name) : List.of(),
+            complement && grant.descendants() ? List.of(name) : List.of(),
+            grant.allIds() ? IdScope.ALL_IDS : IdScope.RESTRICTED_IDS, List.copyOf(grant.ids()));
     }
 
     static Set<String> resolvedTargets(ApplicationGroupPolicy.ManagementGrant grant,String ownerProject) {
@@ -281,23 +256,32 @@ public final class ApplicationGroupAuthorization {
             && policy.applicationGroups().containsKey(identity.project());
     }
     static boolean covers(ApplicationGroupPolicy.Grant upper, ApplicationGroupPolicy.Grant local) {
-        return upper.scope().equals(local.scope()) && upper.tenant().equals(local.tenant()) && upper.resource().equals(local.resource())
-            && upper.actions().containsAll(local.actions())
-            && (Objects.equals(upper.namespace(), local.namespace()) && (upper.descendants() || !local.descendants())
-                || upper.descendants() && local.namespace() != null && local.namespace().startsWith(upper.namespace() + ".")) && (upper.allIds() || !local.allIds() && upper.ids().containsAll(local.ids()));
+        if (!upper.scope().equals(local.scope()) || !upper.tenant().equals(local.tenant())
+            || !upper.resource().equals(local.resource()) || !upper.actions().containsAll(local.actions())) return false;
+        if (!upper.allIds() && (local.allIds() || !upper.ids().containsAll(local.ids()))) return false;
+        if (upper.scope().equals("TENANT")) return true;
+        boolean upperNegative=upper.namespace().startsWith("!");
+        boolean localNegative=local.namespace().startsWith("!");
+        String u=upperNegative?upper.namespace().substring(1):upper.namespace();
+        String l=localNegative?local.namespace().substring(1):local.namespace();
+        if (!upperNegative && !localNegative) return selectorContains(u,upper.descendants(),l,local.descendants());
+        if (upperNegative && !localNegative) return !selectorsOverlap(u,upper.descendants(),l,local.descendants());
+        if (!upperNegative) return false; // A finite rooted selector cannot contain a complement in U.
+        return selectorContains(l,local.descendants(),u,upper.descendants()); // U\L subset U\U iff U subset L.
+    }
+    private static boolean selectorContains(String upper,boolean upperTree,String local,boolean localTree) {
+        return upper.equals(local) ? upperTree || !localTree : upperTree && local.startsWith(upper+".");
+    }
+    private static boolean selectorsOverlap(String left,boolean leftTree,String right,boolean rightTree) {
+        return left.equals(right) || leftTree && right.startsWith(left+".") || rightTree && left.startsWith(right+".");
     }
     private Domain domains(List<ApplicationGroupPolicy.Grant> grants, String action, Request request) {
-        Set<String> exact = new HashSet<>(); Set<String> subtrees = new HashSet<>();
-        for (var grant : grants) if (grant.tenant().equals(request.tenant()) && grant.resource().equals(request.resource())
-            && grant.actions().contains(action) && grant.allIds() && grant.namespace() != null) {
-            if (grant.descendants()) subtrees.add(grant.namespace()); else exact.add(grant.namespace());
-        }
-        return new Domain(exact, subtrees);
+        return new Domain(new NamespaceDomain(grants.stream().filter(grant -> grant.tenant().equals(request.tenant())
+            && grant.resource().equals(request.resource()) && grant.actions().contains(action)
+            && grant.allIds() && grant.namespace() != null).map(ApplicationGroupAuthorization::grantTerm).toList()));
     }
     private boolean complete(ApplicationGroupPolicy.Grant grant, Request request) {
         return grant.tenant().equals(request.tenant()) && grant.resource().equals(request.resource())
-            && grant.actions().contains(request.action()) && (Objects.equals(grant.namespace(), request.namespace())
-            || grant.descendants() && grant.namespace() != null && request.namespace() != null && request.namespace().startsWith(grant.namespace() + "."))
-            && (grant.allIds() || request.id() != null && grant.ids().contains(request.id()));
+            && grant.actions().contains(request.action()) && grantTerm(grant).allows(request.namespace(), request.id());
     }
 }

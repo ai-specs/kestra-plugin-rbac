@@ -25,7 +25,7 @@ export function typedGrantsInput(value) {
     }
     if (item.resource === 'METADATA' && (item.scope !== 'TENANT' || item.tenant !== 'main' || (item.namespace !== undefined && item.namespace !== null) || item.descendants || !item.allIds || splitLines(item.ids).length || item.actions.some(action => !['READ','LIST'].includes(action)))) invalid()
     if (item.resource === 'METADATA') return {scope: 'TENANT', tenant: 'main', namespace: null, descendants: false, resource: 'METADATA', actions: item.actions.filter(action => ['READ', 'LIST'].includes(action)), ids: [], allIds: true}
-    if (item.scope !== 'NAMESPACE' || item.tenant !== 'main' || typeof item.namespace !== 'string' || !item.namespace.trim()) throw Object.assign(new Error('invalid_grant'), {code: 'invalid_grant', status: 400})
+    if (item.scope !== 'NAMESPACE' || item.tenant !== 'main' || typeof item.namespace !== 'string' || !/^!?[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/.test(item.namespace)) throw Object.assign(new Error('invalid_grant'), {code: 'invalid_grant', status: 400})
     return {scope: 'NAMESPACE', tenant: 'main', namespace: item.namespace, descendants: item.descendants, resource: item.resource, actions: [...item.actions], allIds: item.allIds, ids: item.allIds ? [] : splitLines(item.ids)}
   })}
 }
@@ -103,4 +103,12 @@ export function managementGrantInput(value) {
   if (!['IDENTITY','LOCAL_POLICY','BUSINESS_INSTANCE'].includes(value.domain) || applicationGroupIds.some(id => !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(id)) || new Set(applicationGroupIds).size !== applicationGroupIds.length || value.domain !== 'LOCAL_POLICY' && applicationGroupIds.length) throw Object.assign(new Error('invalid_management_project_ids'),{code:'invalid_management_project_ids',status:400})
   if (!Array.isArray(value.actions) || !value.actions.length || new Set(value.actions).size !== value.actions.length || value.actions.some(action => !['READ','MANAGE'].includes(action))) throw Object.assign(new Error('invalid_management_actions'),{code:'invalid_management_actions',status:400})
   return {domain:value.domain,actions:[...value.actions],applicationGroupIds}
+}
+
+export function namespaceRange(grant, t) {
+  if (grant.scope !== 'NAMESPACE') return grant.tenant
+  const complement = grant.namespace?.startsWith('!')
+  const namespace = complement ? grant.namespace.slice(1) : grant.namespace
+  return t(complement ? grant.descendants ? 'namespaceComplementTree' : 'namespaceComplementExact'
+    : grant.descendants ? 'namespaceIncludeTree' : 'namespaceIncludeExact', {namespace})
 }

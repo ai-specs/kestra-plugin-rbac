@@ -15,13 +15,13 @@ REQUIRED['io.kestra.extensions.rbac.store.ApplicationGroupDirectoryStoreTest'] =
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationGroupInstallationPlanTest'] = 8
 REQUIRED['io.kestra.extensions.rbac.store.ApplicationGroupDirectoryCommandTest'] = 5
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationGroupChangesTest'] = 7
-REQUIRED['io.kestra.extensions.rbac.RuntimePoliciesTest'] = 11
+REQUIRED['io.kestra.extensions.rbac.RuntimePoliciesTest'] = 13
 REQUIRED['io.kestra.extensions.rbac.declaration.ApplicationScopeDeclarationStoreTest'] = 3
 REQUIRED['io.kestra.extensions.rbac.declaration.ApplicationScopeDeclarationControllerTest'] = 3
 REQUIRED['io.kestra.extensions.rbac.store.ApplicationScopeDeclarationCommandTest'] = 2
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectoryServiceTest'] = 13
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionTest'] = 5
-REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionControllerTest'] = 10
+REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionControllerTest'] = 11
 REQUIRED['io.kestra.extensions.rbac.management.ApplicationPermissionRouteTest'] = 1
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionUpgradeTest'] = 9
 REQUIRED['io.kestra.extensions.rbac.management.AccountGrantCleanupTest'] = 6
@@ -36,9 +36,26 @@ REQUIRED['io.kestra.extensions.rbac.applicationgroup.InitialApplicationGroupPlan
 REQUIRED['io.kestra.extensions.rbac.InitialApplicationGroupParticipantTest'] = 6
 REQUIRED['io.kestra.extensions.rbac.AiTypedPolicyTest'] = 7
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.AiTenantGrantTest'] = 5
+REQUIRED['io.kestra.extensions.rbac.applicationgroup.NamespaceComplementTest'] = 7
 results=Path(sys.argv[1])
 for name,count in REQUIRED.items():
     report=ET.parse(results/('TEST-'+name+'.xml')).getroot()
     assert int(report.get('tests','0'))==count, name+' test count differs'
     assert all(int(report.get(key,'0'))==0 for key in ('failures','errors','skipped')), name+' failed or skipped'
+named={
+ 'io.kestra.extensions.rbac.applicationgroup.NamespaceComplementTest': {
+ 'positiveAndComplementExactAndSubtreeMatchScalarAndList', 'complementAndPositiveTermsPreserveCorrelatedIdsAcrossScopes',
+ 'readListIntersectsInsideScopeAndNeverBorrowsAcrossScopes', 'complementWriteRequiresExplicitActionAndDoesNotGrantExcludedTree',
+ 'malformedExpressionsAndTenantExpressionsReject', 'validLargeStoredGrantSetLoadsButQueryOverLimitFailsClosed',
+ 'semanticCoverageAgreesWithFinitePartitionForAllSignedSelectorsAndIds'},
+}
+for suite, expected in named.items():
+    root=ET.parse(results/('TEST-'+suite+'.xml')).getroot()
+    assert {case.get('name','').removesuffix('()') for case in root.findall('testcase')}==expected, suite+' named cases differ'
+for suite, expected in {
+ 'io.kestra.extensions.rbac.RuntimePoliciesTest': {'unknownMixedScopeAndWrongEpochDeny', 'initialAdministratorAndSecondAccountUseOnlyExplicitRuntimeDataGrants', 'legacyBusinessDomainNeverGrantsAnyOrdinaryResourceOrSystem', 'businessManagementUsesExplicitActionsAndNeverExtensionOrIdentity', 'typedTenantMetadataAndMcpListsHaveRealAllowPaths', 'explicitManagementTargetCanPrecedeItsLocalBinding', 'splitManagementOnlyTargetsActivateExtensionAndCapabilitiesWithoutCombiningAuthorization', 'correlatedListDoesNotProduceCartesianProductOrCrossScopeReadList', 'extensionActivationIsExactAndDoesNotTurnReadIntoManage', 'allAudiencesMustBeLocallyAccepted', 'pinnedEvaluationExpiresWithinAcceptedRevocationBound', 'applicationPolicyDoesNotStoreDirectoryRevision', 'v2PinsOneSnapshotAndClosesIt'},
+ 'io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionControllerTest': {'createUpdateDeleteUseObjectRevisionAndReceiptWithoutPolicyDisclosure', 'strictInputsMissingRevisionAndUndefinedScopeHaveNoSideEffects', 'deniedAndInvalidAiMutationsLeaveAllPersistedRbacRowsUnchanged', 'permissionPagesSortByStableKeyBeforeSlicingUnorderedStorage', 'signedNamespaceGrantsRoundTripRejectInvalidAndObserveExplicitRevocation', 'identityOnlyCannotAccessKestraPolicyAndLastAdminMutationRollsBack', 'metadataChangesKeepTrustedIdentityUsableAndConsentUsesUnifiedEntities', 'legalMutationMetadataKeyKeepsReadManageSeparationThroughCreateUpdateAndDelete', 'aiTenantCreateFindUpdateDeletePersistAndNewEvaluationsObserveRevocation', 'policyOnlyWriterCannotChangeSupportButCanChangeGrantsAndCannotRead', 'legacyAiGrantSurvivesPublicControllerMetadataEditWithoutTenantPromotion'},
+}.items():
+    root=ET.parse(results/('TEST-'+suite+'.xml')).getroot()
+    assert expected == {case.get('name','').removesuffix('()') for case in root.findall('testcase')}, suite+' named cases differ'
 print('PASS application-project release suites:',len(REQUIRED),'tests:',sum(REQUIRED.values()),'zero failure/skip')
