@@ -56,7 +56,7 @@ BUSINESS_INSTANCE 不得授予普通资源的读写，不得替代 tenant 或 na
 ### 当前实施与正式输入
 
 补集与首装范围已由插件8bbdc2c/CI44310730523发布。当前固定输入升级为正式宿主
-84fe614/CI44463537757，含原生Flow列表与详情有限能力机制，见host-contract.properties。
+e27864c/CI45069032782，含原生Flow列表首屏/身份恢复修复与详情有限能力机制，见host-contract.properties。
 表达式按本节规范保存；运行时复用NamespaceDomain V2。首装不生成BUSINESS_INSTANCE，
 旧记录保留可读可编辑但无普通数据许可；已有目录不自动改写。顶部顺序第1项UI往返修复
 已由ab693da/CI44251883812交付，本轮保留回归，不重复实施。正式输入升级后的本地检查

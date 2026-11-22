@@ -54,11 +54,13 @@ are extracted from the immutable published image, independently of any overlay s
 检查。该变量只用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
 每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。
 
-当前编译输入为正式宿主 commit `84fe6146742f377b529e1a1b60a88ac06c905ebc`（成功 CI `44463537757`，
+当前编译输入为正式宿主 commit `e27864ce6521da239148a29027607b8e8aea689a`（成功 CI `45069032782`，
 五个 job 成功并完成正式推广），镜像 digest
-`e53cee7718204388fdf3da2460ed0a191446298ce1bd0b98fd8f392daa297a69`；
+`116c5503bbca8b889c65de95ae86afdf196be461f1201dabda7e5f2fc8b492f8`；
 本机独立提取 executable SHA256
-`d327a55341c1cf9689d43c48de01ade0b1da9efd90eb37f089d3d9cc9f87c1b7`。
+`fb1766a3fc75cc40cd5b0bace9cd27e319f7900d16fc678378d5ee02cb07923b`。
+该正式宿主修复模式 A/B 的 Flow 首屏配置重载误清空，保留身份变化后的同步失效、旧响应隔离与当前查询恢复。
+插件业务源码和 UI 未修改；本轮仅升级固定公开输入，仍须对应插件成功 CI 与正式 artifact 后部署。
 正式类型为 TypedAuthorization V2 与 NamespaceDomain V2。插件将 `!namespace` 翻译为
 结构化项内排除；宿主不解析插件表达式。普通数据不再由 BUSINESS_INSTANCE 授权，未知
 SYSTEM 拒绝。AI 仍使用独立 TENANT READ/EXECUTE，工具资源继续逐项授权。
@@ -218,7 +220,7 @@ scope 名称和说明不授予资源权限。旧项目路径、完整恢复和�
 插件通过宿主 `OidcInitialAccountParticipantV1` 在借用的同一 PostgreSQL 事务内创建目录、
 统一 typed 权限和首账号授予；不执行 CLI，不提供额外匿名初始化 API，不依据账号名字
 授予管理员。宿主契约已随 overlay `c4a1eb22` 的成功 CI `41628600618` 正式发布，
-当前 `host-contract.properties` 固定包含该 SPI 的正式 84fe614 镜像。不得使用相邻源码、候选 executable 或临时
+当前 `host-contract.properties` 固定包含该 SPI 的正式 e27864c 镜像。不得使用相邻源码、候选 executable 或临时
 接口编译本插件；本插件自身 CI、jar 发布与根仓组合验收通过前，不代表能力已交付。
 
 初始业务设计：唯一内置组 `main`，人类名称 `Kestra`；scope `admin`，人类名称
