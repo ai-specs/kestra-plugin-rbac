@@ -28,6 +28,10 @@ if(qs.get('namespaceGrant')) {
   Object.assign(permission,{implementationKind:'kestra-policy',description:'',enabled:true,
     grants:[{scope:'NAMESPACE',tenant:'main',namespace:'!company',descendants:true,resource:'FLOW',actions:['READ','LIST'],ids:['a'],allIds:false}],
     managementGrants:qs.get('namespaceGrant')==='legacy'?[{domain:'BUSINESS_INSTANCE',actions:['READ','MANAGE'],applicationGroupIds:[]}]:[]})
+  if(qs.get('namespaceGrant')==='summary') {
+    const first=permission.grants[0]
+    permission.grants=[first,{...first,ids:['b']},{...first,resource:'KVSTORE',ids:['a','b']}]
+  }
 }
 let scenario = qs.get('state') || 'normal', release, saveRelease
 let holdWrites = false

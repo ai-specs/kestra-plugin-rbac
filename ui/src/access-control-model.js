@@ -15,13 +15,40 @@ export function involvedApplications(subject, applications) {
 export function permissionSummary(permission, t) {
   return permissionSummaryEntries(permission, t).map(entry => entry.text)
 }
+// Presentation only: union one dimension only when every other dimension agrees.
+// Never flatten correlated resources/actions/IDs into a broader cross product.
+export function compactPermissionGrants(grants) {
+  let rows = grants.map(grant => ({...grant, resources: [grant.resource], actions: [...grant.actions], ids: [...grant.ids]}))
+  const signature = values => [...new Set(values)].sort(compareKeys)
+  let previous
+  do {
+    previous = rows.length
+    for (const dimension of ['ids', 'actions', 'resources']) {
+      const groups = new Map()
+      for (const row of rows) {
+        const key = JSON.stringify([row.scope, row.tenant, row.namespace ?? null, row.descendants === true,
+          dimension === 'resources' ? null : signature(row.resources),
+          dimension === 'actions' ? null : signature(row.actions),
+          dimension === 'ids' ? null : row.allIds ? '*' : signature(row.ids)])
+        const existing = groups.get(key)
+        if (!existing) groups.set(key, row)
+        else {
+          existing[dimension] = [...new Set([...existing[dimension], ...row[dimension]])]
+          if (dimension === 'ids') existing.allIds ||= row.allIds
+        }
+      }
+      rows = [...groups.values()]
+    }
+  } while (rows.length < previous)
+  return rows
+}
 export function permissionSummaryEntries(permission, t) {
   if (permission.implementationKind === 'external-declaration') return String(permission.details ?? '').split(/\r?\n/).filter(Boolean).map(text => ({text}))
   if (permission.implementationKind !== 'kestra-policy') return []
   return [
-    ...(permission.grants ?? []).map(grant => {
+    ...compactPermissionGrants(permission.grants ?? []).map(grant => {
       const range = grant.scope === 'NAMESPACE' ? `${grant.namespace} · descendants=${grant.descendants === true}` : undefined
-      const suffix = [grant.resource, grant.actions.join(' / '), grant.allIds ? '*' : grant.ids.join(', ')].join(' · ')
+      const suffix = [grant.resources.join(' / '), grant.actions.join(' / '), grant.allIds ? '*' : grant.ids.join(', ')].join(' · ')
       return {text: [grant.tenant, range, suffix].filter(Boolean).join(' · '), tenant: grant.tenant, range, suffix,
         explanation: range && grant.namespace.startsWith('!') && t ? namespaceRange(grant, t) : undefined}
     }),

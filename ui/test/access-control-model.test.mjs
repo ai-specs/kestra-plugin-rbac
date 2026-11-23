@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {compareKeys, supportedScopes, involvedApplications, permissionSummary, permissionSummaryEntries, matchesChips, readListQuery, writeListQuery, paginate, selectionAfterDelete, countValue, permissionInput, detailTabs, collectPermissions, nativeChips, normalizeDeepLinkQuery, normalizeDeepLinkLocation} from '../src/access-control-model.js'
+import {compareKeys, supportedScopes, involvedApplications, permissionSummary, permissionSummaryEntries, compactPermissionGrants, matchesChips, readListQuery, writeListQuery, paginate, selectionAfterDelete, countValue, permissionInput, detailTabs, collectPermissions, nativeChips, normalizeDeepLinkQuery, normalizeDeepLinkLocation} from '../src/access-control-model.js'
 
 test('permission ranges preserve exact expression and child flag; explanation is separate', () => {
   for (const namespace of ['company', '!company']) for (const descendants of [false, true]) {
@@ -13,6 +13,36 @@ test('permission ranges preserve exact expression and child flag; explanation is
     assert.equal(entry.explanation, namespace.startsWith('!') ? `namespaceComplement${descendants ? 'Tree' : 'Exact'}: company` : undefined)
     assert.deepEqual(permissionSummary(permission, translate), [entry.text])
     assert.equal(JSON.stringify(permission), before)
+  }
+})
+
+test('permission summary compacts equal prefixes without changing grants or cross products', () => {
+  const grant = (resource, actions, ids, extra = {}) => ({scope:'NAMESPACE',tenant:'main',namespace:'company',descendants:true,resource,actions,ids,allIds:false,...extra})
+  const source = [grant('FLOW',['READ'],['a']),grant('FLOW',['READ'],['b']),grant('KVSTORE',['READ'],['a','b']),grant('FLOW',['LIST'],['a','b']),grant('KVSTORE',['LIST'],['a','b'])]
+  const before = JSON.stringify(source)
+  const compact = compactPermissionGrants(source)
+  assert.equal(compact.length, 1)
+  assert.deepEqual(compact[0].resources, ['FLOW','KVSTORE'])
+  assert.deepEqual(new Set(compact[0].actions), new Set(['READ','LIST']))
+  assert.deepEqual(compact[0].ids, ['a','b'])
+  assert.equal(JSON.stringify(source), before)
+  const correlated = [grant('FLOW',['READ'],['a']),grant('KVSTORE',['UPDATE'],['b'])]
+  assert.equal(compactPermissionGrants(correlated).length, 2)
+  for (const extra of [{namespace:'!company'},{descendants:false},{tenant:'other'},{namespace:'company.sub'}]) {
+    assert.equal(compactPermissionGrants([grant('FLOW',['READ'],['a']),grant('FLOW',['READ'],['b'],extra)]).length, 2)
+  }
+  assert.equal(compactPermissionGrants([grant('FLOW',['READ'],['a']),grant('FLOW',['READ'],[],{allIds:true})])[0].allIds, true)
+})
+
+test('every small resource/action/ID relation is preserved exactly by display compaction', () => {
+  const atoms = ['FLOW','EXECUTION'].flatMap(resource => ['READ','LIST'].flatMap(action => ['a','b'].map(id => ({
+    scope:'NAMESPACE',tenant:'main',namespace:'!company',descendants:true,resource,actions:[action],ids:[id],allIds:false
+  }))))
+  const relation = rows => [...new Set(rows.flatMap(row => (row.resources ?? [row.resource]).flatMap(resource =>
+    row.actions.flatMap(action => row.ids.map(id => JSON.stringify([resource,action,id]))))))].sort()
+  for (let mask = 1; mask < 256; mask++) {
+    const grants = atoms.filter((_, index) => mask & (1 << index))
+    assert.deepEqual(relation(compactPermissionGrants(grants)), relation(grants), `relation mask ${mask}`)
   }
 })
 

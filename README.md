@@ -52,6 +52,8 @@ are extracted from the immutable published image, independently of any overlay s
 
 权限列表的明细优先显示表达式、资源、动作和ID。只有 `!namespace` 补集范围提供悬停及
 键盘聚焦解释；普通命名空间和不言自明的字段不附加说明，不使用自然语言前缀替代表达式。
+同一权限key内，范围及其他维度一致时合并资源、动作或ID，压缩展示条数；不同维度的
+关联关系保留。原始多条grant仍受支持，存储、API和编辑表单不强制合并。
 
 独立存储测试默认使用 H2；设置 RBAC_STORE_TEST_JDBC 可对隔离 PostgreSQL 执行相同
 检查。该变量只用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
@@ -64,7 +66,8 @@ are extracted from the immutable published image, independently of any overlay s
 `a97b79cb41a48a5977b4132db1ae3759f4ec96c20ed4fb178d8903021fd1ae99`。
 该正式宿主保留 Flow 首屏和身份恢复修复，并隔离 MCP 后台刷新的调用方连接、事务及请求授权上下文。
 模式 A/B 均适用；工具调用身份、权限和队列错误处理不变，不增加插件授权例外。
-插件业务源码和 UI 未修改；本轮仅升级固定公开输入，仍须对应插件成功 CI 与正式 artifact 后部署。
+当前宿主输入升级保留该公开契约；权限明细展示改进属于插件UI，不改变后端授权模型。
+部署仍须对应插件成功 CI 与正式 artifact。
 正式类型为 TypedAuthorization V2 与 NamespaceDomain V2。插件将 `!namespace` 翻译为
 结构化项内排除；宿主不解析插件表达式。普通数据不再由 BUSINESS_INSTANCE 授权，未知
 SYSTEM 拒绝。AI 仍使用独立 TENANT READ/EXECUTE，工具资源继续逐项授权。
