@@ -266,6 +266,18 @@ for(const row of cases)test(row.id,async({page,context},info)=>{
       await boot(page,row,{path:paths.permission});await expect(by(page,'permission-row')).toHaveText('read');const summary=root(page).locator('.rbac-permission-summary');await expect(summary).toContainText('Visible permission summary')
       const expand=summary.getByRole('button');await expect(expand).toBeVisible();await expand.click();await expect(summary).toContainText('Second permission line')
       expect(await root(page).locator('.table-wrap').last().evaluate(node=>node.scrollWidth>=node.clientWidth)).toBe(true)
+      await boot(page,row,{path:paths.permission,namespaceGrant:'signed'})
+      const expression=by(page,'permission-range-expression'),detail=root(page).locator('.rbac-permission-summary')
+      await expect(detail).toHaveText('main · !company · descendants=true · FLOW · READ / LIST · a')
+      const explanation=(await text(page,'namespaceComplementTree')).replace('{namespace}','company')
+      const tooltip=root(page).getByRole('tooltip')
+      await page.mouse.move(5, 5)
+      await expect(tooltip).toBeHidden()
+      await expression.hover();await expect(tooltip).toHaveText(explanation);await geometry(tooltip,row.width)
+      await by(page,'permission-row').hover();await expect(tooltip).toBeHidden()
+      await expression.focus();await expect(tooltip).toHaveText(explanation)
+      await page.keyboard.press('Tab');await expect(tooltip).toBeHidden()
+      await expect(detail).not.toContainText(explanation)
     }else if(behavior.startsWith('filter-popup')){
       await boot(page,row,{path:'users'});
       if(await root(page).locator('.mobile-toggle').count()){

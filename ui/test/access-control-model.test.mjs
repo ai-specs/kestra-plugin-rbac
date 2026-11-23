@@ -1,6 +1,20 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {compareKeys, supportedScopes, involvedApplications, permissionSummary, matchesChips, readListQuery, writeListQuery, paginate, selectionAfterDelete, countValue, permissionInput, detailTabs, collectPermissions, nativeChips, normalizeDeepLinkQuery, normalizeDeepLinkLocation} from '../src/access-control-model.js'
+import {compareKeys, supportedScopes, involvedApplications, permissionSummary, permissionSummaryEntries, matchesChips, readListQuery, writeListQuery, paginate, selectionAfterDelete, countValue, permissionInput, detailTabs, collectPermissions, nativeChips, normalizeDeepLinkQuery, normalizeDeepLinkLocation} from '../src/access-control-model.js'
+
+test('permission ranges preserve exact expression and child flag; explanation is separate', () => {
+  for (const namespace of ['company', '!company']) for (const descendants of [false, true]) {
+    const permission = {implementationKind:'kestra-policy',grants:[{scope:'NAMESPACE',tenant:'main',namespace,descendants,resource:'FLOW',actions:['READ','LIST'],allIds:false,ids:['a']}]}
+    const before = JSON.stringify(permission)
+    const translate = (key, args) => `${key}: ${args.namespace}`
+    const [entry] = permissionSummaryEntries(permission, translate)
+    assert.equal(entry.text, `main · ${namespace} · descendants=${descendants} · FLOW · READ / LIST · a`)
+    assert.equal(entry.range, `${namespace} · descendants=${descendants}`)
+    assert.equal(entry.explanation, namespace.startsWith('!') ? `namespaceComplement${descendants ? 'Tree' : 'Exact'}: company` : undefined)
+    assert.deepEqual(permissionSummary(permission, translate), [entry.text])
+    assert.equal(JSON.stringify(permission), before)
+  }
+})
 
 test('N1/N6: four detail tabs, server counts never infer zero', () => {
   assert.deepEqual(detailTabs, ['overview', 'scopes', 'applications', 'scope-grants'])

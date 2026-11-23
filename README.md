@@ -50,6 +50,9 @@ are extracted from the immutable published image, independently of any overlay s
 宿主公开契约必须先通过正式发布门，再运行下方 prepare-host 取得固定编译输入；源码
 或候选 jar 不能作为正式构建依赖。插件本轮 CI、发布及 Compose 状态以实际报告为准。
 
+权限列表的明细优先显示表达式、资源、动作和ID。只有 `!namespace` 补集范围提供悬停及
+键盘聚焦解释；普通命名空间和不言自明的字段不附加说明，不使用自然语言前缀替代表达式。
+
 独立存储测试默认使用 H2；设置 RBAC_STORE_TEST_JDBC 可对隔离 PostgreSQL 执行相同
 检查。该变量只用于测试，账号为 postgres、密码为公开测试常量 policy-test-only，
 每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。

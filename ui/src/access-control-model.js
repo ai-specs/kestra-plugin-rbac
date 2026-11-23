@@ -13,11 +13,19 @@ export function involvedApplications(subject, applications) {
   return ordered(applications.filter(application => application.active !== false && application.permissions?.some(permission => permission.scopeKeys.some(key => subject.scopeKeys.includes(key)))), 'clientId')
 }
 export function permissionSummary(permission, t) {
-  if (permission.implementationKind === 'external-declaration') return String(permission.details ?? '').split(/\r?\n/).filter(Boolean)
+  return permissionSummaryEntries(permission, t).map(entry => entry.text)
+}
+export function permissionSummaryEntries(permission, t) {
+  if (permission.implementationKind === 'external-declaration') return String(permission.details ?? '').split(/\r?\n/).filter(Boolean).map(text => ({text}))
   if (permission.implementationKind !== 'kestra-policy') return []
   return [
-    ...(permission.grants ?? []).map(grant => [t ? namespaceRange(grant, t) : grant.namespace ?? grant.tenant, grant.resource, grant.actions.join(' / '), grant.allIds ? '*' : grant.ids.join(', ')].join(' · ')),
-    ...(permission.managementGrants ?? []).map(grant => [grant.domain === 'BUSINESS_INSTANCE' && t ? t('legacyBusinessWarning') : grant.domain, grant.domain === 'BUSINESS_INSTANCE' && t ? t('legacyBusinessActions', {actions:grant.actions.join(' / ')}) : grant.actions.join(' / '), ...(grant.applicationGroupIds ?? [])].join(' · '))
+    ...(permission.grants ?? []).map(grant => {
+      const range = grant.scope === 'NAMESPACE' ? `${grant.namespace} · descendants=${grant.descendants === true}` : undefined
+      const suffix = [grant.resource, grant.actions.join(' / '), grant.allIds ? '*' : grant.ids.join(', ')].join(' · ')
+      return {text: [grant.tenant, range, suffix].filter(Boolean).join(' · '), tenant: grant.tenant, range, suffix,
+        explanation: range && grant.namespace.startsWith('!') && t ? namespaceRange(grant, t) : undefined}
+    }),
+    ...(permission.managementGrants ?? []).map(grant => ({text: [grant.domain === 'BUSINESS_INSTANCE' && t ? t('legacyBusinessWarning') : grant.domain, grant.domain === 'BUSINESS_INSTANCE' && t ? t('legacyBusinessActions', {actions:grant.actions.join(' / ')}) : grant.actions.join(' / '), ...(grant.applicationGroupIds ?? [])].join(' · ')}))
   ]
 }
 export function matchesChips(item, chips) {

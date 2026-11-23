@@ -18,7 +18,12 @@
 
 本轮实施采用的规范输入为 `namespace:"!company",descendants:true`，表示排除该
 子树；`descendants:false` 仅排除精确 company。末尾的点不是持久化语法，UI 必须明确
-显示“及子命名空间”或“仅此命名空间”，不得把 `!company.` 悄悄当成合法具体名称。
+在编辑表单说明“及子命名空间”或“仅此命名空间”，不得把 `!company.` 悄悄当成合法具体名称。
+权限列表明细优先显示原始表达式与独立子树标志，例如
+`main · !company · descendants=true · FLOW · READ / LIST · *`。
+只对补集等容易误解的表达提供上游提示控件，悬停或键盘聚焦时解释对应范围；
+普通命名空间、子树标志、资源、动作和ID不添加不言自明的解释。
+不在明细中常驻自然语言前缀。此显示不改变API或授权计算。
 正向 `company` 仍沿用现有 descendants 语义。裸 `!`、多重感叹号、空名称、通配符、
 非 main tenant 及非法点分隔必须拒绝。补集仅适用于 NAMESPACE 资源，TENANT 的
 METADATA/MCP_SERVER/AI 仍使用各自明确声明，不接受 namespace 表达式。
