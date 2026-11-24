@@ -47,7 +47,8 @@ test('N14/T3: typed permission content retains complete grants without combining
   assert.equal(result.grants[0].namespace, 'A')
   assert.deepEqual(result.grants[0].ids, [])
   assert.deepEqual(result.grants[1].actions, ['UPDATE'])
-  assert.equal(result.grants[1].namespace, 'B')
+  assert.equal(result.grants[1].namespace, 'B.*')
+  assert.equal(Object.hasOwn(result.grants[1], 'descendants'), false)
   assert.deepEqual(result.grants[1].ids, ['flow/二', 'flow,one'])
   assert.equal(result.revision, undefined)
   assert.deepEqual(source.grants[0].ids, ['stale'])
@@ -65,7 +66,8 @@ test('METADATA has a fixed read-only tenant range and cannot carry business or m
   selectGrantResource(grant)
   assert.deepEqual(grant, {scope: 'TENANT', tenant: 'main', namespace: null, descendants: false, resource: 'METADATA', actions: ['READ', 'LIST'], ids: [], allIds: true})
   const input = typedGrantsInput({description: '', enabled: true, grants: [grant], managementGrants: []})
-  assert.deepEqual(input.grants, [grant])
+  const {descendants, ...canonical} = grant
+  assert.deepEqual(input.grants, [canonical])
   grant.resource = 'FLOW'
   selectGrantResource(grant)
   assert.equal(grant.scope, 'NAMESPACE')
@@ -239,7 +241,8 @@ for (const [resource, actions] of [
     draft.managementGrants = draft.managementGrants.filter(grant => grant.domain !== 'BUSINESS_INSTANCE')
     const input = permissionInput(draft, 'kestra-policy', ['admin'])
     const encoded = typedGrantsInput(input)
-    assert.deepEqual(encoded.grants, [{...grant,namespace:null}])
+    const {descendants, ...canonical} = grant
+    assert.deepEqual(encoded.grants, [{...canonical,namespace:null}])
     assert.deepEqual(encoded.managementGrants, permission.managementGrants.slice(0,2))
     assert.deepEqual(typedGrantsInput({...input,grants:[{...grant,namespace:null}]}), encoded)
     assert.equal(Object.hasOwn(draft.grants[0], 'namespace'), false)
@@ -254,14 +257,16 @@ test('new AI selection uses explicit tenant READ EXECUTE and no namespace or IDs
   const grant = {scope:'NAMESPACE',tenant:'main',namespace:'company',descendants:true,resource:'AI',actions:['READ','LIST','UPDATE','EXECUTE'],ids:['old'],allIds:false}
   selectGrantResource(grant)
   assert.deepEqual(grant,{scope:'TENANT',tenant:'main',namespace:null,descendants:false,resource:'AI',actions:['READ','EXECUTE'],ids:[],allIds:true})
-  assert.deepEqual(typedGrantsInput({grants:[grant]}).grants,[grant])
+  const {descendants, ...canonical} = grant
+  assert.deepEqual(typedGrantsInput({grants:[grant]}).grants,[canonical])
   for(const patch of [{actions:['LIST']},{namespace:'company'},{tenant:'other'},{descendants:true},{ids:['id']},{allIds:false,ids:['id']}])
     assert.throws(()=>typedGrantsInput({grants:[{...grant,...patch}]}),error=>error.code==='invalid_grant')
 })
 
 test('editing another permission field preserves legacy namespace AI without conversion', () => {
   const legacy={scope:'NAMESPACE',tenant:'main',namespace:'company',descendants:true,resource:'AI',actions:['READ','LIST','UPDATE','EXECUTE'],ids:['old'],allIds:false}
-  assert.deepEqual(typedGrantsInput({description:'changed',grants:[legacy]}).grants,[legacy])
+  const {descendants, ...canonical} = legacy
+  assert.deepEqual(typedGrantsInput({description:'changed',grants:[legacy]}).grants,[{...canonical,namespace:'company.*'}])
   assert.equal(legacy.scope,'NAMESPACE')
   assert.deepEqual(grantActions(legacy),['READ','LIST','CREATE','UPDATE','DELETE','EXECUTE','ACCESS_OUTPUTS'])
   assert.deepEqual(grantActions({...legacy,scope:'TENANT'}),['READ','EXECUTE'])
@@ -270,8 +275,21 @@ test('editing another permission field preserves legacy namespace AI without con
 test('namespace signed exact and subtree grants preserve actions and IDs and reject malformed expressions', () => {
   for(const namespace of ['company','!company','company.sub','!company.sub'])for(const descendants of [false,true]) {
     const grant={scope:'NAMESPACE',tenant:'main',namespace,descendants,resource:'FLOW',actions:['READ','LIST'],ids:['a'],allIds:false}
-    assert.deepEqual(typedGrantsInput({grants:[grant]}).grants,[grant])
+    const {descendants: oldFlag, ...canonical} = grant
+    assert.deepEqual(typedGrantsInput({grants:[grant]}).grants,[{...canonical,namespace:namespace+(descendants?'.*':'')}])
   }
   for(const namespace of ['!','!!company','!company.','!company..sub','!company*',' company','! company'])
     assert.throws(()=>typedGrantsInput({grants:[{scope:'NAMESPACE',tenant:'main',namespace,descendants:true,resource:'FLOW',actions:['READ'],ids:[],allIds:true}]}))
+})
+
+test('canonical namespace expressions submit directly and cannot combine suffix and legacy flag', () => {
+  const base = {scope:'NAMESPACE',tenant:'main',resource:'FLOW',actions:['READ','LIST'],ids:['a'],allIds:false}
+  for (const namespace of ['company','company.*','!company','!company.*','company.sub.*']) {
+    const grant = {...base,namespace}
+    assert.deepEqual(typedGrantsInput({grants:[grant]}).grants,[grant])
+    for (const descendants of [false,true]) if (namespace.endsWith('.*'))
+      assert.throws(()=>typedGrantsInput({grants:[{...grant,descendants}]}),error=>error.code==='invalid_grant')
+  }
+  for (const namespace of ['*','!*','company.*.sub','company.**','company.*.*','!!company.*','company.',' company.*'])
+    assert.throws(()=>typedGrantsInput({grants:[{...base,namespace}]}),error=>error.code==='invalid_grant')
 })

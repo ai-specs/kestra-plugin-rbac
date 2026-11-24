@@ -9,28 +9,26 @@
 等业务资源；在 `company` 及子空间创建、修改业务资源；不得在该范围之外创建、修改。
 不得按首账号身份放行。后续账号不继承首账号权限。
 
-维护者偏好明确的补集表达，而非在管理域中封装数据范围。本轮采用 `!company` 配合
-“包含子命名空间”表达 main tenant 内除 `company` 及子空间以外的命名空间。
+维护者偏好明确的补集表达，而非在管理域中封装数据范围。本轮采用 `!company.*` 表达 main tenant 内除 `company` 及子空间以外的命名空间。
 它是允许域表达式，不是全局 deny：对 company 的另一条正向 grant 仍独立生效。
 `company2` 不属于 `company` 子树；新增命名空间自动按表达式判断，不在保存时枚举。
 持久化语法、规范化及公开 DTO 已统一为下述输入。界面以明确文案说明子树，
 不接受 `!company.`，不把感叹号传入宿主结构化域契约。
 
-本轮实施采用的规范输入为 `namespace:"!company",descendants:true`，表示排除该
-子树；`descendants:false` 仅排除精确 company。末尾的点不是持久化语法，UI 必须明确
-在编辑表单说明“及子命名空间”或“仅此命名空间”，不得把 `!company.` 悄悄当成合法具体名称。
-权限列表明细优先显示原始表达式与独立子树标志，例如
-`main · !company · descendants=true · FLOW · READ / LIST · *`。
-只对补集等容易误解的表达提供上游提示控件，悬停或键盘聚焦时解释对应范围；
-普通命名空间、子树标志、资源、动作和ID不添加不言自明的解释。
-不在明细中常驻自然语言前缀。此显示不改变API或授权计算。
+2026-11-24 维护者确认统一表达式：`company` 精确包含，`company.*` 包含自身及所有后代，
+`!company` 仅排除精确名称，`!company.*` 排除整个子树。页面、API、持久化与授权执行
+使用同一语义；完整规范与可复用样例见 README 的“权限表达式规则”。
+新JSON只使用namespace表达式，不再输出descendants；旧双字段仅在读取边界等价转换。
+末尾孤立点不合法，`.*` 只允许在末尾，混合新子树后缀与旧descendants字段必须拒绝。
+列表例子：`main · !company.* · FLOW · READ / LIST · *`。
+补集在悬停或键盘聚焦时解释，不在明细中常驻自然语言前缀。
 同一权限key内的明细在展示层尽量合并：只有范围及其他维度相同时，才对资源、动作或ID
 其中一个维度取并集。不得把不同资源/动作/ID之间的关联展平为更大的笛卡尔积。
 合并资源前缀时，后续动作集合与ID范围必须完全相同；例如
 `FLOW · READ · *` 与 `EXECUTION · LIST · *` 不得合并成
 `FLOW / EXECUTION · READ / LIST · *`。
 未合并的多条grant始终是合法输入；不自动改写存储、编辑表单或API载荷。
-正向 `company` 仍沿用现有 descendants 语义。裸 `!`、多重感叹号、空名称、通配符、
+正向 `company` 精确匹配，`company.*` 匹配自身及后代。裸 `!`、多重感叹号、空名称、非法通配符、
 非 main tenant 及非法点分隔必须拒绝。补集仅适用于 NAMESPACE 资源，TENANT 的
 METADATA/MCP_SERVER/AI 仍使用各自明确声明，不接受 namespace 表达式。
 
@@ -664,7 +662,7 @@ scope 的公开创建、修改输入只有 `key/name/description`。详情路径
 ### AI 租户入口授权（候选，待正式宿主输入与插件发布）
 
 AI 入口采用显式租户授权：`scope=TENANT`、`tenant=main`、`namespace=null`、
-`descendants=false`、`ids=[]`、`allIds=true`。动作仅接受 `READ` 和 `EXECUTE` 的非空子集。
+`ids=[]`、`allIds=true`（新输出不含descendants）。动作仅接受 `READ` 和 `EXECUTE` 的非空子集。
 新安装的初始权限显式包含这两个动作；已有安装不得自动补授。
 旧 `NAMESPACE` AI 声明保持原字段和动作，可读取、保存及升级，但不授予租户 AI 入口。
 管理员必须通过权限 CRUD 明确新增租户 AI 授权。schema2 declaration-upgrade 继续保持

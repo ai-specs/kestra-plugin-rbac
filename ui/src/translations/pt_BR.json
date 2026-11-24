@@ -126,7 +126,7 @@
     "namespaceComplementTree": "Allow namespaces in tenant main except {namespace} and its child namespaces",
     "namespaceComplementExact": "Allow namespaces in tenant main except {namespace} itself; its child namespaces are included",
     "namespaceComplementHelp": "This grant defines an allowed range, not a global deny. Other grants can independently allow the excluded range. Only the selected actions and resource IDs are granted.",
-    "namespaceSyntax": "Enter a namespace or !namespace. Use the child namespaces option; do not end the name with a dot.",
+    "namespaceSyntax": "Enter a namespace expression: company, company.*, !company, or !company.*.",
     "legacyBusinessDomain": "Legacy BUSINESS_INSTANCE",
     "legacyBusinessWarning": "Legacy management domain: grants no ordinary business resource access.",
     "legacyBusinessActions": "Recorded actions {actions} (no data authorization)",

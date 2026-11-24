@@ -35,6 +35,48 @@ The earlier runtime authorization implementation passed independent CI and real 
 acceptance; that historical result does not validate the instance-admin change. See [validation evidence](docs/validation.md) for the tested scope. Build dependencies
 are extracted from the immutable published image, independently of any overlay source checkout.
 
+## 权限表达式规则
+
+以下是维护者于 2026-11-24 确认的统一规则，供本插件及其他扩展借鉴。部署须消费
+对应提交的成功 CI 产物，并完成部署仓组合验收；旧 jar 不因本文更新而支持新语法。
+
+命名空间范围使用单一 `namespace` 表达式，页面、API、持久化和授权执行使用同一含义。
+不再要求使用者另外配置 `descendants`。这是一套有限语法，不是正则或任意 glob：
+
+| 表达式 | 授权范围 |
+| --- | --- |
+| `company` | 仅 company 本身 |
+| `company.*` | company 本身及全部层级的子命名空间 |
+| `!company` | 当前租户内除 company 本身以外的命名空间，包含 company 的子命名空间 |
+| `!company.*` | 当前租户内除 company 本身及其全部子命名空间以外的命名空间 |
+
+`company.*` 不匹配 `company2`。只允许开头的一个 `!` 和结尾的一个 `.*`；裸 `!`、
+裸 `*`、中间通配符、多重感叹号、末尾孤立点和空白必须拒绝。补集是该条 grant 的允许
+范围，不是覆盖其他 grant 的全局拒绝规则；其他 grant 可以独立授权被排除的范围。
+TENANT 级资源不接受命名空间表达式。
+
+完整明细示例：
+
+```text
+main · company.sub.* · FLOW / KVSTORE / NAMESPACE · READ / DELETE / CREATE / UPDATE / LIST · *
+main · !company.* · FLOW / EXECUTION · READ / LIST · *
+main · METADATA · LIST / READ · *
+```
+
+`·` 仅为展示分隔符；命名空间中的 `.*` 表示自身及子树，最后独立的 `*` 表示该条范围内
+所有资源 ID。资源、动作、ID 仍是类型化字段，不解析整行展示字符串作为执行指令。
+补集不隐含读、写或执行权限，所有操作必须明确声明；不得以首装账号身份绕过授权。
+
+同一个 permission key 的多条明细可以压缩展示，但只有其他所有维度相同才可合并一个
+维度。合并 `FLOW / EXECUTION` 时，后续动作集合与 ID 范围必须完全相同，不得扩大资源、
+动作与 ID 的组合。未合并的多条 grant 同样受支持，不改写其授权关联。
+表达式优先展示，仅对补集等需要说明的部分提供悬停和键盘聚焦解释。
+
+已有 `namespace + descendants` 数据必须在读取边界等价归一为单一表达式；旧 true 映射为
+追加 `.*`，旧 false 映射为精确名称。不得补授权限、重跑首装或枚举当前命名空间代替表达式。
+新输出和新保存使用单一表达式。混合新表达式与旧字段的歧义输入必须拒绝；旧数据兼容
+只用于明确的边界转换，不保留第二套授权算法。宿主结构化范围接口在插件边界适配。
+
 ## 管理功能方案
 
 用户、角色和授权管理功能的业务调查与阶段方案见
@@ -66,7 +108,7 @@ are extracted from the immutable published image, independently of any overlay s
 `a97b79cb41a48a5977b4132db1ae3759f4ec96c20ed4fb178d8903021fd1ae99`。
 该正式宿主保留 Flow 首屏和身份恢复修复，并隔离 MCP 后台刷新的调用方连接、事务及请求授权上下文。
 模式 A/B 均适用；工具调用身份、权限和队列错误处理不变，不增加插件授权例外。
-当前宿主输入升级保留该公开契约；权限明细展示改进属于插件UI，不改变后端授权模型。
+当前宿主输入保留该公开契约；命名空间表达式统一属于插件，授权范围语义保持等价。
 部署仍须对应插件成功 CI 与正式 artifact。
 正式类型为 TypedAuthorization V2 与 NamespaceDomain V2。插件将 `!namespace` 翻译为
 结构化项内排除；宿主不解析插件表达式。普通数据不再由 BUSINESS_INSTANCE 授权，未知
@@ -238,7 +280,7 @@ scope 名称和说明不授予资源权限。旧项目路径、完整恢复和�
 - `METADATA` 为 `main` tenant 的 `READ/LIST`；`MCP_SERVER` 为该 tenant 的 `READ/LIST/CREATE/UPDATE/DELETE`。
 - NAMESPACE 资源 FLOW、EXECUTION、TRIGGER、NAMESPACE、KVSTORE、SECRET、NAMESPACE_FILE、LOG、METRIC、DASHBOARD、BLUEPRINT
   各声明 `company` 及子空间，动作明确为 `READ/LIST/CREATE/UPDATE/DELETE/EXECUTE/ACCESS_OUTPUTS`。
-- 同一资源各另声明 `namespace:"!company",descendants:true`，仅 `READ/LIST`、`ids:[],allIds:true`。
+- 同一资源各另声明 `namespace:"!company.*"`，仅 `READ/LIST`、`ids:[],allIds:true`。
   它是 main 内排除 company 子树的允许域，不是全局 deny，company 正向项仍独立生效。
 - AI 使用独立 `TENANT/main` 的 `READ/EXECUTE`，不通过 namespace 补集授予。
 - 资源 audience 精确为当前 issuer 下 `/api/v1/main/mcp/default`；不登记外部应用，不采用通配 audience。
@@ -282,11 +324,10 @@ JVM，完成部署仓的真实 new-install 验收。
 
 ## 命名空间表达式与已有目录升级
 
-NAMESPACE grant 接受 `company` 或 `!company`，保留全部八个 DTO 字段。
-`descendants:false` 表示精确名称；true 表示自身及点分隔后代。`!company,false`
-仍允许 company.sub；`!company,true` 排除整棵 company 子树，但不排除 company2。
-拒绝裸 !、多重 !、通配符、空白和非法点分隔；不接受末尾点。TENANT grants 不接受表达式。
-补集没有默认动作。明确配置写动作的补集也仅授权其允许范围。
+NAMESPACE grant 的规范输入为 `company`、`company.*`、`!company` 或 `!company.*`，
+含义与迁移规则见上方“权限表达式规则”。新 JSON 输出不再含 descendants；旧目录的
+双字段输入在读取边界等价转换，混合 `.*` 与旧字段必须拒绝。TENANT grant 不接受表达式。
+补集没有默认动作；明确配置写动作的补集也仅授权其允许范围。
 
 列表先在每个有效 scope 内将 READ/LIST 相关域求交，再合并各 scope 的完整结果，
 最后与请求域求交。namespace 包含、排除与 IDs 始终绑定在同一项。查询上限为256项、

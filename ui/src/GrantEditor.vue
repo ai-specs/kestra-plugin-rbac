@@ -4,7 +4,7 @@ import KsButton from '@kestra-io/design-system/components/Basic/KsButton/KsButto
 import KsInput from '@kestra-io/design-system/components/Form/KsInput'
 import KsCheckbox from '@kestra-io/design-system/components/Form/KsCheckbox/KsCheckbox'
 import KsCheckboxGroup from '@kestra-io/design-system/components/Form/KsCheckbox/KsCheckboxGroup'
-import {grantActions, resources, newGrant, selectGrantResource, namespaceRange} from './application-group-model.js'
+import {grantActions, resources, newGrant, selectGrantResource, namespaceRange, namespaceExpression} from './application-group-model.js'
 defineProps({grants: {type: Array, required: true}, managementGrants: {type: Array, required: true}})
 const {t} = useI18n()
 </script>
@@ -12,11 +12,10 @@ const {t} = useI18n()
   <p class="message" data-test="namespace-limits">{{ t('namespaceLimits') }}</p>
   <section v-for="(grant, index) in grants" :key="index" class="grant">
     <p>{{ t('rangeType') }}: {{ grant.scope }} · main</p>
-    <label v-if="grant.scope === 'NAMESPACE'">{{ t('namespace') }}<KsInput v-model="grant.namespace" name="grant-namespace" required /></label>
+    <label v-if="grant.scope === 'NAMESPACE'">{{ t('namespace') }}<KsInput :model-value="namespaceExpression(grant)" name="grant-namespace" required @update:model-value="grant.namespace = $event; delete grant.descendants" /></label>
     <p v-if="grant.scope === 'NAMESPACE'" data-test="namespace-range">{{ namespaceRange(grant, t) }}</p>
     <small v-if="grant.scope === 'NAMESPACE'">{{ t('namespaceSyntax') }}</small>
     <p v-if="grant.namespace?.startsWith('!')" data-test="namespace-complement-help">{{ t('namespaceComplementHelp') }}</p>
-    <KsCheckbox v-if="grant.scope === 'NAMESPACE'" v-model="grant.descendants">{{ t('children') }}</KsCheckbox>
     <label>{{ t('resource') }}<KsSelect v-model="grant.resource" name="grant-resource" @update:model-value="selectGrantResource(grant)"><KsOption v-for="resource in resources" :key="resource" :value="resource" :label="resource" /></KsSelect></label>
     <fieldset><legend>{{ t('actions') }}</legend><KsCheckboxGroup v-model="grant.actions"><KsCheckbox v-for="action in grantActions(grant)" :key="action" :value="action">{{ action }}</KsCheckbox></KsCheckboxGroup></fieldset>
     <p v-if="grant.resource === 'METADATA'" class="message">{{ t('metadataRange') }}</p>

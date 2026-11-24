@@ -126,7 +126,7 @@
     "namespaceComplementTree": "允许 main 租户内除 {namespace} 及其子命名空间以外的命名空间",
     "namespaceComplementExact": "允许 main 租户内除 {namespace} 本身以外的命名空间；包含其子命名空间",
     "namespaceComplementHelp": "此项定义允许范围，不是全局拒绝规则。其他授权项可独立授予被排除范围。仅授予所选动作和资源 ID。",
-    "namespaceSyntax": "请输入命名空间或 !命名空间；是否包含子命名空间由选项决定，不得以点结尾。",
+    "namespaceSyntax": "请输入命名空间表达式：company、company.*、!company 或 !company.*。",
     "legacyBusinessDomain": "旧 BUSINESS_INSTANCE 管理域",
     "legacyBusinessWarning": "旧管理域：不再授予普通业务资源权限。",
     "legacyBusinessActions": "旧记录动作 {actions}（无数据授权作用）",

@@ -143,7 +143,7 @@ flowchart TD
 Flow 列表的 namespace 来自查询域，Execution 的归属由宿主解析，展开 subflow 使用目标
 Flow 的 owner namespace。前端传入 namespace 不构成可信归属证明。
 
-角色 grant 的作用域是精确的。namespace 子树只在明确声明 `descendants: true` 时匹配，
+角色 grant 的作用域是精确的。当前应用组 namespace 子树使用 `company.*` 表达（含自身及后代），
 相似前缀不匹配。具体资源 ID 必须显式列出或声明 `all-ids: true`；空 ID 集合授予零个 ID。
 
 多个角色分别贡献权限。READ 和 LIST 可以来自同一应用 scope 激活的不同权限项；不得跨应用 scope 拼接。每个
@@ -265,7 +265,8 @@ operation 转换为可审计的 RBAC 决策。
 ## 2026-11-18 命名空间补集修订（本轮源码，未发布）
 
 本节优先于历史角色示例。当前应用组运行时不从旧角色或首账号身份补授权。
-`!company` 配合descendants=true为main命名空间全集减company子树，false仅减精确名称。
+`!company.*` 为main命名空间全集减company子树，`!company` 仅减精确名称。
+统一语法见 README“权限表达式规则”；旧双字段仅在边界读取兼容，新输出使用单一表达式。
 使用正式NamespaceDomain V2，每项独立保留包含、排除和IDs；READ/LIST同scope求交后
 跨scope并集，再与请求域求交。不将补集展平为tenant或全局deny。
 BUSINESS_INSTANCE不再放行任何普通数据，未知SYSTEM拒绝。已有目录不自动补grant。

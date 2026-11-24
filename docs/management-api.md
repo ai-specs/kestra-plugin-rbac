@@ -127,10 +127,10 @@ Kestra读取/写入分别要求精确目标LOCAL_POLICY.READ/MANAGE；改变派�
 要求IDENTITY.MANAGE。外部权限使用IDENTITY.READ/MANAGE。enabled只影响真实执行，
 不影响支持集；停用与空grants不能授予资源或管理员动作。名称/描述不产生授权。
 
-资源 grant 使用 `scope/tenant/namespace/descendants/resource/actions/ids/allIds`，每项必须
-显式提供全部八个字段（包括空 ids 数组和 false 布尔值），不得省略 JSON creator 字段。
+资源 grant 使用 `scope/tenant/namespace/resource/actions/ids/allIds`，每项必须
+显式提供全部七个字段（包括空 ids 数组和 allIds 布尔值）。
 TENANT grant 用于 METADATA/MCP_SERVER/AI，tenant 必须为 main，namespace 必须显式
-写为 null，descendants 必须为 false；省略 namespace 或改为空字符串均返回 400。
+写为 null；省略 namespace 或改为空字符串均返回 400。旧 descendants=false 仅作为读取兼容输入。
 METADATA 仅允许 READ/LIST，必须 allIds=true、ids=[]；MCP_SERVER 允许
 READ/LIST/CREATE/UPDATE/DELETE，allIds=false 时 ids 必须非空。AI 仅允许 READ/EXECUTE
 的非空子集，要求 allIds=true、ids=[]，详见本文“AI permission grant”节。其他业务资源要求
@@ -139,14 +139,16 @@ NAMESPACE 和合法正向或补集 namespace 表达式，见下文。以下是�
 
 ```json
 [
-  {"scope":"TENANT","tenant":"main","namespace":null,"descendants":false,"resource":"METADATA","actions":["READ","LIST"],"ids":[],"allIds":true},
-  {"scope":"TENANT","tenant":"main","namespace":null,"descendants":false,"resource":"MCP_SERVER","actions":["READ"],"ids":["server-a"],"allIds":false}
+  {"scope":"TENANT","tenant":"main","namespace":null,"resource":"METADATA","actions":["READ","LIST"],"ids":[],"allIds":true},
+  {"scope":"TENANT","tenant":"main","namespace":null,"resource":"MCP_SERVER","actions":["READ"],"ids":["server-a"],"allIds":false}
 ]
 ```
 
-NAMESPACE 的规范补集输入为 `namespace:"!company",descendants:true`，表示 main 内
-除 company 及其子空间之外的允许域；false 仅排除 company 自身。末尾点、裸 !、多重 !、
-通配符及非法点分隔拒绝。补集与正向 grant 使用同一动作与 ID 规则，不是全局 deny。
+NAMESPACE 规范输入为 `company`、`company.*`、`!company` 或 `!company.*`。
+`.*` 含自身及所有后代；`!company.*` 表示 main 内除 company 子树之外的允许域，
+`!company` 仅排除 company 自身。旧双字段读取等价转换，新输出不含descendants；
+混合 `.*` 与旧字段拒绝。末尾孤立点、裸 !、多重 !、非法通配符及非法点分隔拒绝。
+完整规则见 README“权限表达式规则”。补集与正向 grant 使用同一动作与 ID 规则，不是全局 deny。
 TENANT METADATA/MCP_SERVER/AI 不接受 namespace 表达式。列表同scope READ/LIST求交后
 跨scope求并，相关namespace与IDs不展平。固定V2查询上限256项、每项包含/排除各128、
 IDs256、交集配对4096；已有1000 grants目录仍可读，超限评估整体拒绝，不截断。
@@ -320,7 +322,7 @@ subject 慢读的同时交错，也不代替生产组合及浏览器验收。
 现有 permission CRUD 接受以下新增形状，不增加接口或存储模型：
 
 ```json
-{"scope":"TENANT","tenant":"main","namespace":null,"descendants":false,"resource":"AI","actions":["READ","EXECUTE"],"ids":[],"allIds":true}
+{"scope":"TENANT","tenant":"main","namespace":null,"resource":"AI","actions":["READ","EXECUTE"],"ids":[],"allIds":true}
 ```
 
 动作可以仅 READ 或仅 EXECUTE，不支持 LIST 或其他动作。非 main 租户、命名空间、

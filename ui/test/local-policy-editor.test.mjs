@@ -31,7 +31,7 @@ test('T9: local policy name edit preserves typed content and scope associations 
   const input = permissionInput(draft, 'kestra-policy', permissionScopeKeys(draft.scopeKeys, [], false))
   const typed = typedGrantsInput(input)
   assert.deepEqual(input.scopeKeys, original.scopeKeys)
-  assert.deepEqual(typed.grants, original.grants)
+  assert.deepEqual(typed.grants, original.grants.map(({descendants,...grant})=>grant))
   assert.deepEqual(typed.managementGrants, original.managementGrants)
   assert.equal(original.name, 'Original')
   for (const keys of [['INVALID'], ['same', 'same'], [''], [null]]) assert.throws(() => permissionScopeKeys(keys, [], false), /invalid_scope/)

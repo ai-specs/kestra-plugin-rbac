@@ -9,6 +9,31 @@ import java.util.*;
 import java.net.URI;
 
 public final class ApplicationGroupPolicyParser {
+    public boolean isCanonicalStoredJson(ApplicationGroupPolicy policy, String json) {
+        String canonical = canonicalJson(policy);
+        if (canonical.equals(json)) return true;
+        try {
+            JsonNode legacy = mapper.readTree(canonical);
+            for (JsonNode group : legacy.get("applicationGroups")) {
+                for (JsonNode scope : group.get("scopes")) {
+                    for (JsonNode grant : scope.get("grants")) {
+                        var node = (com.fasterxml.jackson.databind.node.ObjectNode) grant;
+                        boolean descendants = false;
+                        if (!node.get("namespace").isNull()) {
+                            var expression = NamespaceExpression.parse(node.get("namespace").textValue());
+                            node.put("namespace", expression.namespace());
+                            descendants = expression.descendants();
+                        }
+                        node.put("descendants", descendants);
+                    }
+                }
+            }
+            return mapper.writeValueAsString(normalize(legacy)).equals(json);
+        } catch (java.io.IOException failure) {
+            throw new IllegalArgumentException("Invalid stored policy", failure);
+        }
+    }
+
     public String canonicalJson(ApplicationGroupPolicy policy) {
         try {
             JsonNode tree = mapper.valueToTree(policy);
@@ -76,10 +101,7 @@ public final class ApplicationGroupPolicyParser {
         List<ApplicationGroupPolicy.Grant> grants = new ArrayList<>();
         if (!node.path("grants").isArray() || node.get("grants").size() > 1000) throw new IllegalArgumentException("grants must be non-empty");
         for (JsonNode grant : node.get("grants")) {
-            fields(grant, Set.of("scope", "tenant", "namespace", "descendants", "resource", "actions", "ids", "allIds"));
-            grants.add(new ApplicationGroupPolicy.Grant(text(grant, "scope"), text(grant, "tenant"),
-                nullableText(grant, "namespace"), flag(grant, "descendants"), text(grant, "resource"),
-                strings(grant.get("actions")), strings(grant.get("ids"), true), flag(grant, "allIds")));
+            grants.add(parseGrant(grant));
         }
         List<ApplicationGroupPolicy.ManagementGrant> management = new ArrayList<>();
         if (node.has("managementGrants")) {
@@ -96,6 +118,23 @@ public final class ApplicationGroupPolicyParser {
         }
         return new ApplicationGroupPolicy.ScopeDefinition(node.get("description").textValue(), flag(node,"enabled"), grants, management);
     }
+    public static ApplicationGroupPolicy.Grant parseGrant(JsonNode grant) {
+        fields(grant, Set.of("scope", "tenant", "namespace", "descendants", "resource", "actions", "ids", "allIds"));
+        String scope = text(grant, "scope");
+        String namespace = nullableText(grant, "namespace");
+        Boolean legacy = grant.has("descendants") ? flag(grant, "descendants") : null;
+        boolean descendants = false;
+        if ("NAMESPACE".equals(scope)) {
+            var expression = NamespaceExpression.read(namespace, legacy);
+            namespace = expression.namespace();
+            descendants = expression.descendants();
+        } else if (namespace != null || Boolean.TRUE.equals(legacy)) {
+            throw new IllegalArgumentException("Only NAMESPACE accepts namespace expressions");
+        }
+        return new ApplicationGroupPolicy.Grant(scope, text(grant, "tenant"), namespace, descendants,
+            text(grant, "resource"), strings(grant.get("actions")), strings(grant.get("ids"), true), flag(grant, "allIds"));
+    }
+
     private static String name(String value) {
         if (value == null || !value.matches("[A-Za-z0-9][A-Za-z0-9_-]{0,127}")) {
             throw new IllegalArgumentException("Invalid application group identifier");

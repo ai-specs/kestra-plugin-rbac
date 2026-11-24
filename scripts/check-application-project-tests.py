@@ -9,7 +9,7 @@ REQUIRED['io.kestra.extensions.rbac.applicationgroup.ScopeCatalogTest'] = 6
 REQUIRED['io.kestra.extensions.rbac.management.ManagementControllerTest'] = 29
 del REQUIRED['io.kestra.extensions.rbac.management.PublishedApplicationDirectoryAccessTest']
 REQUIRED['io.kestra.extensions.rbac.management.ApplicationGroupDirectoryManagementTest'] = 8
-REQUIRED['io.kestra.extensions.rbac.store.ApplicationGroupStorageTest'] = 1
+REQUIRED['io.kestra.extensions.rbac.store.ApplicationGroupStorageTest'] = 2
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectoryModelTest'] = 4
 REQUIRED['io.kestra.extensions.rbac.store.ApplicationGroupDirectoryStoreTest'] = 17
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationGroupInstallationPlanTest'] = 8
@@ -21,7 +21,8 @@ REQUIRED['io.kestra.extensions.rbac.declaration.ApplicationScopeDeclarationContr
 REQUIRED['io.kestra.extensions.rbac.store.ApplicationScopeDeclarationCommandTest'] = 2
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationGroupDirectoryServiceTest'] = 13
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionTest'] = 5
-REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionControllerTest'] = 11
+REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionControllerTest'] = 12
+REQUIRED['io.kestra.extensions.rbac.applicationgroup.NamespaceExpressionTest'] = 6
 REQUIRED['io.kestra.extensions.rbac.management.ApplicationPermissionRouteTest'] = 1
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionUpgradeTest'] = 9
 REQUIRED['io.kestra.extensions.rbac.management.AccountGrantCleanupTest'] = 6
@@ -54,7 +55,7 @@ for suite, expected in named.items():
     assert {case.get('name','').removesuffix('()') for case in root.findall('testcase')}==expected, suite+' named cases differ'
 for suite, expected in {
  'io.kestra.extensions.rbac.RuntimePoliciesTest': {'unknownMixedScopeAndWrongEpochDeny', 'initialAdministratorAndSecondAccountUseOnlyExplicitRuntimeDataGrants', 'legacyBusinessDomainNeverGrantsAnyOrdinaryResourceOrSystem', 'businessManagementUsesExplicitActionsAndNeverExtensionOrIdentity', 'typedTenantMetadataAndMcpListsHaveRealAllowPaths', 'explicitManagementTargetCanPrecedeItsLocalBinding', 'splitManagementOnlyTargetsActivateExtensionAndCapabilitiesWithoutCombiningAuthorization', 'correlatedListDoesNotProduceCartesianProductOrCrossScopeReadList', 'extensionActivationIsExactAndDoesNotTurnReadIntoManage', 'allAudiencesMustBeLocallyAccepted', 'pinnedEvaluationExpiresWithinAcceptedRevocationBound', 'applicationPolicyDoesNotStoreDirectoryRevision', 'v2PinsOneSnapshotAndClosesIt'},
- 'io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionControllerTest': {'createUpdateDeleteUseObjectRevisionAndReceiptWithoutPolicyDisclosure', 'strictInputsMissingRevisionAndUndefinedScopeHaveNoSideEffects', 'deniedAndInvalidAiMutationsLeaveAllPersistedRbacRowsUnchanged', 'permissionPagesSortByStableKeyBeforeSlicingUnorderedStorage', 'signedNamespaceGrantsRoundTripRejectInvalidAndObserveExplicitRevocation', 'identityOnlyCannotAccessKestraPolicyAndLastAdminMutationRollsBack', 'metadataChangesKeepTrustedIdentityUsableAndConsentUsesUnifiedEntities', 'legalMutationMetadataKeyKeepsReadManageSeparationThroughCreateUpdateAndDelete', 'aiTenantCreateFindUpdateDeletePersistAndNewEvaluationsObserveRevocation', 'policyOnlyWriterCannotChangeSupportButCanChangeGrantsAndCannotRead', 'legacyAiGrantSurvivesPublicControllerMetadataEditWithoutTenantPromotion'},
+ 'io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionControllerTest': {'namespaceExpressionsPersistAndManagementResponsesRoundTripWithoutLegacyFlags', 'createUpdateDeleteUseObjectRevisionAndReceiptWithoutPolicyDisclosure', 'strictInputsMissingRevisionAndUndefinedScopeHaveNoSideEffects', 'deniedAndInvalidAiMutationsLeaveAllPersistedRbacRowsUnchanged', 'permissionPagesSortByStableKeyBeforeSlicingUnorderedStorage', 'signedNamespaceGrantsRoundTripRejectInvalidAndObserveExplicitRevocation', 'identityOnlyCannotAccessKestraPolicyAndLastAdminMutationRollsBack', 'metadataChangesKeepTrustedIdentityUsableAndConsentUsesUnifiedEntities', 'legalMutationMetadataKeyKeepsReadManageSeparationThroughCreateUpdateAndDelete', 'aiTenantCreateFindUpdateDeletePersistAndNewEvaluationsObserveRevocation', 'policyOnlyWriterCannotChangeSupportButCanChangeGrantsAndCannotRead', 'legacyAiGrantSurvivesPublicControllerMetadataEditWithoutTenantPromotion'},
 }.items():
     root=ET.parse(results/('TEST-'+suite+'.xml')).getroot()
     assert expected == {case.get('name','').removesuffix('()') for case in root.findall('testcase')}, suite+' named cases differ'

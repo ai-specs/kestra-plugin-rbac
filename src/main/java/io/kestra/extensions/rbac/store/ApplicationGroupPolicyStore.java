@@ -136,8 +136,8 @@ public final class ApplicationGroupPolicyStore {
             try(var result=statement.executeQuery()) {
                 if(!result.next())throw new IllegalStateException("Missing schema 2 snapshot");
                 String json=result.getString(4);ApplicationGroupPolicy policy=parser.parse(json.getBytes(StandardCharsets.UTF_8));
-                if(!parser.canonicalJson(policy).equals(json))throw new IllegalStateException("Corrupt project policy snapshot");
-                return new Snapshot(revision,result.getLong(1),result.getString(2),result.getTimestamp(3).toInstant(),policy,json);
+                if(!parser.isCanonicalStoredJson(policy,json))throw new IllegalStateException("Corrupt project policy snapshot");
+                return new Snapshot(revision,result.getLong(1),result.getString(2),result.getTimestamp(3).toInstant(),policy,parser.canonicalJson(policy));
             }
         }
     }

@@ -2,14 +2,15 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {compareKeys, supportedScopes, involvedApplications, permissionSummary, permissionSummaryEntries, compactPermissionGrants, matchesChips, readListQuery, writeListQuery, paginate, selectionAfterDelete, countValue, permissionInput, detailTabs, collectPermissions, nativeChips, normalizeDeepLinkQuery, normalizeDeepLinkLocation} from '../src/access-control-model.js'
 
-test('permission ranges preserve exact expression and child flag; explanation is separate', () => {
+test('permission ranges render one namespace expression; explanation is separate', () => {
   for (const namespace of ['company', '!company']) for (const descendants of [false, true]) {
     const permission = {implementationKind:'kestra-policy',grants:[{scope:'NAMESPACE',tenant:'main',namespace,descendants,resource:'FLOW',actions:['READ','LIST'],allIds:false,ids:['a']}]}
     const before = JSON.stringify(permission)
     const translate = (key, args) => `${key}: ${args.namespace}`
     const [entry] = permissionSummaryEntries(permission, translate)
-    assert.equal(entry.text, `main · ${namespace} · descendants=${descendants} · FLOW · READ / LIST · a`)
-    assert.equal(entry.range, `${namespace} · descendants=${descendants}`)
+    const expression = `${namespace}${descendants ? '.*' : ''}`
+    assert.equal(entry.text, `main · ${expression} · FLOW · READ / LIST · a`)
+    assert.equal(entry.range, expression)
     assert.equal(entry.explanation, namespace.startsWith('!') ? `namespaceComplement${descendants ? 'Tree' : 'Exact'}: company` : undefined)
     assert.deepEqual(permissionSummary(permission, translate), [entry.text])
     assert.equal(JSON.stringify(permission), before)
@@ -129,4 +130,13 @@ test('N12/N15/T4: native decoded parameters keep AND semantics, scope arrays use
   assert.equal(matchesChips(item,nativeChips(parsed,'permissions')),true)
   assert.equal(matchesChips(item,nativeChips([...parsed,{field:'key',operation:'EQUALS',value:'other'}],'permissions')),false)
   for(const change of [{topLogical:'OR'},{wrapperLogical:'OR'},{operation:'UNKNOWN'},{field:'unknown'}]) assert.throws(()=>nativeChips([{...parsed[0],...change}],'permissions'),/invalid_query/)
+})
+
+test('canonical and legacy equivalent ranges compact without changing source grants', () => {
+  const base={scope:'NAMESPACE',tenant:'main',resource:'FLOW',actions:['READ'],ids:[],allIds:true}
+  const grants=[{...base,namespace:'company',descendants:true},{...base,namespace:'company.*',resource:'KVSTORE'}]
+  const before=JSON.stringify(grants)
+  const [entry]=permissionSummaryEntries({implementationKind:'kestra-policy',grants})
+  assert.equal(entry.text,'main · company.* · FLOW / KVSTORE · READ · *')
+  assert.equal(JSON.stringify(grants),before)
 })

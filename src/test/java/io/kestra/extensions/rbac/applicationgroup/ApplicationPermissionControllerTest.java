@@ -87,6 +87,36 @@ class ApplicationPermissionControllerTest {
         return evaluation.authorize(operation).toCompletableFuture().join().allowed();
     }
 
+    @Test void namespaceExpressionsPersistAndManagementResponsesRoundTripWithoutLegacyFlags() throws Exception {
+        var setup=setup(ALL); var controller=setup.controller();
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        String template="[{\"scope\":\"NAMESPACE\",\"tenant\":\"main\",\"namespace\":\"%s\",\"resource\":\"FLOW\",\"actions\":[\"READ\",\"LIST\"],\"ids\":[],\"allIds\":true}]";
+        int revision=1;
+        for(String expression:List.of("company","company.*","!company","!company.*")) {
+            String key="expression-"+revision;
+            assertEquals(200,controller.create("main","group",CLIENT,ACTOR,"\""+revision+"\"",json(key,"[\"reader\"]",template.formatted(expression),"")).code());
+            var found=controller.find("main","group",CLIENT,key,ACTOR);
+            assertEquals(200,found.code());
+            var tree=mapper.valueToTree(found.body());
+            assertEquals(expression,tree.path("grants").get(0).path("namespace").asText());
+            assertFalse(tree.path("grants").get(0).has("descendants"));
+            String output=mapper.writeValueAsString(tree.path("grants"));
+            assertEquals(200,controller.update("main","group",CLIENT,key,ACTOR,"\"1\"",json(key,"[\"reader\"]",output,",\"enabled\":true")).code());
+            assertEquals(NamespaceExpression.parse(expression).namespace(),persistedPermission(setup,key).grants().getFirst().namespace());
+            assertEquals(NamespaceExpression.parse(expression).descendants(),persistedPermission(setup,key).grants().getFirst().descendants());
+            var before=storedRows(setup);
+            if(expression.endsWith(".*")) for(boolean flag:List.of(false,true)) {
+                String conflict=output.replace("\"scope\"", "\"descendants\":"+flag+",\"scope\"");
+                assertEquals(400,controller.update("main","group",CLIENT,key,ACTOR,"\"2\"",json(key,"[\"reader\"]",conflict,",\"enabled\":true")).code());
+                assertEquals(before,storedRows(setup));
+            }
+            revision+=2;
+        }
+        try(var connection=setup.fixture().source.getConnection();var statement=connection.createStatement();var rows=statement.executeQuery("SELECT document_json FROM rbac_application_group_state")) {
+            while(rows.next())assertFalse(rows.getString(1).contains("descendants"));
+        }
+    }
+
     @Test void signedNamespaceGrantsRoundTripRejectInvalidAndObserveExplicitRevocation()throws Exception {
         var setup=setup(ALL);var controller=setup.controller();
         String grants="[{\"scope\":\"NAMESPACE\",\"tenant\":\"main\",\"namespace\":\"!company\",\"descendants\":true,\"resource\":\"FLOW\",\"actions\":[\"READ\",\"LIST\"],\"ids\":[\"a\"],\"allIds\":false},{\"scope\":\"NAMESPACE\",\"tenant\":\"main\",\"namespace\":\"company\",\"descendants\":true,\"resource\":\"FLOW\",\"actions\":[\"READ\",\"LIST\"],\"ids\":[\"b\"],\"allIds\":false}]";

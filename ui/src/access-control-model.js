@@ -1,4 +1,4 @@
-import {namespaceRange} from './application-group-model.js'
+import {namespaceRange, namespaceExpression} from './application-group-model.js'
 export const pageSizes = Object.freeze([10, 25, 50, 100])
 export const detailTabs = Object.freeze(['overview', 'scopes', 'applications', 'scope-grants'])
 export const compareKeys = (a, b) => {
@@ -26,7 +26,7 @@ export function compactPermissionGrants(grants) {
     for (const dimension of ['ids', 'actions', 'resources']) {
       const groups = new Map()
       for (const row of rows) {
-        const key = JSON.stringify([row.scope, row.tenant, row.namespace ?? null, row.descendants === true,
+        const key = JSON.stringify([row.scope, row.tenant, row.scope === 'NAMESPACE' ? namespaceExpression(row) : null,
           dimension === 'resources' ? null : signature(row.resources),
           dimension === 'actions' ? null : signature(row.actions),
           dimension === 'ids' ? null : row.allIds ? '*' : signature(row.ids)])
@@ -47,7 +47,7 @@ export function permissionSummaryEntries(permission, t) {
   if (permission.implementationKind !== 'kestra-policy') return []
   return [
     ...compactPermissionGrants(permission.grants ?? []).map(grant => {
-      const range = grant.scope === 'NAMESPACE' ? `${grant.namespace} · descendants=${grant.descendants === true}` : undefined
+      const range = grant.scope === 'NAMESPACE' ? namespaceExpression(grant) : undefined
       const suffix = [grant.resources.join(' / '), grant.actions.join(' / '), grant.allIds ? '*' : grant.ids.join(', ')].join(' · ')
       return {text: [grant.tenant, range, suffix].filter(Boolean).join(' · '), tenant: grant.tenant, range, suffix,
         explanation: range && grant.namespace.startsWith('!') && t ? namespaceRange(grant, t) : undefined}

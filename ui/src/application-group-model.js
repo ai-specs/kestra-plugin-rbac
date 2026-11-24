@@ -3,6 +3,11 @@ export const actions = ['READ', 'LIST', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE',
 export const splitLines = value => Array.isArray(value) ? [...value] : String(value ?? '').split(/\r?\n/).map(item => item.trim()).filter(Boolean)
 export const copy = value => JSON.parse(JSON.stringify(value))
 export const newGrant = () => ({scope: 'NAMESPACE', tenant: 'main', namespace: '', descendants: false, resource: 'FLOW', actions: [], ids: [], allIds: true})
+export function namespaceExpression(grant) {
+  if (grant.scope !== 'NAMESPACE') return grant.tenant
+  if (grant.namespace?.endsWith('.*')) return grant.namespace
+  return `${grant.namespace}${grant.descendants ? '.*' : ''}`
+}
 import {withinTextLimit, textLimits} from './text-limits.js'
 export function groupScopeInput(value) {
   if (typeof value.key !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(value.key)
@@ -14,19 +19,20 @@ export function typedGrantsInput(value) {
   if (!Array.isArray(value.grants)) throw Object.assign(new Error('invalid_grant'), {code:'invalid_grant',status:400})
   return {description: value.description, enabled: value.enabled, managementGrants: (value.managementGrants ?? []).map(managementGrantInput), grants: value.grants.map(item => {
     const invalid = () => {throw Object.assign(new Error('invalid_grant'), {code:'invalid_grant',status:400})}
-    if (!resources.includes(item.resource) || !Array.isArray(item.actions) || !item.actions.length || item.actions.some(action => !actions.includes(action)) || new Set(item.actions).size !== item.actions.length || typeof item.allIds !== 'boolean' || typeof item.descendants !== 'boolean' || !item.allIds && !splitLines(item.ids).length) invalid()
+    if (!resources.includes(item.resource) || !Array.isArray(item.actions) || !item.actions.length || item.actions.some(action => !actions.includes(action)) || new Set(item.actions).size !== item.actions.length || typeof item.allIds !== 'boolean' || item.descendants !== undefined && typeof item.descendants !== 'boolean' || !item.allIds && !splitLines(item.ids).length) invalid()
     if (item.resource === 'AI' && item.scope === 'TENANT') {
       if (item.tenant !== 'main' || (item.namespace !== undefined && item.namespace !== null) || item.descendants || !item.allIds || splitLines(item.ids).length || item.actions.some(action => !['READ','EXECUTE'].includes(action))) invalid()
-      return {scope:'TENANT',tenant:'main',namespace:null,descendants:false,resource:'AI',actions:[...item.actions],ids:[],allIds:true}
+      return {scope:'TENANT',tenant:'main',namespace:null,resource:'AI',actions:[...item.actions],ids:[],allIds:true}
     }
     if (item.resource === 'MCP_SERVER') {
       if (item.scope !== 'TENANT' || item.tenant !== 'main' || (item.namespace !== undefined && item.namespace !== null) || item.descendants || item.actions.some(action => !['READ', 'LIST', 'CREATE', 'UPDATE', 'DELETE'].includes(action))) throw Object.assign(new Error('invalid_grant'), {code:'invalid_grant',status:400})
-      return {scope:'TENANT',tenant:'main',namespace:null,descendants:false,resource:'MCP_SERVER',actions:[...item.actions],allIds:item.allIds,ids:item.allIds?[]:splitLines(item.ids)}
+      return {scope:'TENANT',tenant:'main',namespace:null,resource:'MCP_SERVER',actions:[...item.actions],allIds:item.allIds,ids:item.allIds?[]:splitLines(item.ids)}
     }
     if (item.resource === 'METADATA' && (item.scope !== 'TENANT' || item.tenant !== 'main' || (item.namespace !== undefined && item.namespace !== null) || item.descendants || !item.allIds || splitLines(item.ids).length || item.actions.some(action => !['READ','LIST'].includes(action)))) invalid()
-    if (item.resource === 'METADATA') return {scope: 'TENANT', tenant: 'main', namespace: null, descendants: false, resource: 'METADATA', actions: item.actions.filter(action => ['READ', 'LIST'].includes(action)), ids: [], allIds: true}
-    if (item.scope !== 'NAMESPACE' || item.tenant !== 'main' || typeof item.namespace !== 'string' || !/^!?[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/.test(item.namespace)) throw Object.assign(new Error('invalid_grant'), {code: 'invalid_grant', status: 400})
-    return {scope: 'NAMESPACE', tenant: 'main', namespace: item.namespace, descendants: item.descendants, resource: item.resource, actions: [...item.actions], allIds: item.allIds, ids: item.allIds ? [] : splitLines(item.ids)}
+    if (item.resource === 'METADATA') return {scope: 'TENANT', tenant: 'main', namespace: null, resource: 'METADATA', actions: item.actions.filter(action => ['READ', 'LIST'].includes(action)), ids: [], allIds: true}
+    if (item.scope !== 'NAMESPACE' || item.tenant !== 'main' || typeof item.namespace !== 'string' || !/^!?[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*(?:\.\*)?$/.test(item.namespace)) invalid()
+    if (item.namespace.endsWith('.*') && Object.hasOwn(item, 'descendants')) invalid()
+    return {scope: 'NAMESPACE', tenant: 'main', namespace: namespaceExpression(item), resource: item.resource, actions: [...item.actions], allIds: item.allIds, ids: item.allIds ? [] : splitLines(item.ids)}
   })}
 }
 export function selectGrantResource(grant) {
@@ -107,8 +113,9 @@ export function managementGrantInput(value) {
 
 export function namespaceRange(grant, t) {
   if (grant.scope !== 'NAMESPACE') return grant.tenant
-  const complement = grant.namespace?.startsWith('!')
-  const namespace = complement ? grant.namespace.slice(1) : grant.namespace
-  return t(complement ? grant.descendants ? 'namespaceComplementTree' : 'namespaceComplementExact'
-    : grant.descendants ? 'namespaceIncludeTree' : 'namespaceIncludeExact', {namespace})
+  const expression = namespaceExpression(grant)
+  const complement = expression.startsWith('!')
+  const namespace = complement ? expression.slice(1) : expression
+  const tree = expression.endsWith('.*')
+  return t(complement ? tree ? 'namespaceComplementTree' : 'namespaceComplementExact' : tree ? 'namespaceIncludeTree' : 'namespaceIncludeExact', {namespace: tree ? namespace.slice(0, -2) : namespace})
 }

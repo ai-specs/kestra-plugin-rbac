@@ -42,12 +42,19 @@ public record ApplicationGroupPolicy(int schemaVersion, Map<String, ApplicationG
         }
     }
     public enum Resource { FLOW, EXECUTION, TRIGGER, NAMESPACE, KVSTORE, SECRET, NAMESPACE_FILE, LOG, METRIC, DASHBOARD, BLUEPRINT, MCP_SERVER, AI, METADATA }
+    @com.fasterxml.jackson.databind.annotation.JsonSerialize(using = GrantJson.Serializer.class)
+    @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using = GrantJson.Deserializer.class)
     public record Grant(String scope, String tenant, String namespace, boolean descendants, String resource, Set<String> actions, Set<String> ids, boolean allIds) {
         public Grant {
             if (scope == null || tenant == null || resource == null || actions == null || actions.isEmpty() || ids == null || allIds && !ids.isEmpty()) throw new IllegalArgumentException("Invalid complete grant");
             actions = Set.copyOf(actions);
             ids = Set.copyOf(ids);
             for (String id : ids) if (id.isBlank() || !id.equals(id.trim()) || id.chars().anyMatch(Character::isISOControl)) throw new IllegalArgumentException("Invalid resource ID");
+            if (namespace != null && scope.equals("NAMESPACE")) {
+                var parsed = NamespaceExpression.read(namespace, descendants);
+                namespace = parsed.namespace();
+                descendants = parsed.descendants();
+            }
             Resource.valueOf(resource);
             if (resource.equals("METADATA")) {
                 if (!scope.equals("TENANT") || !tenant.equals("main") || namespace != null || descendants
@@ -61,8 +68,7 @@ public record ApplicationGroupPolicy(int schemaVersion, Map<String, ApplicationG
                 if (!tenant.equals("main") || namespace != null || descendants || !ids.isEmpty() || !allIds
                     || !Set.of("READ", "EXECUTE").containsAll(actions))
                     throw new IllegalArgumentException("AI requires an explicit main tenant READ/EXECUTE grant");
-            } else if (!scope.equals("NAMESPACE") || !tenant.equals("main") || namespace == null
-                || !namespace.matches("!?[A-Za-z0-9_-]+(?:[.][A-Za-z0-9_-]+)*")) {
+            } else if (!scope.equals("NAMESPACE") || !tenant.equals("main") || namespace == null) {
                 throw new IllegalArgumentException("Business grants require a main namespace expression");
             }
             actions.forEach(action -> io.kestra.webserver.rbac.RbacAuthorizer.Action.valueOf(action));

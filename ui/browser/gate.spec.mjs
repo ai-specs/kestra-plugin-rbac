@@ -123,7 +123,7 @@ for(const row of cases)test(row.id,async({page,context},info)=>{
       await boot(page,row,{path:paths.permission,namespaceGrant:behavior==='namespace-legacy-domain'?'legacy':'signed'})
       await by(page,'permission-edit').first().click();const d=drawer(page,'permission');await expect(d).toBeVisible()
       const input=d.locator('[name=grant-namespace]'),range=d.locator('[data-test=namespace-range]')
-      await expect(input).toHaveValue('!company');await expect(range).toHaveText((await text(page,'namespaceComplementTree')).replace('{namespace}','company'))
+      await expect(input).toHaveValue('!company.*');await expect(range).toHaveText((await text(page,'namespaceComplementTree')).replace('{namespace}','company'))
       await expect(d.locator('[data-test=namespace-complement-help]')).toHaveText(await text(page,'namespaceComplementHelp'))
       if(behavior==='namespace-legacy-domain') {
         await expect(d.locator('[data-test=legacy-business-warning]')).toHaveText(await text(page,'legacyBusinessWarning'))
@@ -134,30 +134,29 @@ for(const row of cases)test(row.id,async({page,context},info)=>{
         expect(await page.evaluate(()=>window.fixture.requests.filter(r=>r.method!=='GET').length)).toBe(0)
         await input.fill('!company')
       } else {
-        const children=d.locator('.kel-checkbox').filter({hasText:await text(page,'children')});await children.click()
-        await expect(range).toHaveText((await text(page,'namespaceComplementExact')).replace('{namespace}','company'))
+        await input.fill('!company');await expect(range).toHaveText((await text(page,'namespaceComplementExact')).replace('{namespace}','company'))
         await input.fill('company');await expect(range).toHaveText((await text(page,'namespaceIncludeExact')).replace('{namespace}','company'))
-        await children.click();await expect(range).toHaveText((await text(page,'namespaceIncludeTree')).replace('{namespace}','company'))
+        await input.fill('company.*');await expect(range).toHaveText((await text(page,'namespaceIncludeTree')).replace('{namespace}','company'))
         await input.fill('!company')
       }
       await d.locator('[data-test=drawer-save]').click();await expect(d).toBeHidden()
       const body=await page.evaluate(()=>JSON.parse(window.fixture.requests.find(r=>r.method==='PUT'&&r.route.endsWith('/permissions/read')).body))
-      expect(body.grants[0].namespace).toBe('!company');expect(body.grants[0].actions).toEqual(['READ','LIST']);expect(body.grants[0].ids).toEqual(['a'])
+      expect(body.grants[0].namespace).toBe(behavior==='namespace-legacy-domain'?'!company.*':'!company');expect(body.grants[0]).not.toHaveProperty('descendants');expect(body.grants[0].actions).toEqual(['READ','LIST']);expect(body.grants[0].ids).toEqual(['a'])
       if(behavior==='namespace-legacy-domain')expect(body.managementGrants[0].domain).toBe('BUSINESS_INSTANCE')
-      await by(page,'permission-edit').first().click();await expect(drawer(page,'permission').locator('[name=grant-namespace]')).toHaveValue('!company')
+      await by(page,'permission-edit').first().click();await expect(drawer(page,'permission').locator('[name=grant-namespace]')).toHaveValue(behavior==='namespace-legacy-domain'?'!company.*':'!company')
       await expect.poll(async()=>{const box=await drawer(page,'permission').boundingBox();return box?box.x+box.width:Infinity}).toBeLessThanOrEqual(row.width+1)
       await geometry(drawer(page,'permission'),row.width)
     }else if(behavior==='ai-legacy-native-preserve'){
       await boot(page,row,{path:paths.permission,aiGrant:'legacy'})
       await by(page,'permission-edit').first().click()
       const d=drawer(page,'permission');await expect(d).toBeVisible()
-      await expect(d.locator('[name=grant-namespace]')).toHaveValue('company')
+      await expect(d.locator('[name=grant-namespace]')).toHaveValue('company.*')
       await expect(d).toContainText(await text(page,'aiLegacyRange'))
       await d.locator('[name=permission-name]').fill('Legacy AI preserved')
       await d.locator('[data-test=drawer-save]').click()
       await expect.poll(()=>page.evaluate(()=>window.fixture.requests.filter(item=>item.method==='PUT'&&item.route.endsWith('/permissions/read')).length)).toBe(1)
       const body=await page.evaluate(()=>window.fixture.requests.find(item=>item.method==='PUT'&&item.route.endsWith('/permissions/read')).body)
-      expect(JSON.parse(body).grants).toEqual([{scope:'NAMESPACE',tenant:'main',namespace:'company',descendants:true,resource:'AI',actions:['READ','LIST','UPDATE','EXECUTE'],ids:['old'],allIds:false}])
+      expect(JSON.parse(body).grants).toEqual([{scope:'NAMESPACE',tenant:'main',namespace:'company.*',resource:'AI',actions:['READ','LIST','UPDATE','EXECUTE'],ids:['old'],allIds:false}])
     }else if(behavior==='ai-tenant-native-edit'){
       await boot(page,row,{path:paths.permission,aiGrant:'true'})
       await openDrawer(page,'permission');const d=drawer(page,'permission')
@@ -210,7 +209,7 @@ for(const row of cases)test(row.id,async({page,context},info)=>{
       await d.locator('[data-test=drawer-save]').click()
       await expect.poll(()=>page.evaluate(()=>window.fixture.requests.filter(item=>item.method==='POST'&&item.route.endsWith('/permissions')).length)).toBe(1)
       const body=await page.evaluate(()=>window.fixture.requests.find(item=>item.method==='POST'&&item.route.endsWith('/permissions')).body)
-      expect(JSON.parse(body).grants).toEqual([{scope:'TENANT',tenant:'main',namespace:null,descendants:false,resource:'AI',actions:['READ','EXECUTE'],ids:[],allIds:true}])
+      expect(JSON.parse(body).grants).toEqual([{scope:'TENANT',tenant:'main',namespace:null,resource:'AI',actions:['READ','EXECUTE'],ids:[],allIds:true}])
     }else if(match){
       const [,kind,action]=match;await boot(page,row,{path:paths[kind]});
       if(action==='draft-backdrop-history'){await page.evaluate(()=>window.fixture.navigate('application-groups/team'));await expect(by(page,'group-detail')).toBeVisible();await page.evaluate(path=>window.fixture.navigate(path),paths[kind]);await expect(by(page,'group-detail')).toBeHidden();await expect(by(page,'access-control-root')).toHaveAttribute('aria-busy','false')}
@@ -268,7 +267,7 @@ for(const row of cases)test(row.id,async({page,context},info)=>{
       expect(await root(page).locator('.table-wrap').last().evaluate(node=>node.scrollWidth>=node.clientWidth)).toBe(true)
       await boot(page,row,{path:paths.permission,namespaceGrant:'summary'})
       const expression=by(page,'permission-range-expression'),detail=root(page).locator('.rbac-permission-summary')
-      await expect(detail).toHaveText('main · !company · descendants=true · FLOW / KVSTORE · READ / LIST · a, b')
+      await expect(detail).toHaveText('main · !company.* · FLOW / KVSTORE · READ / LIST · a, b')
       const explanation=(await text(page,'namespaceComplementTree')).replace('{namespace}','company')
       const tooltip=root(page).getByRole('tooltip')
       await page.mouse.move(5, 5)

@@ -11,7 +11,7 @@ assert int(service.get('tests','0'))==13 and all(int(service.get(key,'0'))==0 fo
 service_output='\n'.join(service.itertext())
 assert 'Application group service backend: PostgreSQL' in service_output and 'Application group service backend: H2' not in service_output, 'Application group service requires PostgreSQL'
 print('PASS: applicationgroup.ApplicationGroupDirectoryServiceTest 13 PostgreSQL cases executed')
-for name, expected in [('store.PolicyDocumentValidatorTest', 6), ('store.JdbcPolicyStoreTest', 9), ('store.ApplicationGroupPolicyStoreTest', 5), ('store.ProjectMigrationReviewTest', 10), ('store.ApplicationGroupPolicyManagementTest', 7), ('store.ApplicationGroupStorageTest', 1), ('store.ApplicationGroupDirectoryStoreTest', 17), ('store.ApplicationScopeDeclarationCommandTest', 2), ('declaration.ApplicationScopeDeclarationStoreTest', 3)]:
+for name, expected in [('store.PolicyDocumentValidatorTest', 6), ('store.JdbcPolicyStoreTest', 9), ('store.ApplicationGroupPolicyStoreTest', 5), ('store.ProjectMigrationReviewTest', 10), ('store.ApplicationGroupPolicyManagementTest', 7), ('store.ApplicationGroupStorageTest', 2), ('store.ApplicationGroupDirectoryStoreTest', 17), ('store.ApplicationScopeDeclarationCommandTest', 2), ('declaration.ApplicationScopeDeclarationStoreTest', 3)]:
     path = directory / ('TEST-io.kestra.extensions.rbac.' + name + '.xml')
     if not path.is_file():
         raise SystemExit('FAIL: missing required report ' + name)
@@ -23,7 +23,7 @@ for name, expected in [('store.PolicyDocumentValidatorTest', 6), ('store.JdbcPol
         if 'Application group directory store backend: PostgreSQL' not in output or 'Application group directory store backend: H2' in output:
             raise SystemExit(name + ' must execute against PostgreSQL, not H2')
     print('PASS: ' + name + ' ' + str(expected) + ' cases executed')
-for name, expected in [('applicationgroup.ApplicationPermissionUpgradeTest', 9), ('applicationgroup.ApplicationPermissionControllerTest', 11)]:
+for name, expected in [('applicationgroup.ApplicationPermissionUpgradeTest', 9), ('applicationgroup.ApplicationPermissionControllerTest', 12)]:
     suite = ET.parse(directory / ('TEST-io.kestra.extensions.rbac.' + name + '.xml')).getroot()
     assert int(suite.get('tests', '0')) == expected and all(int(suite.get(key, '0')) == 0 for key in ('failures', 'errors', 'skipped')), name + ' must execute without failure or skip'
     output = '\n'.join(suite.itertext())
@@ -51,6 +51,7 @@ print('PASS: store.NewInstallMigrationTest 3 PostgreSQL production-bean migratio
 
 complement=ET.parse(Path(sys.argv[1]) / 'TEST-io.kestra.extensions.rbac.applicationgroup.ApplicationPermissionControllerTest.xml').getroot()
 expected_complement_cases={
+    'namespaceExpressionsPersistAndManagementResponsesRoundTripWithoutLegacyFlags',
     'aiTenantCreateFindUpdateDeletePersistAndNewEvaluationsObserveRevocation',
     'createUpdateDeleteUseObjectRevisionAndReceiptWithoutPolicyDisclosure',
     'deniedAndInvalidAiMutationsLeaveAllPersistedRbacRowsUnchanged',
