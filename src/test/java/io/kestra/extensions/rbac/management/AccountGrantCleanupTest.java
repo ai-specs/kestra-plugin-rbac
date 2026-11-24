@@ -23,7 +23,7 @@ class AccountGrantCleanupTest {
         var postgres=System.getenv("RBAC_STORE_TEST_JDBC");
         if(postgres!=null && !postgres.isBlank()) {
             var database=new org.postgresql.ds.PGSimpleDataSource();database.setURL(postgres);
-            database.setUser("postgres");database.setPassword("policy-test-only");
+            database.setUser(System.getenv().getOrDefault("RBAC_STORE_TEST_USER", "postgres"));database.setPassword(System.getenv().getOrDefault("RBAC_STORE_TEST_PASSWORD", "policy-test-only"));
             String schema="account_cleanup_"+UUID.randomUUID().toString().replace("-","");
             try(var connection=database.getConnection();var statement=connection.createStatement()) {statement.execute("CREATE SCHEMA "+schema);}
             database.setCurrentSchema(schema);source=database;

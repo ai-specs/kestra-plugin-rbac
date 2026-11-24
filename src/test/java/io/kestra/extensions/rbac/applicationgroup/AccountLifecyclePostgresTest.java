@@ -50,7 +50,7 @@ class AccountLifecyclePostgresTest {
     }
     @BeforeEach void initialize()throws Exception {
         String jdbc=System.getenv("RBAC_STORE_TEST_JDBC");if(jdbc==null || jdbc.isBlank())throw new IllegalStateException("Real lifecycle PostgreSQL required");
-        source.setURL(jdbc);source.setUser("postgres");source.setPassword("policy-test-only");
+        source.setURL(jdbc);source.setUser(System.getenv().getOrDefault("RBAC_STORE_TEST_USER", "postgres"));source.setPassword(System.getenv().getOrDefault("RBAC_STORE_TEST_PASSWORD", "policy-test-only"));
         String schema="published_lifecycle_"+java.util.UUID.randomUUID().toString().replace("-","");
         try(var connection=source.getConnection();var statement=connection.createStatement()) {
             assertEquals("PostgreSQL",connection.getMetaData().getDatabaseProductName());statement.execute("CREATE SCHEMA "+schema);

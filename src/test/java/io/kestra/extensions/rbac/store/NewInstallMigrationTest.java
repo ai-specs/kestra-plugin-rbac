@@ -25,7 +25,7 @@ class NewInstallMigrationTest {
     private DataSource database()throws Exception {
         String jdbc=System.getenv("RBAC_STORE_TEST_JDBC");DataSource source;
         if(jdbc!=null && !jdbc.isBlank()) {
-            var database=new org.postgresql.ds.PGSimpleDataSource();database.setURL(jdbc);database.setUser("postgres");database.setPassword("policy-test-only");
+            var database=new org.postgresql.ds.PGSimpleDataSource();database.setURL(jdbc);database.setUser(System.getenv().getOrDefault("RBAC_STORE_TEST_USER", "postgres"));database.setPassword(System.getenv().getOrDefault("RBAC_STORE_TEST_PASSWORD", "policy-test-only"));
             String schema="new_install_migrations_"+UUID.randomUUID().toString().replace("-","");
             try(var connection=database.getConnection();var statement=connection.createStatement()) {statement.execute("CREATE SCHEMA "+schema);}
             database.setCurrentSchema(schema);source=database;

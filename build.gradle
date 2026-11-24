@@ -13,17 +13,17 @@ if (!hostJar.isPresent() || !file(hostJar.get()).isFile()) {
 }
 dependencies {
     compileOnly files(hostJar.get(), hostModules)
-    compileOnly platform('io.micronaut.platform:micronaut-platform:4.10.18')
+    compileOnly platform('io.micronaut.platform:micronaut-platform:4.10.22')
     compileOnly 'io.micronaut:micronaut-inject'
     compileOnly 'io.micronaut.security:micronaut-security'
-    annotationProcessor platform('io.micronaut.platform:micronaut-platform:4.10.18')
+    annotationProcessor platform('io.micronaut.platform:micronaut-platform:4.10.22')
     annotationProcessor 'io.micronaut:micronaut-inject-java'
     testImplementation files(provider { fileTree(layout.buildDirectory.dir("test-host")) { include "*.jar" } })
-    testImplementation platform('io.micronaut.platform:micronaut-platform:4.10.18')
+    testImplementation platform('io.micronaut.platform:micronaut-platform:4.10.22')
     testImplementation 'io.micronaut:micronaut-runtime'
     testImplementation 'io.micronaut.security:micronaut-security'
-    compileOnly 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.1'
-    testImplementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.1'
+    compileOnly 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.3'
+    testImplementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.3'
     testImplementation 'io.micronaut.data:micronaut-data-connection-jdbc'
     testImplementation 'io.micronaut.data:micronaut-data-model'
     testImplementation 'ch.qos.logback:logback-classic:1.5.34'

@@ -19,7 +19,7 @@ class ApplicationGroupDirectoryStoreTest {
         DataSource source;
         if(postgres!=null && !postgres.isBlank()) {
             var database=new org.postgresql.ds.PGSimpleDataSource();
-            database.setURL(postgres);database.setUser("postgres");database.setPassword("policy-test-only");
+            database.setURL(postgres);database.setUser(System.getenv().getOrDefault("RBAC_STORE_TEST_USER", "postgres"));database.setPassword(System.getenv().getOrDefault("RBAC_STORE_TEST_PASSWORD", "policy-test-only"));
             String schema="group_directory_"+UUID.randomUUID().toString().replace("-","");
             try(var connection=database.getConnection();var statement=connection.createStatement()) {
                 statement.execute("CREATE SCHEMA "+schema);

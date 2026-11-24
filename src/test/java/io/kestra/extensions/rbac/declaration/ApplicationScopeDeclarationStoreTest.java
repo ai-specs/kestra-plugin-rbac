@@ -18,8 +18,8 @@ class ApplicationScopeDeclarationStoreTest {
         if (postgres != null && !postgres.isBlank()) {
             var source = new org.postgresql.ds.PGSimpleDataSource();
             source.setURL(postgres);
-            source.setUser("postgres");
-            source.setPassword("policy-test-only");
+            source.setUser(System.getenv().getOrDefault("RBAC_STORE_TEST_USER", "postgres"));
+            source.setPassword(System.getenv().getOrDefault("RBAC_STORE_TEST_PASSWORD", "policy-test-only"));
             String schema = "declaration_" + UUID.randomUUID().toString().replace("-", "");
             try (var connection = source.getConnection(); var statement = connection.createStatement()) {
                 statement.execute("CREATE SCHEMA " + schema);

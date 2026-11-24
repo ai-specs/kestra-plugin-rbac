@@ -22,8 +22,8 @@ class JdbcPolicyStoreTest {
         if (postgres != null && !postgres.isBlank()) {
             var dataSource = new org.postgresql.ds.PGSimpleDataSource();
             dataSource.setURL(postgres);
-            dataSource.setUser("postgres");
-            dataSource.setPassword("policy-test-only");
+            dataSource.setUser(System.getenv().getOrDefault("RBAC_STORE_TEST_USER", "postgres"));
+            dataSource.setPassword(System.getenv().getOrDefault("RBAC_STORE_TEST_PASSWORD", "policy-test-only"));
             String schema = "policy_" + UUID.randomUUID().toString().replace("-", "");
             try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
                 statement.execute("CREATE SCHEMA " + schema);

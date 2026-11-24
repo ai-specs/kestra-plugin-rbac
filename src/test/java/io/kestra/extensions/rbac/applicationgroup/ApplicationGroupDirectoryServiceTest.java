@@ -35,7 +35,7 @@ class ApplicationGroupDirectoryServiceTest {
         Fixture()throws Exception {
             var jdbc=System.getenv("RBAC_STORE_TEST_JDBC");
             if(jdbc!=null && !jdbc.isBlank()) {
-                var database=new org.postgresql.ds.PGSimpleDataSource();database.setURL(jdbc);database.setUser("postgres");database.setPassword("policy-test-only");
+                var database=new org.postgresql.ds.PGSimpleDataSource();database.setURL(jdbc);database.setUser(System.getenv().getOrDefault("RBAC_STORE_TEST_USER", "postgres"));database.setPassword(System.getenv().getOrDefault("RBAC_STORE_TEST_PASSWORD", "policy-test-only"));
                 String schema="group_service_"+java.util.UUID.randomUUID().toString().replace("-","");
                 try(var connection=database.getConnection();var statement=connection.createStatement()){statement.execute("CREATE SCHEMA "+schema);}
                 database.setCurrentSchema(schema);source=database;
