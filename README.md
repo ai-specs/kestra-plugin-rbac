@@ -101,11 +101,11 @@ main · METADATA · LIST / READ · *
 检查。可用 RBAC_STORE_TEST_USER、RBAC_STORE_TEST_PASSWORD 指定隔离测试账号；默认账号为 postgres、密码为公开测试常量 policy-test-only。以上变量只用于测试，
 每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。
 
-当前编译输入为正式宿主 commit `1d50c01a29b11186c29c07105c3d9c24b3762a96`（成功 CI `45407070627`，
+当前编译输入为正式宿主 commit `6eae01a22175b75fdf200d418ef33468b2e85e2c`（成功 CI `45534389284`，
 五个 job 成功并完成正式推广），镜像 digest
-`05917c8f72777ab9f9fb01f106d33db344ff9d01435a3cd836b7c7a037c447e1`；
-本机独立提取 executable SHA256
-`310d457b24a4b83d8e237f67d392de08d4aeb5d2e124472faf48c03a0ba99229`。
+`4dfc014b6ae64584e52af6ba310a4feda679bc4c3f9c10185d4919c541036193`。
+本机独立提取的 executable SHA256 由 `.integration/host-provenance.json` 记录，
+正式 CI artifact 保留该 provenance；不得沿用前一镜像的提取 hash。
 该正式宿主基于 Kestra v2.0.11；编译与测试使用其 Micronaut 4.10.22 和 Jackson YAML 2.22.3。
 该正式宿主保留 Flow 首屏和身份恢复修复，并隔离 MCP 后台刷新的调用方连接、事务及请求授权上下文。
 模式 A/B 均适用；工具调用身份、权限和队列错误处理不变，不增加插件授权例外。
@@ -270,7 +270,7 @@ scope 名称和说明不授予资源权限。旧项目路径、完整恢复和�
 插件通过宿主 `OidcInitialAccountParticipantV1` 在借用的同一 PostgreSQL 事务内创建目录、
 统一 typed 权限和首账号授予；不执行 CLI，不提供额外匿名初始化 API，不依据账号名字
 授予管理员。宿主契约已随 overlay `c4a1eb22` 的成功 CI `41628600618` 正式发布，
-当前 `host-contract.properties` 固定包含该 SPI 的正式 1d50c01 镜像。不得使用相邻源码、候选 executable 或临时
+当前 `host-contract.properties` 固定包含该 SPI 的正式 6eae01a 镜像。不得使用相邻源码、候选 executable 或临时
 接口编译本插件；本插件自身 CI、jar 发布与根仓组合验收通过前，不代表能力已交付。
 
 初始业务设计：唯一内置组 `main`，人类名称 `Kestra`；scope `admin`，人类名称
