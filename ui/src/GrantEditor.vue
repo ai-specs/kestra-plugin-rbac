@@ -20,7 +20,7 @@ const {t} = useI18n()
     <fieldset><legend>{{ t('actions') }}</legend><KsCheckboxGroup v-model="grant.actions"><KsCheckbox v-for="action in grantActions(grant)" :key="action" :value="action">{{ action }}</KsCheckbox></KsCheckboxGroup></fieldset>
     <p v-if="grant.resource === 'METADATA'" class="message">{{ t('metadataRange') }}</p>
     <p v-else-if="grant.resource === 'AI' && grant.scope === 'TENANT'" class="message">{{ t('aiTenantRange') }}</p>
-    <KsCheckbox v-else v-model="grant.allIds">{{ t('allIds') }}</KsCheckbox>
+    <KsCheckbox v-else-if="grant.resource !== 'EXTENSION_ROUTE'" v-model="grant.allIds">{{ t('allIds') }}</KsCheckbox>
     <p v-if="grant.resource === 'AI' && grant.scope === 'NAMESPACE'" class="message">{{ t('aiLegacyRange') }}</p>
     <label v-if="!grant.allIds">{{ t('ids') }}<KsInput type="textarea" :rows="3" :model-value="Array.isArray(grant.ids) ? grant.ids.join('\n') : grant.ids" @update:model-value="grant.ids = $event" /><small>{{ t('onePerLine') }}</small></label>
     <KsButton native-type="button" @click="grants.splice(index, 1)">{{ t('removeGrant') }}</KsButton>

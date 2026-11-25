@@ -1,4 +1,4 @@
-export const resources = ['FLOW', 'EXECUTION', 'NAMESPACE', 'LOG', 'METRIC', 'TRIGGER', 'KVSTORE', 'SECRET', 'NAMESPACE_FILE', 'DASHBOARD', 'BLUEPRINT', 'MCP_SERVER', 'AI', 'METADATA']
+export const resources = ['FLOW', 'EXECUTION', 'NAMESPACE', 'LOG', 'METRIC', 'TRIGGER', 'KVSTORE', 'SECRET', 'NAMESPACE_FILE', 'DASHBOARD', 'BLUEPRINT', 'MCP_SERVER', 'AI', 'METADATA', 'EXTENSION_ROUTE']
 export const actions = ['READ', 'LIST', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE', 'ACCESS_OUTPUTS']
 export const splitLines = value => Array.isArray(value) ? [...value] : String(value ?? '').split(/\r?\n/).map(item => item.trim()).filter(Boolean)
 export const copy = value => JSON.parse(JSON.stringify(value))
@@ -32,16 +32,22 @@ export function typedGrantsInput(value) {
     if (item.resource === 'METADATA') return {scope: 'TENANT', tenant: 'main', namespace: null, resource: 'METADATA', actions: item.actions.filter(action => ['READ', 'LIST'].includes(action)), ids: [], allIds: true}
     if (item.scope !== 'NAMESPACE' || item.tenant !== 'main' || typeof item.namespace !== 'string' || !/^!?[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*(?:\.\*)?$/.test(item.namespace)) invalid()
     if (item.namespace.endsWith('.*') && Object.hasOwn(item, 'descendants')) invalid()
+    if (item.resource === 'EXTENSION_ROUTE') {
+      const ids = splitLines(item.ids)
+      if (item.actions.length !== 1 || item.actions[0] !== 'EXECUTE' || item.allIds || !ids.length || ids.some(id => !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(id))) invalid()
+      return {scope: 'NAMESPACE', tenant: 'main', namespace: namespaceExpression(item), resource: 'EXTENSION_ROUTE', actions: ['EXECUTE'], allIds: false, ids}
+    }
     return {scope: 'NAMESPACE', tenant: 'main', namespace: namespaceExpression(item), resource: item.resource, actions: [...item.actions], allIds: item.allIds, ids: item.allIds ? [] : splitLines(item.ids)}
   })}
 }
 export function selectGrantResource(grant) {
-  if (grant.resource === 'AI') Object.assign(grant, {scope:'TENANT',tenant:'main',namespace:null,descendants:false,actions:grant.actions.filter(action => ['READ','EXECUTE'].includes(action)),ids:[],allIds:true})
+  if (grant.resource === 'EXTENSION_ROUTE') Object.assign(grant, {scope:'NAMESPACE',tenant:'main',namespace:'',descendants:false,actions:['EXECUTE'],ids:[],allIds:false})
+  else if (grant.resource === 'AI') Object.assign(grant, {scope:'TENANT',tenant:'main',namespace:null,descendants:false,actions:grant.actions.filter(action => ['READ','EXECUTE'].includes(action)),ids:[],allIds:true})
   else if (grant.resource === 'METADATA') Object.assign(grant, {scope: 'TENANT', tenant: 'main', namespace: null, descendants: false, actions: grant.actions.filter(action => ['READ', 'LIST'].includes(action)), ids: [], allIds: true})
   else if (grant.resource === 'MCP_SERVER') Object.assign(grant, {scope:'TENANT',tenant:'main',namespace:null,descendants:false,actions:grant.actions.filter(action => ['READ','LIST','CREATE','UPDATE','DELETE'].includes(action))})
   else if (grant.scope !== 'NAMESPACE') Object.assign(grant, {scope: 'NAMESPACE', tenant: 'main', namespace: '', descendants: false})
 }
-export const grantActions = grant => grant.resource === 'AI' && grant.scope === 'TENANT' ? ['READ','EXECUTE']
+export const grantActions = grant => grant.resource === 'EXTENSION_ROUTE' ? ['EXECUTE'] : grant.resource === 'AI' && grant.scope === 'TENANT' ? ['READ','EXECUTE']
   : grant.resource === 'METADATA' ? ['READ','LIST'] : grant.resource === 'MCP_SERVER' ? ['READ','LIST','CREATE','UPDATE','DELETE'] : actions
 // Filtering is local because the frozen HTTP API specifies page/size only. Read all
 // pages before filtering, and reject a moving or incomplete directory.

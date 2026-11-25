@@ -41,7 +41,7 @@ public record ApplicationGroupPolicy(int schemaVersion, Map<String, ApplicationG
             managementGrants = List.copyOf(managementGrants);
         }
     }
-    public enum Resource { FLOW, EXECUTION, TRIGGER, NAMESPACE, KVSTORE, SECRET, NAMESPACE_FILE, LOG, METRIC, DASHBOARD, BLUEPRINT, MCP_SERVER, AI, METADATA }
+    public enum Resource { FLOW, EXECUTION, TRIGGER, NAMESPACE, KVSTORE, SECRET, NAMESPACE_FILE, LOG, METRIC, DASHBOARD, BLUEPRINT, MCP_SERVER, AI, METADATA, EXTENSION_ROUTE }
     @com.fasterxml.jackson.databind.annotation.JsonSerialize(using = GrantJson.Serializer.class)
     @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using = GrantJson.Deserializer.class)
     public record Grant(String scope, String tenant, String namespace, boolean descendants, String resource, Set<String> actions, Set<String> ids, boolean allIds) {
@@ -64,6 +64,11 @@ public record ApplicationGroupPolicy(int schemaVersion, Map<String, ApplicationG
                 if (!scope.equals("TENANT") || !tenant.equals("main") || namespace != null || descendants
                     || !Set.of("READ", "LIST", "CREATE", "UPDATE", "DELETE").containsAll(actions))
                     throw new IllegalArgumentException("MCP_SERVER requires an explicit main tenant configuration grant");
+            } else if (resource.equals("EXTENSION_ROUTE")) {
+                if (!scope.equals("NAMESPACE") || !tenant.equals("main") || namespace == null
+                    || !actions.equals(Set.of("EXECUTE")) || allIds || ids.isEmpty()
+                    || ids.stream().anyMatch(id -> !id.matches("[A-Za-z0-9][A-Za-z0-9_-]{0,127}")))
+                    throw new IllegalArgumentException("EXTENSION_ROUTE requires namespace-scoped EXECUTE IDs");
             } else if (resource.equals("AI") && scope.equals("TENANT")) {
                 if (!tenant.equals("main") || namespace != null || descendants || !ids.isEmpty() || !allIds
                     || !Set.of("READ", "EXECUTE").containsAll(actions))

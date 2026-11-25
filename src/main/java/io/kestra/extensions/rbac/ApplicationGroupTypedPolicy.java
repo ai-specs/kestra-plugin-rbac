@@ -17,6 +17,12 @@ final class ApplicationGroupTypedPolicy {
             String resource=op.resource().name(),action=op.action().name();
             boolean query=op.coverage()==TypedAuthorization.Coverage.COMPLETE_QUERY;
             if(query && (!Set.of("READ","LIST").contains(action) || op.sideEffect()!=TypedAuthorization.SideEffect.READ_ONLY))return deny();
+            if(resource.equals("EXTENSION_ROUTE")){
+                if(op.resourceId()==null || op.resourceId().isBlank() || !op.resourceId().equals(op.resourceId().trim())
+                    || op.resourceId().chars().anyMatch(Character::isISOControl) || !action.equals("EXECUTE"))return deny();
+                var decision=auth.authorize(id,new ApplicationGroupAuthorization.Request(op.tenant(),op.namespace(),resource,action,op.resourceId(),false),directory);
+                return decision.allowed()?TypedAuthorization.Decision.allow(op.queryDomain()):deny();
+            }
             if(resource.equals("EXTENSION")){
                 if(!"rbac".equals(op.resourceId()) || !Set.of("READ","UPDATE").contains(action))return deny();
                 boolean allowed=false;

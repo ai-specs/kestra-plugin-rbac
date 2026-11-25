@@ -10,7 +10,9 @@ class ApplicationGroupAuthorizationTest {
         "read":{"description":"r","enabled":true,"grants":[{"scope":"NAMESPACE","tenant":"main","namespace":"a","descendants":true,"resource":"FLOW","actions":["READ","LIST"],"ids":[],"allIds":true}]},
         "write":{"description":"w","enabled":true,"grants":[{"scope":"NAMESPACE","tenant":"main","namespace":"b","descendants":false,"resource":"FLOW","actions":["READ","LIST","UPDATE"],"ids":[],"allIds":true}]},
         "read-only":{"description":"r","enabled":true,"grants":[{"scope":"NAMESPACE","tenant":"main","namespace":"a","descendants":false,"resource":"FLOW","actions":["READ"],"ids":[],"allIds":true}]},
-        "list-only":{"description":"l","enabled":true,"grants":[{"scope":"NAMESPACE","tenant":"main","namespace":"a","descendants":false,"resource":"FLOW","actions":["LIST"],"ids":[],"allIds":true}]}
+        "list-only":{"description":"l","enabled":true,"grants":[{"scope":"NAMESPACE","tenant":"main","namespace":"a","descendants":false,"resource":"FLOW","actions":["LIST"],"ids":[],"allIds":true}]},
+        "route":{"description":"route","enabled":true,"grants":[{"scope":"NAMESPACE","tenant":"main","namespace":"company","descendants":true,"resource":"EXTENSION_ROUTE","actions":["EXECUTE"],"ids":["amis-apps"],"allIds":false}]},
+        "revoked":{"description":"revoked","enabled":false,"grants":[{"scope":"NAMESPACE","tenant":"main","namespace":"company","descendants":true,"resource":"EXTENSION_ROUTE","actions":["EXECUTE"],"ids":["amis-apps"],"allIds":false}]}
         }}}}
         """).getBytes());
     private final ApplicationGroupAuthorization auth = new ApplicationGroupAuthorization(policy);
@@ -20,6 +22,19 @@ class ApplicationGroupAuthorizationTest {
         assertTrue(auth.authorize(id("ui","read"), new ApplicationGroupAuthorization.Request("main","a.child","FLOW","READ","x",false), directory).allowed());
         assertFalse(auth.authorize(id("bad","read"), new ApplicationGroupAuthorization.Request("main","a","FLOW","READ","x",false), directory).allowed());
         assertFalse(auth.authorize(new ApplicationGroupAuthorization.Identity("s","https://other","ui","p",3,Set.of("read"),Set.of()), new ApplicationGroupAuthorization.Request("main","a","FLOW","READ","x",false), directory).allowed());
+    }
+    @Test void extensionRouteUsesNamespaceAndExactCapabilityIntersection() {
+        assertTrue(auth.authorize(id("ui","route"), new ApplicationGroupAuthorization.Request("main","company.team","EXTENSION_ROUTE","EXECUTE","amis-apps",false), directory).allowed());
+        assertFalse(auth.authorize(id("ui","route"), new ApplicationGroupAuthorization.Request("main","company2","EXTENSION_ROUTE","EXECUTE","amis-apps",false), directory).allowed());
+        assertFalse(auth.authorize(id("ui","route"), new ApplicationGroupAuthorization.Request("main","company","EXTENSION_ROUTE","EXECUTE","other",false), directory).allowed());
+        assertFalse(auth.authorize(id("ui","route"), new ApplicationGroupAuthorization.Request("main","company","FLOW","EXECUTE","amis-apps",false), directory).allowed());
+        assertFalse(auth.authorize(id("ui","revoked"), new ApplicationGroupAuthorization.Request("main","company","EXTENSION_ROUTE","EXECUTE","amis-apps",false), directory).allowed());
+    }
+    @Test void extensionRoutePolicyRoundTripsCanonicalStorage() {
+        var parser = new ApplicationGroupPolicyParser();
+        var json = parser.canonicalJson(policy);
+        assertTrue(parser.isCanonicalStoredJson(parser.parse(json.getBytes()), json));
+        assertTrue(json.contains("EXTENSION_ROUTE"));
     }
     @Test void crossScopeReadListCannotBeComposed() {
         assertFalse(auth.authorize(id("ui","read-only","list-only"), new ApplicationGroupAuthorization.Request("main","a","FLOW","READ",null,true), directory).allowed());

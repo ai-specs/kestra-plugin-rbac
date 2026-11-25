@@ -113,12 +113,13 @@ main · METADATA · LIST / READ · *
 检查。可用 RBAC_STORE_TEST_USER、RBAC_STORE_TEST_PASSWORD 指定隔离测试账号；默认账号为 postgres、密码为公开测试常量 policy-test-only。以上变量只用于测试，
 每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。
 
-当前编译输入为正式宿主 commit `feb817c8c579384a20341f3126d8ca9216ef3a9f`（成功 CI `45568995024`，
+当前编译输入为正式宿主 commit `4ca66e90e9e66b23fc943b03855d48c6750b4adf`（成功 CI `45696257524`，
 五个 job 成功并完成正式推广），镜像 digest
-`91d6726df4d13535af22b16937e7e6ee21a5f5a4058534d31d3dfd64b6981c7e`。
+`b66e6a64f5229c882f76e6eaa3d8da26a91b05a3b1a99fa89e51bd63f8456f2e`；host executable SHA256 为 `937a087154b95bb19cc5081a00f4166c593c9a52e7215a2159a3c69b9754b7ec`。
 本机独立提取的 executable SHA256 由 `.integration/host-provenance.json` 记录，
 正式 CI artifact 保留该 provenance；不得沿用前一镜像的提取 hash。
-该正式宿主基于 Kestra v2.0.13；编译与测试使用其 Micronaut 4.10.22 和 Jackson YAML 2.22.3。
+该正式宿主基于 Kestra v2.0.13；Micronaut platform 为 4.10.22，宿主 core/inject 为
+4.10.33，Jackson YAML 为 2.22.3。platform 与单个模块的版本号不是同一概念。
 该正式宿主保留 Flow 首屏和身份恢复修复，并隔离 MCP 后台刷新的调用方连接、事务及请求授权上下文。
 模式 A/B 均适用；工具调用身份、权限和队列错误处理不变，不增加插件授权例外。
 当前宿主输入保留该公开契约；命名空间表达式统一属于插件，授权范围语义保持等价。
@@ -281,8 +282,8 @@ scope 名称和说明不授予资源权限。旧项目路径、完整恢复和�
 目标流程是部署方准备正式兼容 jar 并开启 RBAC 后，在宿主 `/oidc/setup` 页面创建首个账号。
 插件通过宿主 `OidcInitialAccountParticipantV1` 在借用的同一 PostgreSQL 事务内创建目录、
 统一 typed 权限和首账号授予；不执行 CLI，不提供额外匿名初始化 API，不依据账号名字
-授予管理员。宿主契约已随 overlay `c4a1eb22` 的成功 CI `41628600618` 正式发布，
-当前 `host-contract.properties` 固定包含该 SPI 的正式 feb817c 镜像。不得使用相邻源码、候选 executable 或临时
+授予管理员。宿主契约已随 overlay `4ca66e90` 的成功 CI `45696257524` 正式发布，
+当前 `host-contract.properties` 固定包含该 SPI 的正式镜像。不得使用相邻源码、候选 executable 或临时
 接口编译本插件；本插件自身 CI、jar 发布与根仓组合验收通过前，不代表能力已交付。
 
 初始业务设计：唯一内置组 `main`，人类名称 `Kestra`；scope `admin`，人类名称
@@ -297,6 +298,12 @@ scope 名称和说明不授予资源权限。旧项目路径、完整恢复和�
   它是 main 内排除 company 子树的允许域，不是全局 deny，company 正向项仍独立生效。
 - AI 使用独立 `TENANT/main` 的 `READ/EXECUTE`，不通过 namespace 补集授予。
 - 资源 audience 精确为当前 issuer 下 `/api/v1/main/mcp/default`；不登记外部应用，不采用通配 audience。
+
+`EXTENSION_ROUTE` 入口能力不属于首装初始 grant。需要启用扩展入口时，管理员必须通过现有
+权限表显式新增 `NAMESPACE/main` grant，动作只能是 `EXECUTE`，并填写扩展公开的 capability
+ID（例如 `amis-apps`）。该授权沿用 namespace 表达式、scope 交集和撤权规则；入口授权不
+授予 FLOW，普通 FLOW 授权也不反向授予入口。已有安装不会自动补授，新首装用户也不会因
+首装身份获得入口能力。
 
 `company` 是首装普通数据写范围。补集仅只读，不隐含执行、输出访问或任何写动作。
 这不是永久超级权限，不根据首账号身份直接放行。其他账号不继承首账号权限；管理员可通过现有

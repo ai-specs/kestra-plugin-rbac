@@ -206,10 +206,22 @@ for(const row of cases)test(row.id,async({page,context},info)=>{
       await expect(grant.locator('.kel-checkbox')).toHaveCount(2)
       await grant.locator('.kel-checkbox').filter({hasText:'READ'}).click()
       await grant.locator('.kel-checkbox').filter({hasText:'EXECUTE'}).click()
+      await d.locator('[data-test=add-grant]').click()
+      const extensionGrant=d.locator('.grant').nth(1)
+      await extensionGrant.locator('.kel-select__wrapper').click()
+      await root(page).getByRole('option',{name:'EXTENSION_ROUTE',exact:true}).last().click()
+      await extensionGrant.locator('[name=grant-namespace]').fill('company.*')
+      await extensionGrant.locator('textarea').fill('amis-apps\nother-capability')
+      await expect(extensionGrant.locator('.kel-checkbox')).toHaveCount(1)
+      await expect(extensionGrant.locator('.kel-checkbox')).toContainText('EXECUTE')
+      await expect(extensionGrant).not.toContainText(await text(page,'allIds'))
       await d.locator('[data-test=drawer-save]').click()
       await expect.poll(()=>page.evaluate(()=>window.fixture.requests.filter(item=>item.method==='POST'&&item.route.endsWith('/permissions')).length)).toBe(1)
       const body=await page.evaluate(()=>window.fixture.requests.find(item=>item.method==='POST'&&item.route.endsWith('/permissions')).body)
-      expect(JSON.parse(body).grants).toEqual([{scope:'TENANT',tenant:'main',namespace:null,resource:'AI',actions:['READ','EXECUTE'],ids:[],allIds:true}])
+      expect(JSON.parse(body).grants).toEqual([
+        {scope:'TENANT',tenant:'main',namespace:null,resource:'AI',actions:['READ','EXECUTE'],ids:[],allIds:true},
+        {scope:'NAMESPACE',tenant:'main',namespace:'company.*',resource:'EXTENSION_ROUTE',actions:['EXECUTE'],ids:['amis-apps','other-capability'],allIds:false}
+      ])
     }else if(match){
       const [,kind,action]=match;await boot(page,row,{path:paths[kind]});
       if(action==='draft-backdrop-history'){await page.evaluate(()=>window.fixture.navigate('application-groups/team'));await expect(by(page,'group-detail')).toBeVisible();await page.evaluate(path=>window.fixture.navigate(path),paths[kind]);await expect(by(page,'group-detail')).toBeHidden();await expect(by(page,'access-control-root')).toHaveAttribute('aria-busy','false')}

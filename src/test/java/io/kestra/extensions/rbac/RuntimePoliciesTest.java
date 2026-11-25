@@ -32,6 +32,7 @@ class RuntimePoliciesTest {
     }
     static ApplicationGroupPolicyStore.Snapshot snapshot(long revision,ApplicationGroupPolicy policy){return new ApplicationGroupPolicyStore.Snapshot(revision,revision-1,"operator",java.time.Instant.EPOCH,policy,"{}");}
     static ApplicationGroupPolicy.ScopeDefinition scope(String ns,String id,String... actions){return new ApplicationGroupPolicy.ScopeDefinition("scope",true,List.of(new ApplicationGroupPolicy.Grant("NAMESPACE","main",ns,false,"FLOW",Set.of(actions),Set.of(id),false)));}
+    static ApplicationGroupPolicy.ScopeDefinition route(String ns,String id){return new ApplicationGroupPolicy.ScopeDefinition("route",true,List.of(new ApplicationGroupPolicy.Grant("NAMESPACE","main",ns,true,"EXTENSION_ROUTE",Set.of("EXECUTE"),Set.of(id),false)));}
     static ApplicationGroupPolicy.ScopeDefinition manager(ApplicationGroupPolicy.ManagementDomain domain,ApplicationGroupPolicy.ManagementAction... actions){return new ApplicationGroupPolicy.ScopeDefinition("management",true,List.of(),List.of(new ApplicationGroupPolicy.ManagementGrant(domain,Set.of(actions))));}
     static Operation op(Resource resource,Action action,String ns,String id,boolean query){return new Operation(CONTRACT_VERSION,Source.REST,resource,action,"main",ns,id,QueryDomain.unrestricted(),query?Coverage.COMPLETE_QUERY:Coverage.SINGLE,Aggregate.NONE,SideEffect.READ_ONLY);}
     @Test void correlatedListDoesNotProduceCartesianProductOrCrossScopeReadList(){
@@ -110,7 +111,7 @@ class RuntimePoliciesTest {
     @Test void legacyBusinessDomainNeverGrantsAnyOrdinaryResourceOrSystem() {
         var f=new Fixture(Map.of("legacy",new ApplicationGroupPolicy.ScopeDefinition("",true,List.of(),List.of(new ApplicationGroupPolicy.ManagementGrant(ApplicationGroupPolicy.ManagementDomain.BUSINESS_INSTANCE,Set.of(ApplicationGroupPolicy.ManagementAction.READ,ApplicationGroupPolicy.ManagementAction.MANAGE))))));
         try(var c=f.runtime.open(f.identity("legacy"),"main")) {
-            for(var resource:Resource.values())if(resource!=Resource.EXTENSION)for(var action:Action.values())
+            for(var resource:Resource.values())if(resource!=Resource.EXTENSION && resource!=Resource.EXTENSION_ROUTE)for(var action:Action.values())
                 assertFalse(c.authorize(op(resource,action,"outside","id",false)).allowed(),resource+" "+action);
             assertFalse(c.authorize(op(Resource.SYSTEM,Action.EXECUTE,null,null,false)).allowed());
         }

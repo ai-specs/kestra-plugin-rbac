@@ -100,6 +100,23 @@ test('MCP server configuration is an explicit tenant resource with independent I
   assert.throws(()=>typedGrantsInput({description:'',enabled:true,grants:[{...grant,actions:['EXECUTE']}]}),error=>error.code==='invalid_grant')
 })
 
+test('extension route is an explicit namespace EXECUTE grant with a precise capability ID', () => {
+  const grant = {scope:'NAMESPACE', tenant:'main', namespace:'company', descendants:true, resource:'EXTENSION_ROUTE', actions:['READ'], ids:[], allIds:true}
+  selectGrantResource(grant)
+  assert.deepEqual(grant, {scope:'NAMESPACE', tenant:'main', namespace:'', descendants:false, resource:'EXTENSION_ROUTE', actions:['EXECUTE'], ids:[], allIds:false})
+  assert.deepEqual(grantActions(grant), ['EXECUTE'])
+  grant.namespace = 'company.*'
+  delete grant.descendants
+  grant.ids = 'amis-apps\nother-capability'
+  const saved = typedGrantsInput({description:'', enabled:true, grants:[grant], managementGrants:[]})
+  assert.deepEqual(saved.grants, [{scope:'NAMESPACE', tenant:'main', namespace:'company.*', resource:'EXTENSION_ROUTE', actions:['EXECUTE'], ids:['amis-apps', 'other-capability'], allIds:false}])
+  grant.namespace = '!company.*'
+  assert.equal(typedGrantsInput({description:'', enabled:true, grants:[grant], managementGrants:[]}).grants[0].namespace, '!company.*')
+  assert.throws(() => typedGrantsInput({description:'', enabled:true, grants:[{...grant, actions:['READ']}], managementGrants:[]}), error => error.code === 'invalid_grant')
+  assert.throws(() => typedGrantsInput({description:'', enabled:true, grants:[{...grant, ids:[]}], managementGrants:[]}), error => error.code === 'invalid_grant')
+  assert.throws(() => typedGrantsInput({description:'', enabled:true, grants:[{...grant, allIds:true}], managementGrants:[]}), error => error.code === 'invalid_grant')
+})
+
 test('N11/T3: application metadata cannot write derived support, protocol approval or host UI flag', () => {
   for (const clientId of ['ui','kestra-ui','admin','mcp']) {
     assert.deepEqual(memberInput({clientId,description:'Application',approved:false,firstPartyUi:true,audiences:'ui\nmcp',supportedScopeKeys:'scope-a\nscope-b'}),{clientId,description:'Application',audiences:['ui','mcp']})

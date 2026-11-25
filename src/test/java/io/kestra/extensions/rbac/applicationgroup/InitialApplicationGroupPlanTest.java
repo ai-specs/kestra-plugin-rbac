@@ -40,7 +40,7 @@ class InitialApplicationGroupPlanTest {
 
     @Test void confinesBusinessGrantsToCompanyAndPreservesTenantMetadataRestrictions() {
         var permission=plan("first-user").applicationGroups().getFirst().applications().getFirst().permissions().getFirst();
-        assertEquals(Set.of(Resource.values()),permission.grants().stream().map(grant->Resource.valueOf(grant.resource())).collect(java.util.stream.Collectors.toSet()));
+        assertEquals(java.util.Arrays.stream(Resource.values()).filter(resource -> resource != Resource.EXTENSION_ROUTE).collect(java.util.stream.Collectors.toSet()),permission.grants().stream().map(grant->Resource.valueOf(grant.resource())).collect(java.util.stream.Collectors.toSet()));
         for(var grant:permission.grants()) {
             if(grant.resource().equals("METADATA")) {
                 assertEquals("TENANT",grant.scope());assertNull(grant.namespace());assertFalse(grant.descendants());
