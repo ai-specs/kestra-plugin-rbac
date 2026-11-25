@@ -35,8 +35,9 @@ Independent, database-backed authorization extension for the Kestra OSS overlay.
 职责如下：根仓说明 Compose、正式镜像与扩展组合验收；`kestra-overlay` 说明宿主
 公开 SPI、SDK、扩展通道和 classpath 登记；本仓说明 RBAC 的权限模型、API、页面、
 存储、迁移和生命周期。需要接入新的扩展功能集时，不要复制本仓的 scope、grant 或
-`KESTRA_RBAC_ENABLED` 约定；请从根仓 [扩展功能集清单](../docs/extensions.md)
-和宿主 [通用扩展接入指南](../kestra-overlay/README.md#通用扩展接入指南) 开始。
+`KESTRA_RBAC_ENABLED` 约定；请从根仓
+[扩展功能集清单](https://github.com/ai-specs/kestra-monorepo/blob/main/docs/extensions.md)
+和宿主 [通用扩展接入指南](https://github.com/ai-specs/kestra-overlay/blob/main/README.md#通用扩展接入指南) 开始。
 
 本 README 的“Configure and deploy”只描述 RBAC 的部署要求；Compose 的完整组合命令、
 宿主镜像选择和跨仓验收以根仓 README 为准。宿主公开机制发生变化时，先按宿主契约
