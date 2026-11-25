@@ -38,11 +38,25 @@ REQUIRED['io.kestra.extensions.rbac.InitialApplicationGroupParticipantTest'] = 6
 REQUIRED['io.kestra.extensions.rbac.AiTypedPolicyTest'] = 7
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.AiTenantGrantTest'] = 5
 REQUIRED['io.kestra.extensions.rbac.applicationgroup.NamespaceComplementTest'] = 7
+REQUIRED['io.kestra.extensions.rbac.applicationgroup.ApplicationGroupAuthorizationTest'] = 28
+REQUIRED['io.kestra.extensions.rbac.ExtensionRouteTypedPolicyTest'] = 1
+REQUIRED['io.kestra.extensions.rbac.applicationgroup.ExtensionRoutePolicyTest'] = 2
 results=Path(sys.argv[1])
 for name,count in REQUIRED.items():
     report=ET.parse(results/('TEST-'+name+'.xml')).getroot()
     assert int(report.get('tests','0'))==count, name+' test count differs'
     assert all(int(report.get(key,'0'))==0 for key in ('failures','errors','skipped')), name+' failed or skipped'
+    assert len(report.findall('testcase')) == count, name+' testcase count differs'
+    assert not any(case.find(tag) is not None for case in report.findall('testcase') for tag in ('failure','error','skipped')), name+' has failed or skipped testcase'
+for suite, expected in {
+ 'io.kestra.extensions.rbac.ExtensionRouteTypedPolicyTest': {'typedOperationUsesExactGrantAndRejectsWrongResourceOrQuery'},
+ 'io.kestra.extensions.rbac.applicationgroup.ExtensionRoutePolicyTest': {'acceptsOnlyNamespaceExecuteAndExactId','doesNotEnterInitialAdministratorPlan'},
+}.items():
+    root=ET.parse(results/('TEST-'+suite+'.xml')).getroot()
+    assert expected == {case.get('name','').removesuffix('()') for case in root.findall('testcase')}, suite+' named cases differ'
+authorization=ET.parse(results/'TEST-io.kestra.extensions.rbac.applicationgroup.ApplicationGroupAuthorizationTest.xml').getroot()
+assert {'extensionRouteUsesNamespaceAndExactCapabilityIntersection','extensionRoutePolicyRoundTripsCanonicalStorage'}.issubset(
+    {case.get('name','').removesuffix('()') for case in authorization.findall('testcase')}), 'Extension route authorization cases missing'
 named={
  'io.kestra.extensions.rbac.applicationgroup.NamespaceComplementTest': {
  'positiveAndComplementExactAndSubtreeMatchScalarAndList', 'complementAndPositiveTermsPreserveCorrelatedIdsAcrossScopes',

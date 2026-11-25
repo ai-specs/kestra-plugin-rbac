@@ -110,6 +110,7 @@ jobs:
           name: kestra-rbac-authorizer
           include-hidden-files: true
           path: |
+            rbac/build/reports/release-checker-regressions/
             rbac/build/libs/kestra-rbac-authorizer.jar
             rbac/.integration/host-provenance.json
             rbac/build/reports/tests/test/

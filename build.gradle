@@ -54,6 +54,19 @@ tasks.register('prepareTestHost') {
 }
 compileTestJava.dependsOn prepareTestHost
 test { useJUnitPlatform { excludeTags 'postgres-lifecycle' }; dependsOn prepareTestHost }
+tasks.register('verifyApplicationGroupReleaseTests', Exec) {
+    dependsOn test
+    commandLine 'python3', file('scripts/check-application-project-tests.py').absolutePath,
+        layout.buildDirectory.dir('test-results/test').get().asFile.absolutePath
+}
+tasks.named('check') { dependsOn 'verifyApplicationGroupReleaseTests' }
+tasks.register('verifyApplicationGroupReleaseChecker', Exec) {
+    dependsOn 'verifyApplicationGroupReleaseTests'
+    commandLine 'python3', file('scripts/test-application-group-release-gate.py').absolutePath,
+        layout.buildDirectory.dir('test-results/test').get().asFile.absolutePath,
+        layout.buildDirectory.dir('reports/release-checker-regressions').get().asFile.absolutePath
+}
+tasks.named('check') { dependsOn 'verifyApplicationGroupReleaseChecker' }
 tasks.register('lifecyclePostgresTest', Test) {
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
