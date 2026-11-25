@@ -31,6 +31,17 @@ Java286、PostgreSQL108、生命周期24及UI172，包含原生抽屉、计数�
 
 Independent, database-backed authorization extension for the Kestra OSS overlay. The business policy lives in this repository. Output: **`build/libs/kestra-rbac-authorizer.jar`**. The jar is thin, includes Micronaut generated bean indexes, and contains no Kestra, Micronaut, Jackson or other dependency classes.
 
+本文是 RBAC / 应用组扩展的业务文档，不是宿主或部署仓的通用 README。三层文档的
+职责如下：根仓说明 Compose、正式镜像与扩展组合验收；`kestra-overlay` 说明宿主
+公开 SPI、SDK、扩展通道和 classpath 登记；本仓说明 RBAC 的权限模型、API、页面、
+存储、迁移和生命周期。需要接入新的扩展功能集时，不要复制本仓的 scope、grant 或
+`KESTRA_RBAC_ENABLED` 约定；请从根仓 [扩展功能集清单](../docs/extensions.md)
+和宿主 [通用扩展接入指南](../kestra-overlay/README.md#通用扩展接入指南) 开始。
+
+本 README 的“Configure and deploy”只描述 RBAC 的部署要求；Compose 的完整组合命令、
+宿主镜像选择和跨仓验收以根仓 README 为准。宿主公开机制发生变化时，先按宿主契约
+重新编译和验证本插件，再更新本仓对应说明，不在多个 README 复制同一业务规则。
+
 The earlier runtime authorization implementation passed independent CI and real monorepo Compose
 acceptance; that historical result does not validate the instance-admin change. See [validation evidence](docs/validation.md) for the tested scope. Build dependencies
 are extracted from the immutable published image, independently of any overlay source checkout.
