@@ -113,9 +113,9 @@ main · METADATA · LIST / READ · *
 检查。可用 RBAC_STORE_TEST_USER、RBAC_STORE_TEST_PASSWORD 指定隔离测试账号；默认账号为 postgres、密码为公开测试常量 policy-test-only。以上变量只用于测试，
 每个用例使用独立 schema，不得指向生产数据库。CI 不构建或部署另一个仓库。
 
-当前编译输入为正式宿主 commit `4ca66e90e9e66b23fc943b03855d48c6750b4adf`（成功 CI `45696257524`，
+当前编译输入为正式宿主 commit `1765441f3b6ff24a4b2250ade82877e2d5d28f3b`（成功 CI `45795525445`，
 五个 job 成功并完成正式推广），镜像 digest
-`b66e6a64f5229c882f76e6eaa3d8da26a91b05a3b1a99fa89e51bd63f8456f2e`；host executable SHA256 为 `937a087154b95bb19cc5081a00f4166c593c9a52e7215a2159a3c69b9754b7ec`。
+`182e03ce88803dc6718bc0d32729e1002af0321fe1dc18d41925342aad17b988`；host executable SHA256 为 `18b390e1a2ba1452ce9729b1f149e0d6457735f762395c393b13b1ee9f628fb7`。
 本机独立提取的 executable SHA256 由 `.integration/host-provenance.json` 记录，
 正式 CI artifact 保留该 provenance；不得沿用前一镜像的提取 hash。
 该正式宿主基于 Kestra v2.0.13；Micronaut platform 为 4.10.22，宿主 core/inject 为
